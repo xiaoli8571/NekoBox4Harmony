@@ -1,0 +1,8 @@
+{
+  "src": [
+    "pages/Index",
+    "pages/ProfileEdit",
+    "pages/SettingsPage",
+    "pages/LogPage"
+  ]
+}

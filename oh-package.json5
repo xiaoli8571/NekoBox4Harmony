@@ -1,0 +1,10 @@
+{
+  "modelVersion": "6.1.1",
+  "name": "nekobox4harmony",
+  "version": "1.0.0",
+  "description": "sing-box 1.4 VPN client for HarmonyOS, inspired by NekoBoxForAndroid",
+  "main": "",
+  "author": "",
+  "license": "GPL-3.0",
+  "dependencies": {}
+}

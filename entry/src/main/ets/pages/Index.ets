@@ -1,0 +1,523 @@
+import common from '@ohos.app.ability.common';
+import router from '@ohos.router';
+import promptAction from '@ohos.promptAction';
+import { Profile, AppSettings, profileTypeLabel } from '../model/Profile';
+import { initStore, loadProfiles, saveProfiles, loadSettings, LogStore } from '../model/Store';
+import { VpnService } from '../core/VpnService';
+import { parseShareText } from '../utils/LinkParser';
+import { getClipboardText } from '../utils/ClipboardHelper';
+import { fetchSubscription, looksLikeClashYaml, parseClashProxies, ClashParseResult } from '../utils/Subscription';
+import { testProfiles } from '../utils/LatencyTester';
+import { upsertSub, needAutoUpdate, updateSubscription, setAppContext, subNameOf } from '../core/Subscriptions';
+import { fetchTrafficTotals, formatSpeed, formatBytes } from '../utils/TrafficStats';
+
+@Entry
+@Component
+struct Index {
+  @State profiles: Array<Profile> = [];
+  @State selectedId: string = '';
+  @State latencies: Record<string, number> = {};
+  @State testing: boolean = false;
+  @State settings: AppSettings = new AppSettings();
+  @StorageLink('vpnRunning') @Watch('onRunningChange') isRunning: boolean = false;
+  @StorageLink('vpnStatus') statusText: string = '未连接';
+  @StorageLink('vpnUpSpeed') upSpeed: number = 0;
+  @StorageLink('vpnDownSpeed') downSpeed: number = 0;
+  @StorageLink('vpnTotalUp') totalUp: number = 0;
+  @StorageLink('vpnTotalDown') totalDown: number = 0;
+  private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+  private switching: boolean = false;
+  private speedTimer: number = -1;
+  private lastUp: number = 0;
+  private lastDown: number = 0;
+
+  aboutToAppear(): void {
+    setAppContext(this.context);
+    this.refresh();
+    this.autoUpdateSubs();
+  }
+
+  // 从编辑页 router.back() 回来时刷新列表(否则新保存的节点不显示)
+  onPageShow(): void {
+    this.refresh();
+  }
+
+  onRunningChange(): void {
+    if (this.isRunning) {
+      this.startSpeedPoller();
+    } else {
+      this.stopSpeedPoller();
+    }
+    this.refresh();
+  }
+
+  private startSpeedPoller(): void {
+    this.stopSpeedPoller();
+    this.lastUp = 0;
+    this.lastDown = 0;
+    AppStorage.setOrCreate('vpnUpSpeed', 0);
+    AppStorage.setOrCreate('vpnDownSpeed', 0);
+    this.speedTimer = setInterval(async () => {
+      const t = await fetchTrafficTotals();
+      if (t === null) {
+        return;
+      }
+      if (this.lastUp === 0 && this.lastDown === 0) {
+        this.lastUp = t.up;
+        this.lastDown = t.down;
+      }
+      AppStorage.setOrCreate('vpnUpSpeed', Math.max(0, t.up - this.lastUp));
+      AppStorage.setOrCreate('vpnDownSpeed', Math.max(0, t.down - this.lastDown));
+      this.lastUp = t.up;
+      this.lastDown = t.down;
+      AppStorage.setOrCreate('vpnTotalUp', t.up);
+      AppStorage.setOrCreate('vpnTotalDown', t.down);
+    }, 1000);
+  }
+
+  private stopSpeedPoller(): void {
+    if (this.speedTimer >= 0) {
+      clearInterval(this.speedTimer);
+      this.speedTimer = -1;
+    }
+    AppStorage.setOrCreate('vpnUpSpeed', 0);
+    AppStorage.setOrCreate('vpnDownSpeed', 0);
+  }
+
+  modeLabel(): string {
+    if (this.settings.mode === 'direct') {
+      return '直连';
+    }
+    if (this.settings.mode === 'global') {
+      return '全局';
+    }
+    return '规则';
+  }
+
+  async refresh(): Promise<void> {
+    try {
+      await initStore(this.context);
+      this.profiles = await loadProfiles();
+      this.settings = await loadSettings();
+      if (this.selectedId.length === 0 && this.profiles.length > 0) {
+        this.selectedId = this.profiles[0].id;
+      }
+    } catch (e) {
+      LogStore.addLog(`[ui] 加载节点失败: ${e}`);
+    }
+  }
+
+  /** 启动时自动更新超过 12 小时的订阅 */
+  async autoUpdateSubs(): Promise<void> {
+    try {
+      await initStore(this.context);
+      if (!this.settings.autoUpdateSubs) {
+        return;
+      }
+      const stale = await needAutoUpdate();
+      for (const sub of stale) {
+        try {
+          const r = await updateSubscription(sub.url);
+          LogStore.addLog(`[app] 订阅 ${sub.name} 自动更新:新增 ${r.added},移除 ${r.removed}`);
+          this.refresh();
+        } catch (e) {
+          LogStore.addLog(`[app] 订阅 ${sub.name} 自动更新失败: ${e}`);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  /** 真连接延迟测试(TCP 握手计时) */
+  async runSpeedTest(): Promise<void> {
+    if (this.testing || this.profiles.length === 0) {
+      return;
+    }
+    this.testing = true;
+    this.latencies = {};
+    promptAction.showToast({ message: `正在测试 ${this.profiles.length} 个节点…` });
+    const snapshot: Array<Profile> = this.profiles;
+    await testProfiles(snapshot, (id: string, ms: number) => {
+      const next: Record<string, number> = {};
+      const keys = Object.keys(this.latencies);
+      for (const k of keys) {
+        next[k] = this.latencies[k];
+      }
+      next[id] = ms;
+      this.latencies = next;
+    });
+    this.testing = false;
+    promptAction.showToast({ message: '测速完成' });
+  }
+
+  latencyText(p: Profile): string {
+    const ms = this.latencies[p.id];
+    if (this.testing && ms === undefined) {
+      return '…';
+    }
+    if (ms === undefined) {
+      return '';
+    }
+    return ms < 0 ? '超时' : `${ms}ms`;
+  }
+
+  latencyColor(p: Profile): string {
+    const ms = this.latencies[p.id];
+    if (ms === undefined || ms < 0) {
+      return ms === -1 ? '#E53935' : '#999999';
+    }
+    if (ms < 150) {
+      return '#2E7D32';
+    }
+    if (ms < 400) {
+      return '#F9A825';
+    }
+    return '#E53935';
+  }
+
+  async connectTo(p: Profile): Promise<void> {
+    if (this.isRunning) {
+      promptAction.showToast({ message: '请先断开当前连接' });
+      return;
+    }
+    this.selectedId = p.id;
+    try {
+      await VpnService.connect(this.context, p.id);
+    } catch (e) {
+      // 状态已在 VpnService 中更新
+    }
+  }
+
+  async disconnect(): Promise<void> {
+    await VpnService.disconnect(this.context);
+  }
+
+  /** 点击节点:未运行则选中;运行中点其他节点 = 自动断开重连切换 */
+  async onNodeTap(p: Profile): Promise<void> {
+    this.selectedId = p.id;
+    if (!this.isRunning) {
+      return;
+    }
+    if (this.switching) {
+      promptAction.showToast({ message: '正在切换中,请稍候' });
+      return;
+    }
+    const runningId = AppStorage.get<string>('vpnRunningProfileId') ?? '';
+    if (runningId.length > 0 && runningId === p.id) {
+      return;
+    }
+    this.switching = true;
+    try {
+      promptAction.showToast({ message: `正在切换到 ${p.name}…` });
+      await VpnService.switchTo(this.context, p.id);
+    } finally {
+      this.switching = false;
+    }
+  }
+
+  // ---- 导入弹窗(手动粘贴,不依赖剪贴板权限) ----
+  @State importText: string = '';
+  private importDialog: CustomDialogController = new CustomDialogController({
+    builder: ImportDialog({
+      text: $importText,
+      onImport: (t: string) => {
+        this.doImport(t);
+      },
+      onPickClipboard: () => {
+        this.fillDialogFromClipboard();
+      }
+    }),
+    autoCancel: true
+  });
+
+  openImportDialog(): void {
+    this.importText = '';
+    this.importDialog.open();
+  }
+
+  async fillDialogFromClipboard(): Promise<void> {
+    const t = await getClipboardText();
+    this.importText = t;
+    if (t.trim().length === 0) {
+      promptAction.showToast({ message: '剪贴板为空,请手动粘贴到输入框' });
+    }
+  }
+
+  async doImport(raw: string): Promise<void> {
+    try {
+      const text = raw === undefined || raw === null ? '' : raw;
+      if (text.trim().length === 0) {
+        promptAction.showToast({ message: '请先粘贴订阅链接或节点链接' });
+        return;
+      }
+      const firstLine = text.trim().split(/[\r\n]+/)[0].trim();
+      let parsed: Array<Profile> = [];
+      let subUrl = '';
+      if (firstLine.startsWith('http://') || firstLine.startsWith('https://')) {
+        // 订阅链接:下载内容后解析(服务商返回 Clash YAML 时自动切换解析器)
+        promptAction.showToast({ message: '正在获取订阅…' });
+        subUrl = firstLine;
+        const content = await fetchSubscription(firstLine);
+        if (looksLikeClashYaml(content)) {
+          const r: ClashParseResult = parseClashProxies(content);
+          parsed = r.profiles;
+          if (parsed.length === 0) {
+            promptAction.showToast({
+              message: `订阅返回 Clash 格式,但没有可导入的节点(跳过 ${r.skipped} 个不支持的协议)`
+            });
+            return;
+          }
+        } else {
+          parsed = parseShareText(content);
+        }
+      } else {
+        parsed = parseShareText(text);
+      }
+      if (parsed.length === 0) {
+        promptAction.showToast({ message: '未解析到可识别的节点' });
+        return;
+      }
+      await initStore(this.context);
+      const profiles = await loadProfiles();
+      for (const p of parsed) {
+        p.id = this.genId();
+        p.subUrl = subUrl;
+        p.updatedAt = Date.now();
+        profiles.push(p);
+      }
+      await saveProfiles(profiles);
+      this.profiles = profiles;
+      if (subUrl.length > 0) {
+        await upsertSub(subUrl);
+        promptAction.showToast({ message: `已导入 ${parsed.length} 个节点(订阅: ${subNameOf(subUrl)})` });
+      } else {
+        promptAction.showToast({ message: `已导入 ${parsed.length} 个节点` });
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : `${e}`;
+      LogStore.addLog(`[ui] 导入失败: ${msg}`);
+      promptAction.showToast({ message: `导入失败: ${msg}` });
+    }
+  }
+
+  private genId(): string {
+    return `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+  }
+
+  deleteProfile(p: Profile): void {
+    AlertDialog.show({
+      message: `删除节点 "${p.name}"?`,
+      primaryButton: {
+        value: '取消', action: () => {
+        }
+      },
+      secondaryButton: {
+        value: '删除', fontColor: '#E53935', action: () => {
+          this.profiles = this.profiles.filter(x => x.id !== p.id);
+          saveProfiles(this.profiles);
+        }
+      }
+    });
+  }
+
+  build() {
+    Column() {
+      // 顶栏
+      Row() {
+        Text('NekoBox for Harmony')
+          .fontSize(20)
+          .fontWeight(FontWeight.Bold)
+          .layoutWeight(1)
+        Text(`· ${this.modeLabel()}`)
+          .fontSize(13)
+          .fontColor('#1E88E5')
+          .onClick(() => {
+            router.pushUrl({ url: 'pages/SettingsPage' });
+          })
+        Text(this.testing ? '⏳' : '⚡')
+          .fontSize(20)
+          .padding(8)
+          .onClick(() => this.runSpeedTest())
+        Text('⚙')
+          .fontSize(22)
+          .padding(8)
+          .onClick(() => {
+            router.pushUrl({ url: 'pages/SettingsPage' });
+          })
+        Text('📋')
+          .fontSize(20)
+          .padding(8)
+          .onClick(() => {
+            router.pushUrl({ url: 'pages/LogPage' });
+          })
+      }
+      .width('100%')
+      .padding({ left: 16, right: 8, top: 8 })
+
+      // 状态
+      Text(this.statusText)
+        .fontSize(13)
+        .fontColor(this.isRunning ? '#2E7D32' : '#757575')
+        .padding({ left: 16, bottom: 2 })
+
+      if (this.isRunning) {
+        Text(`↑ ${formatSpeed(this.upSpeed)}  ↓ ${formatSpeed(this.downSpeed)}   ·   总计 ↑ ${formatBytes(this.totalUp)} ↓ ${formatBytes(this.totalDown)}`)
+          .fontSize(11)
+          .fontColor('#666666')
+          .padding({ left: 16, bottom: 6 })
+      }
+
+      // 节点列表
+      List({ space: 8 }) {
+        ForEach(this.profiles, (p: Profile) => {
+          ListItem() {
+            Row() {
+              Radio({ value: p.id, group: 'profiles' })
+                .checked(this.selectedId === p.id)
+                .onChange((v: boolean) => {
+                  if (v) {
+                    this.selectedId = p.id;
+                  }
+                })
+              Column() {
+                Text(p.name)
+                  .fontSize(16)
+                  .fontWeight(FontWeight.Medium)
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                Text(`${profileTypeLabel(p.type)} · ${p.server}:${p.serverPort}`)
+                  .fontSize(12)
+                  .fontColor('#888888')
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+              }
+              .alignItems(HorizontalAlign.Start)
+              .layoutWeight(1)
+              .margin({ left: 4 })
+
+              if (this.latencies[p.id] !== undefined || this.testing) {
+                Text(this.latencyText(p))
+                  .fontSize(12)
+                  .fontColor(this.latencyColor(p))
+                  .margin({ right: 4 })
+              }
+
+              Text('✏')
+                .fontSize(18)
+                .padding(8)
+                .onClick(() => {
+                  AppStorage.setOrCreate('editProfileId', p.id);
+                  router.pushUrl({ url: 'pages/ProfileEdit' });
+                })
+            }
+            .width('100%')
+            .padding(12)
+            .borderRadius(12)
+            .backgroundColor(this.selectedId === p.id ? '#E3F2FD' : '#FFFFFF')
+            .gesture(LongPressGesture().onAction(() => this.deleteProfile(p)))
+            .onClick(() => {
+              this.onNodeTap(p);
+            })
+          }
+        }, (p: Profile) => p.id)
+      }
+      .layoutWeight(1)
+      .width('100%')
+      .padding({ left: 12, right: 12 })
+
+      // 底部操作区
+      Row({ space: 10 }) {
+        Button('导入链接')
+          .backgroundColor('#F5F5F5')
+          .fontColor('#333333')
+          .onClick(() => this.openImportDialog())
+        Button('新建节点')
+          .backgroundColor('#F5F5F5')
+          .fontColor('#333333')
+          .onClick(() => {
+            AppStorage.setOrCreate('editProfileId', '');
+            router.pushUrl({ url: 'pages/ProfileEdit' });
+          })
+      }
+      .width('100%')
+      .justifyContent(FlexAlign.Center)
+      .padding({ top: 8 })
+
+      Button(this.isRunning ? '断开连接' : '启动 VPN')
+        .width('90%')
+        .height(46)
+        .margin({ top: 10, bottom: 20 })
+        .backgroundColor(this.isRunning ? '#E53935' : '#1E88E5')
+        .onClick(() => {
+          if (this.isRunning) {
+            this.disconnect();
+          } else {
+            const target = this.profiles.find(x => x.id === this.selectedId);
+            if (target === undefined) {
+              promptAction.showToast({ message: '请先选择或创建一个节点' });
+              return;
+            }
+            this.connectTo(target);
+          }
+        })
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor('#F2F4F7')
+  }
+}
+
+/** 导入弹窗:手动粘贴订阅链接 / 节点链接 / base64 订阅内容 */
+@CustomDialog
+struct ImportDialog {
+  controller?: CustomDialogController;
+  @Link text: string;
+  onImport: (t: string) => void = (t: string) => {
+  };
+  onPickClipboard: () => void = () => {
+  };
+
+  build() {
+    Column({ space: 10 }) {
+      Text('导入链接 / 订阅')
+        .fontSize(16)
+        .fontWeight(FontWeight.Bold)
+      TextArea({
+        text: this.text,
+        placeholder: '粘贴订阅链接(http…)、节点链接(vless:// 等)或 base64 订阅内容'
+      })
+        .height(120)
+        .onChange((v: string) => {
+          this.text = v;
+        })
+      Row({ space: 8 }) {
+        Button('取消')
+          .backgroundColor('#F5F5F5')
+          .fontColor('#333333')
+          .onClick(() => {
+            if (this.controller !== undefined) {
+              this.controller.close();
+            }
+          })
+        Blank()
+        Button('从剪贴板读取')
+          .backgroundColor('#F5F5F5')
+          .fontColor('#333333')
+          .onClick(() => this.onPickClipboard())
+        Button('导入')
+          .backgroundColor('#1E88E5')
+          .onClick(() => {
+            const t = this.text;
+            if (this.controller !== undefined) {
+              this.controller.close();
+            }
+            this.onImport(t);
+          })
+      }
+      .width('100%')
+    }
+    .padding(16)
+    .width('100%')
+  }
+}
