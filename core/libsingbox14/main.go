@@ -1,4 +1,4 @@
-// NekoBox4Harmony — sing-box 1.4 进程内包装层。
+// NekoBox4Harmony — sing-box 内核进程内包装层(1.11 API)。
 //
 // 编译为 HarmonyOS c-shared 库(libsingbox.so),由 NAPI 侧 dlopen 调用:
 //   CGoSetTunFd(fd)              — 注入 @ohos.net.vpnExtension 创建的 TUN fd
@@ -6,9 +6,9 @@
 //   CGoStopSingBox()             — 停止内核
 //   CGoSingBoxVersion()          — 版本字符串
 //
-// TUN fd 通过环境变量 SING_BOX_TUN_FD 交给 sing-tun(见 core/patches/001-tun-fd-env.patch,
-// sing-tun 对非零 FileDescriptor 直接使用该 fd 并跳过 netlink 配置)。
-// 日志走配置里的 log.output 文件,由 ArkTS 侧轮询读取。
+// TUN fd 通过环境变量 SING_BOX_TUN_FD 交给 sing-tun(补丁:sing-tun 对非零
+// FileDescriptor 直接使用该 fd,不触碰 /dev/net/tun 与 netlink)。
+// 日志走配置里的 log.output 文件,由日志页轮询读取。
 package main
 
 /*
@@ -23,7 +23,9 @@ import (
 	"sync"
 
 	box "github.com/sagernet/sing-box"
+	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common/json"
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
@@ -60,8 +62,10 @@ func CGoStartSingBox(configPath *C.char) *C.char {
 	if err != nil {
 		return cErr(E.Cause(err, "read config"))
 	}
-	var options option.Options
-	if err = options.UnmarshalJSON(content); err != nil {
+	ctx := box.Context(context.Background(),
+		include.InboundRegistry(), include.OutboundRegistry(), include.EndpointRegistry())
+	options, err := json.UnmarshalExtendedContext[option.Options](ctx, content)
+	if err != nil {
 		return cErr(E.Cause(err, "parse config"))
 	}
 	if tunFd > 0 {
@@ -69,8 +73,8 @@ func CGoStartSingBox(configPath *C.char) *C.char {
 	} else {
 		os.Unsetenv("SING_BOX_TUN_FD")
 	}
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	newInstance, err := box.New(box.Options{Context: ctx, Options: options})
+	runCtx, cancelFunc := context.WithCancel(ctx)
+	newInstance, err := box.New(box.Options{Context: runCtx, Options: options})
 	if err != nil {
 		cancelFunc()
 		return cErr(E.Cause(err, "create service"))
@@ -103,7 +107,7 @@ func CGoStopSingBox() *C.char {
 
 //export CGoSingBoxVersion
 func CGoSingBoxVersion() *C.char {
-	return C.CString("1.5.5-ohos-inproc")
+	return C.CString("1.11.9-ohos-inproc")
 }
 
 func main() {}

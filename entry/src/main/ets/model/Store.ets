@@ -57,6 +57,10 @@ export async function loadSettings(): Promise<AppSettings> {
     // keep defaults
   }
   s.mtu = Math.max(1280, Math.min(1500, s.mtu));
+  // 迁移:旧默认的 DoH 远程 DNS 在全局模式下整体失效,迁到 UDP 经代理
+  if (s.remoteDns === 'https://8.8.8.8/dns-query') {
+    s.remoteDns = 'udp://8.8.8.8';
+  }
   return s;
 }
 

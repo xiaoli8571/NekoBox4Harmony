@@ -9,7 +9,38 @@ import { Profile, ProfileType } from '../model/Profile';
 
 const SUB_UA = 'v2rayNG/1.9.16';
 
+export interface SubFetchResult {
+  content: string;
+  userinfo: string;
+}
+
+export interface SubUserInfo {
+  upload: number;
+  download: number;
+  total: number;
+  expire: number;
+}
+
+export async function fetchSubscriptionWithInfo(url: string): Promise<SubFetchResult> {
+  const content = await fetchSubscriptionRaw(url, true);
+  const userinfo = lastResponseUserinfo;
+  const r: SubFetchResult = { content: content, userinfo: userinfo };
+  return r;
+}
+
+let lastResponseUserinfo: string = '';
+
+async function fetchSubscriptionRaw(url: string, withInfo: boolean): Promise<string> {
+  const r = await doFetchSubscription(url, withInfo);
+  return r.content;
+}
+
 export async function fetchSubscription(url: string): Promise<string> {
+  const r = await doFetchSubscription(url, false);
+  return r.content;
+}
+
+async function doFetchSubscription(url: string, withInfo: boolean): Promise<SubFetchResult> {
   const client = http.createHttp();
   try {
     const headers: Record<string, string> = { 'User-Agent': SUB_UA };
@@ -24,14 +55,53 @@ export async function fetchSubscription(url: string): Promise<string> {
     if (resp.responseCode < 200 || resp.responseCode >= 300) {
       throw new Error(`订阅服务器返回 HTTP ${resp.responseCode}`);
     }
-    const body: string | Object | ArrayBuffer = resp.result;
-    if (typeof body === 'string') {
-      return body;
+    if (withInfo) {
+      // 订阅流量/到期信息在响应头 subscription-userinfo 中
+      const respHeaders = resp.header as Record<string, string>;
+      if (respHeaders !== undefined && respHeaders !== null) {
+        const headerKeys = Object.keys(respHeaders);
+        for (const hk of headerKeys) {
+          if (hk.toLowerCase() === 'subscription-userinfo') {
+            lastResponseUserinfo = respHeaders[hk];
+          }
+        }
+      }
     }
-    return `${body}`;
+    const body: string | Object | ArrayBuffer = resp.result;
+    const result: SubFetchResult = { content: typeof body === 'string' ? body : `${body}`, userinfo: '' };
+    return result;
   } finally {
     client.destroy();
   }
+}
+
+export function parseSubUserInfo(header: string): SubUserInfo | null {
+  const out: SubUserInfo = { upload: 0, download: 0, total: 0, expire: 0 };
+  const parts = header.split(';');
+  for (const p of parts) {
+    const i = p.indexOf('=');
+    if (i <= 0) {
+      continue;
+    }
+    const k = p.substring(0, i).trim().toLowerCase();
+    const v = Number(p.substring(i + 1).trim());
+    if (isNaN(v)) {
+      continue;
+    }
+    if (k === 'upload') {
+      out.upload = v;
+    } else if (k === 'download') {
+      out.download = v;
+    } else if (k === 'total') {
+      out.total = v;
+    } else if (k === 'expire') {
+      out.expire = v;
+    }
+  }
+  if (out.total <= 0 && out.expire <= 0) {
+    return null;
+  }
+  return out;
 }
 
 export interface ClashParseResult {

@@ -1,7 +1,7 @@
 import common from '@ohos.app.ability.common';
 import { Profile } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, readPrefString, writePrefString } from '../model/Store';
-import { fetchSubscription, looksLikeClashYaml, parseClashProxies } from '../utils/Subscription';
+import { fetchSubscriptionWithInfo, parseSubUserInfo, looksLikeClashYaml, parseClashProxies } from '../utils/Subscription';
 import { parseShareText } from '../utils/LinkParser';
 
 /** 订阅管理:记录订阅来源、更新节点(按 subUrl 原子替换)。 */
@@ -13,6 +13,10 @@ export class SubInfo {
   url: string = '';
   name: string = '';
   lastUpdate: number = 0;
+  upload: number = 0;
+  download: number = 0;
+  total: number = 0;
+  expire: number = 0;
 }
 
 export interface SubUpdateResult {
@@ -47,16 +51,33 @@ export function subNameOf(url: string): string {
   return s;
 }
 
-export async function upsertSub(url: string): Promise<void> {
+export async function upsertSub(url: string, userinfo: string = ''): Promise<void> {
   const list = await listSubs();
-  if (list.find(x => x.url === url) !== undefined) {
-    return;
+  const target = list.find(x => x.url === url);
+  if (target === undefined) {
+    const info = new SubInfo();
+    info.url = url;
+    info.name = subNameOf(url);
+    info.lastUpdate = Date.now();
+    if (userinfo.length > 0) {
+      const parsed = parseSubUserInfo(userinfo);
+      if (parsed !== null) {
+        info.upload = parsed.upload;
+        info.download = parsed.download;
+        info.total = parsed.total;
+        info.expire = parsed.expire;
+      }
+    }
+    list.push(info);
+  } else if (userinfo.length > 0) {
+    const parsed = parseSubUserInfo(userinfo);
+    if (parsed !== null) {
+      target.upload = parsed.upload;
+      target.download = parsed.download;
+      target.total = parsed.total;
+      target.expire = parsed.expire;
+    }
   }
-  const info = new SubInfo();
-  info.url = url;
-  info.name = subNameOf(url);
-  info.lastUpdate = Date.now();
-  list.push(info);
   await saveSubs(list);
 }
 
@@ -88,9 +109,10 @@ function genId(): string {
   return `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
 }
 
-/** 更新单个订阅:下载 → 解析 → 原子替换该订阅的节点(保留运行中节点) */
+/** 更新单个订阅:下载 → 解析 → 原子替换该订阅的节点(保留运行中节点);同时记录流量/到期 */
 export async function updateSubscription(url: string): Promise<SubUpdateResult> {
-  const content = await fetchSubscription(url);
+  const fetched = await fetchSubscriptionWithInfo(url);
+  const content = fetched.content;
   let parsed: Array<Profile> = [];
   if (looksLikeClashYaml(content)) {
     parsed = parseClashProxies(content).profiles;
@@ -128,6 +150,22 @@ export async function updateSubscription(url: string): Promise<SubUpdateResult> 
   }
   await saveProfiles(kept);
   await touchSub(url);
+  // 记录订阅流量/到期信息(响应头 subscription-userinfo)
+  if (fetched.userinfo.length > 0) {
+    const info = parseSubUserInfo(fetched.userinfo);
+    if (info !== null) {
+      const subs = await listSubs();
+      for (const s of subs) {
+        if (s.url === url) {
+          s.upload = info.upload;
+          s.download = info.download;
+          s.total = info.total;
+          s.expire = info.expire;
+        }
+      }
+      await saveSubs(subs);
+    }
+  }
   const result: SubUpdateResult = { added: added, removed: removed, total: kept.length };
   return result;
 }

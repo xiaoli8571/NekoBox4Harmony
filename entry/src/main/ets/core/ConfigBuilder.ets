@@ -142,6 +142,21 @@ function buildOutbound(p: Profile, s: AppSettings): Record<string, Object> {
       }
       o['auth_str'] = p.password;
       break;
+    case ProfileType.HYSTERIA2:
+      if (p.upMbps > 0) {
+        o['up_mbps'] = p.upMbps;
+      }
+      if (p.downMbps > 0) {
+        o['down_mbps'] = p.downMbps;
+      }
+      if (p.obfs.length > 0) {
+        const obfs: Record<string, Object> = {};
+        obfs['type'] = 'salamander';
+        obfs['password'] = p.obfs;
+        o['obfs'] = obfs;
+      }
+      o['password'] = p.password;
+      break;
     case ProfileType.TUIC:
       o['uuid'] = p.uuid;
       if (p.password.length > 0) {
@@ -209,9 +224,10 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   const tun: Record<string, Object> = {};
   tun['type'] = 'tun';
   tun['tag'] = 'tun-in';
-  tun['inet4_address'] = [TUN_ADDR_V4];
   if (s.ipv6) {
-    tun['inet6_address'] = [TUN_ADDR_V6];
+    tun['address'] = [TUN_ADDR_V4, TUN_ADDR_V6];
+  } else {
+    tun['address'] = [TUN_ADDR_V4];
   }
   tun['mtu'] = s.mtu;
   tun['auto_route'] = false;   // 路由由鸿蒙 VPN 框架管理
@@ -223,9 +239,8 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   // ---- outbounds ----
   const proxy = buildOutbound(p, s);
   const direct: Record<string, Object> = { 'type': 'direct', 'tag': 'direct' };
-  const block: Record<string, Object> = { 'type': 'block', 'tag': 'block' };
-  const dnsOut: Record<string, Object> = { 'type': 'dns', 'tag': 'dns-out' };
-  const outbounds: Array<Object> = [proxy, direct, block, dnsOut];
+  // 1.11: block/dns 特殊 outbound 已移除,分流用 rule action(hijack-dns / reject)
+  const outbounds: Array<Object> = [proxy, direct];
 
   // ---- dns ----
   const remoteServer: Record<string, Object> = {};
@@ -257,8 +272,8 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   // ---- route ----
   const dnsRule: Record<string, Object> = {};
   dnsRule['protocol'] = 'dns';
-  dnsRule['outbound'] = 'dns-out';
-  // 1.4 没有 ip_is_private 字段,用私网网段列表等价实现
+  dnsRule['action'] = 'hijack-dns';
+  // 私网网段直连(等价新版 ip_is_private)
   const privateRule: Record<string, Object> = {};
   privateRule['ip_cidr'] = [
     '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8',

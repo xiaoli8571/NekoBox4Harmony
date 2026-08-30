@@ -9,6 +9,7 @@ export class ProfileType {
   static readonly VLESS: string = 'vless';
   static readonly TROJAN: string = 'trojan';
   static readonly HYSTERIA: string = 'hysteria';
+  static readonly HYSTERIA2: string = 'hysteria2';
   static readonly TUIC: string = 'tuic';
   static readonly WIREGUARD: string = 'wireguard';
   static readonly HTTP: string = 'http';
@@ -82,7 +83,7 @@ export class AppSettings {
   mode: string = 'rule';               // rule(规则)/ global(全局)/ direct(直连)
   directDomains: string = '';          // 规则模式:直连域名后缀,逗号分隔
   directIpCidrs: string = '';          // 规则模式:直连 IP 段,逗号分隔
-  remoteDns: string = 'https://8.8.8.8/dns-query'; // 经代理,防泄漏
+  remoteDns: string = 'udp://8.8.8.8'; // 经代理,防泄漏(绕开 DoH task-succeed 缺陷)
   directDns: string = '223.5.5.5';     // 直连,用于解析代理服务器域名
   ipv6: boolean = false;
   allowInsecureAll: boolean = false;   // 全局放行不安全 TLS
@@ -98,6 +99,7 @@ export function profileTypeLabel(type: string): string {
     case ProfileType.VLESS: return 'VLESS';
     case ProfileType.TROJAN: return 'Trojan';
     case ProfileType.HYSTERIA: return 'Hysteria';
+    case ProfileType.HYSTERIA2: return 'Hysteria2';
     case ProfileType.TUIC: return 'TUIC';
     case ProfileType.WIREGUARD: return 'WireGuard';
     case ProfileType.HTTP: return 'HTTP';
@@ -108,6 +110,7 @@ export function profileTypeLabel(type: string): string {
 
 export function needsTlsByDefault(type: string): boolean {
   return type === ProfileType.TROJAN || type === ProfileType.HYSTERIA
+    || type === ProfileType.HYSTERIA2
     || type === ProfileType.TUIC;
 }
 

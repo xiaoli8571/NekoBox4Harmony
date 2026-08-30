@@ -23,3 +23,5 @@ core/*.log
 core/hilog-live*.txt
 core/toolchain-build.log
 dist/
+core/sing-box-1.11
+.hermes/

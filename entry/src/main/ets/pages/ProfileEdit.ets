@@ -8,7 +8,7 @@ import { parseSingleLink, parseShareText } from '../utils/LinkParser';
 
 const ALL_TYPES: Array<string> = [
   ProfileType.SHADOWSOCKS, ProfileType.VMESS, ProfileType.VLESS, ProfileType.TROJAN,
-  ProfileType.HYSTERIA, ProfileType.TUIC, ProfileType.WIREGUARD,
+  ProfileType.HYSTERIA, ProfileType.HYSTERIA2, ProfileType.TUIC, ProfileType.WIREGUARD,
   ProfileType.HTTP, ProfileType.SOCKS
 ];
 const TRANSPORTS: Array<string> = ['', 'ws', 'grpc', 'http', 'httpupgrade', 'quic'];
@@ -169,6 +169,9 @@ struct ProfileEdit {
           if (this.p.type === ProfileType.HYSTERIA) {
             this.HysteriaFields()
           }
+          if (this.p.type === ProfileType.HYSTERIA2) {
+            this.Hysteria2Fields()
+          }
           if (this.p.type === ProfileType.TUIC) {
             this.TuicFields()
           }
@@ -258,6 +261,16 @@ struct ProfileEdit {
       this.Field('下行 Mbps', '100', `${this.p.downMbps}`, (v: string) => { this.p.downMbps = parseInt(v.length > 0 ? v : '0'); },
         InputType.Number)
       this.Field('obfs (Salamander)', '留空 / 密码', this.p.obfs, (v: string) => { this.p.obfs = v; })
+    }
+  }
+
+  @Builder
+  Hysteria2Fields() {
+    Column({ space: 10 }) {
+      this.PasswordFields('密码 (Hysteria2)')
+      this.Field('上行 Mbps (可空)', '100', ``, (v: string) => { this.p.upMbps = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+      this.Field('下行 Mbps (可空)', '100', ``, (v: string) => { this.p.downMbps = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+      this.Field('obfs 混淆密码 (可空)', 'salamander 密码', this.p.obfs, (v: string) => { this.p.obfs = v; })
     }
   }
 

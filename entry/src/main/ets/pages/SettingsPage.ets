@@ -5,6 +5,7 @@ import pasteboard from '@ohos.pasteboard';
 import { AppSettings } from '../model/Profile';
 import { initStore, loadSettings, saveSettings, LogStore } from '../model/Store';
 import { SubInfo, listSubs, updateSubscription, removeSub } from '../core/Subscriptions';
+import { formatBytes } from '../utils/TrafficStats';
 import { exportBackup, importBackup } from '../core/Backup';
 import { getClipboardText } from '../utils/ClipboardHelper';
 import { geoReady, downloadGeoAssets } from '../utils/GeoAssets';
@@ -159,6 +160,14 @@ struct SettingsPage {
                   Text(sub.lastUpdate === 0 ? '从未更新'
                     : `更新于 ${new Date(sub.lastUpdate).toLocaleString()}`)
                     .fontSize(11).fontColor('#999')
+                  if (sub.total > 0) {
+                    Text(`已用 ${formatBytes(sub.upload + sub.download)} / ${formatBytes(sub.total)}`)
+                      .fontSize(11).fontColor(sub.upload + sub.download > sub.total ? '#E53935' : '#2E7D32')
+                  }
+                  if (sub.expire > 0) {
+                    Text(`到期: ${new Date(sub.expire * 1000).toLocaleDateString()}`)
+                      .fontSize(11).fontColor('#999')
+                  }
                 }.alignItems(HorizontalAlign.Start).layoutWeight(1)
 
                 Button('更新')

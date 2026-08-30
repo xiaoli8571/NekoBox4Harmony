@@ -3,6 +3,7 @@
     "pages/Index",
     "pages/ProfileEdit",
     "pages/SettingsPage",
-    "pages/LogPage"
+    "pages/LogPage",
+    "pages/ConnectionsPage"
   ]
 }

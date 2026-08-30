@@ -63,7 +63,7 @@ function parseOne(line: string): Profile | null {  if (line.startsWith('ss://'))
     return parseUserinfoLink(line, ProfileType.HYSTERIA);
   }
   if (line.startsWith('hysteria2://') || line.startsWith('hy2://')) {
-    throw new Error('hysteria2 需要 sing-box 1.6+,本内核(1.4)不支持');
+    return parseHysteria2(line);
   }
   if (line.startsWith('tuic://')) {
     return parseUserinfoLink(line, ProfileType.TUIC);
@@ -308,6 +308,41 @@ function numField(o: Record<string, Object>, key: string): number {
 }
 
 // ---------------------------------------------------------------- uuid@host 类
+function parseHysteria2(link: string): Profile | null {
+  const noScheme = link.substring(link.indexOf('://') + 3);
+  const frag = splitFragment(noScheme);
+  const name = frag[1];
+  const qi = frag[0].indexOf('?');
+  const netlocPart = qi < 0 ? frag[0] : frag[0].substring(0, qi);
+  const q = parseQuery(qi < 0 ? '' : frag[0].substring(qi));
+  let password = '';
+  let netloc = netlocPart;
+  const at = netlocPart.lastIndexOf('@');
+  if (at >= 0) {
+    password = decodeURIComponentSafe(netlocPart.substring(0, at));
+    netloc = netlocPart.substring(at + 1);
+  }
+  const hp = hostPortOf(netloc, 443);
+  const p = new Profile();
+  p.type = ProfileType.HYSTERIA2;
+  p.server = hp[0];
+  p.serverPort = hp[1];
+  p.name = newName(name, `:`);
+  p.password = password;
+  p.tls = true;
+  p.sni = qstr(q, 'sni');
+  p.allowInsecure = qbool(q, 'insecure') || qbool(q, 'allowInsecure');
+  p.obfs = qstr(q, 'obfs-password', qstr(q, 'obfspwd'));
+  const up = qstr(q, 'upmbps', qstr(q, 'up', ''));
+  const down = qstr(q, 'downmbps', qstr(q, 'down', ''));
+  p.upMbps = up.length > 0 ? parseInt(up) : 0;
+  p.downMbps = down.length > 0 ? parseInt(down) : 0;
+  if (p.server.length === 0) {
+    return null;
+  }
+  return p;
+}
+
 function parseUserinfoLink(link: string, type: string): Profile | null {
   const noScheme = link.substring(link.indexOf('://') + 3);
   const frag = splitFragment(noScheme);

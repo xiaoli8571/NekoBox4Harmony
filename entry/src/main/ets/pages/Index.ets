@@ -6,7 +6,7 @@ import { initStore, loadProfiles, saveProfiles, loadSettings, LogStore } from '.
 import { VpnService } from '../core/VpnService';
 import { parseShareText } from '../utils/LinkParser';
 import { getClipboardText } from '../utils/ClipboardHelper';
-import { fetchSubscription, looksLikeClashYaml, parseClashProxies, ClashParseResult } from '../utils/Subscription';
+import { fetchSubscriptionWithInfo, fetchSubscription, looksLikeClashYaml, parseClashProxies, ClashParseResult } from '../utils/Subscription';
 import { testProfiles } from '../utils/LatencyTester';
 import { upsertSub, needAutoUpdate, updateSubscription, setAppContext, subNameOf } from '../core/Subscriptions';
 import { fetchTrafficTotals, formatSpeed, formatBytes } from '../utils/TrafficStats';
@@ -256,11 +256,14 @@ struct Index {
       const firstLine = text.trim().split(/[\r\n]+/)[0].trim();
       let parsed: Array<Profile> = [];
       let subUrl = '';
+      let subUserinfo = '';
       if (firstLine.startsWith('http://') || firstLine.startsWith('https://')) {
         // 订阅链接:下载内容后解析(服务商返回 Clash YAML 时自动切换解析器)
         promptAction.showToast({ message: '正在获取订阅…' });
         subUrl = firstLine;
-        const content = await fetchSubscription(firstLine);
+        const fetched = await fetchSubscriptionWithInfo(firstLine);
+        const content = fetched.content;
+        subUserinfo = fetched.userinfo;
         if (looksLikeClashYaml(content)) {
           const r: ClashParseResult = parseClashProxies(content);
           parsed = r.profiles;
@@ -291,7 +294,7 @@ struct Index {
       await saveProfiles(profiles);
       this.profiles = profiles;
       if (subUrl.length > 0) {
-        await upsertSub(subUrl);
+        await upsertSub(subUrl, subUserinfo);
         promptAction.showToast({ message: `已导入 ${parsed.length} 个节点(订阅: ${subNameOf(subUrl)})` });
       } else {
         promptAction.showToast({ message: `已导入 ${parsed.length} 个节点` });
@@ -346,6 +349,12 @@ struct Index {
           .padding(8)
           .onClick(() => {
             router.pushUrl({ url: 'pages/SettingsPage' });
+          })
+        Text('🔗')
+          .fontSize(20)
+          .padding(8)
+          .onClick(() => {
+            router.pushUrl({ url: 'pages/ConnectionsPage' });
           })
         Text('📋')
           .fontSize(20)
