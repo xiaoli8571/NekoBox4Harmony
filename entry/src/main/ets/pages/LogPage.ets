@@ -90,9 +90,9 @@ struct LogPage {
   build() {
     Column() {
       Row() {
-        Text('←').fontSize(22).onClick(() => router.back()).padding(8)
-        Text('日志').fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
-        Text('清空').fontSize(14).fontColor('#1E88E5').padding(8)
+        Text('←').fontSize(22).fontColor('#E8E8E8').onClick(() => router.back()).padding(8)
+        Text('日志').fontSize(18).fontWeight(FontWeight.Bold).fontColor('#E8E8E8').layoutWeight(1)
+        Text('清空').fontSize(14).fontColor('#64B5F6').padding(8)
           .onClick(() => {
             LogStore.clear();
             this.lines = [];
@@ -107,6 +107,10 @@ struct LogPage {
             Text(line)
               .fontSize(11)
               .fontFamily('monospace')
+              // 固定终端配色:深底浅字,不跟随系统主题;ERROR/WARN 行高亮
+              .fontColor(line.includes('ERROR') ? '#EF5350'
+                : line.includes('WARN') ? '#FFB74D'
+                  : line.includes('DEBUG') ? '#9E9E9E' : '#E8E8E8')
               .width('100%')
               .padding({ left: 8, right: 8, top: 1, bottom: 1 })
           }

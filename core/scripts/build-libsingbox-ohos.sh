@@ -65,9 +65,21 @@ git config core.autocrlf false
 
 if [ -f "protocol/tun/inbound.go" ]; then
     if ! grep -q "SING_BOX_TUN_FD" protocol/tun/inbound.go; then
-        perl -0pi -e 's/(\t\tmonitor\.Start\("open interface"\))/\t\tif t.tunOptions.FileDescriptor == 0 {\n\t\t\tif fdStr := os.Getenv("SING_BOX_TUN_FD"); fdStr != "" {\n\t\t\t\tif fd, fdErr := strconv.Atoi(fdStr); fdErr == nil && fd > 0 {\n\t\t\t\t\tt.tunOptions.FileDescriptor = fd\n\t\t\t\t}\n\t\t\t}\n\t\t}\n$1/' protocol/tun/inbound.go
+        perl -0pi -e 's/(\t\tmonitor := taskmonitor\.New\(t\.logger, C\.StartTimeout\)\n)/$1\t\tif t.tunOptions.FileDescriptor == 0 {\n\t\t\tif fdStr := os.Getenv("SING_BOX_TUN_FD"); fdStr != "" {\n\t\t\t\tfd, fdErr := strconv.Atoi(fdStr)\n\t\t\t\tif fdErr != nil || fd <= 0 {\n\t\t\t\t\treturn E.New("invalid SING_BOX_TUN_FD: ", fdStr)\n\t\t\t\t}\n\t\t\t\tt.tunOptions.FileDescriptor = fd\n\t\t\t}\n\t\t}\n/' protocol/tun/inbound.go
         echo "==> 1.11 tun-fd patch applied"
     fi
+    FD_ENV_LINE="$(grep -n 'fdStr := os.Getenv("SING_BOX_TUN_FD")' protocol/tun/inbound.go | cut -d: -f1)"
+    FD_COPY_LINE="$(grep -n 'tunOptions := t.tunOptions' protocol/tun/inbound.go | cut -d: -f1)"
+    TUN_NEW_LINE="$(grep -n 'tunInterface, err = tun.New(tunOptions)' protocol/tun/inbound.go | cut -d: -f1)"
+    if [ -z "$FD_ENV_LINE" ] || [ -z "$FD_COPY_LINE" ] || [ -z "$TUN_NEW_LINE" ] || [ "$FD_ENV_LINE" -ge "$FD_COPY_LINE" ] || [ "$FD_COPY_LINE" -ge "$TUN_NEW_LINE" ]; then
+        echo "ERROR: tun fd injection must precede tunOptions copy and tun.New()" >&2
+        exit 1
+    fi
+    if ! grep -q 'invalid SING_BOX_TUN_FD' protocol/tun/inbound.go; then
+        echo "ERROR: invalid explicit SING_BOX_TUN_FD must fail closed" >&2
+        exit 1
+    fi
+    echo "==> verified tun fd injection precedes tunOptions copy and tun.New()"
 elif [ -f "inbound/tun.go" ]; then
     if ! grep -q "SING_BOX_TUN_FD" inbound/tun.go; then
         perl -0pi -e 's/(\tif t\.tunOptions\.Name == "" \{\n\t\tt\.tunOptions\.Name = tun\.CalculateInterfaceName\(""\)\n\t\}\n)/$1\tif t.tunOptions.FileDescriptor == 0 {\n\t\tif fdStr := os.Getenv("SING_BOX_TUN_FD"); fdStr != "" {\n\t\t\tif fd, fdErr := strconv.Atoi(fdStr); fdErr == nil && fd > 0 {\n\t\t\t\tt.tunOptions.FileDescriptor = fd\n\t\t\t\tif tunName := os.Getenv("SING_BOX_TUN_NAME"); tunName != "" {\n\t\t\t\t\tt.tunOptions.Name = tunName\n\t\t\t\t}\n\t\t\t\tt.logger.Info("using platform tun file descriptor ", fd)\n\t\t\t}\n\t\t}\n\t}\n/' inbound/tun.go
@@ -91,6 +103,19 @@ if true; then
             chmod -R u+w "$STPDIR"
             perl -0pi -e 's/func \(m \*networkUpdateMonitor\) Start\(\) error \{\n\terr := netlink\.RouteSubscribe\(m\.routeUpdate, m\.close\)\n\tif err != nil \{\n\t\treturn err\n\t\}\n\terr = netlink\.LinkSubscribe\(m\.linkUpdate, m\.close\)\n\tif err != nil \{\n\t\treturn err\n\t\}\n\tgo m\.loopUpdate\(\)\n\treturn nil\n\}/func (m *networkUpdateMonitor) Start() error {\n\tif err := netlink.RouteSubscribe(m.routeUpdate, m.close); err != nil {\n\t\tm.logger.Debug("route subscribe: ", err)\n\t}\n\tif err := netlink.LinkSubscribe(m.linkUpdate, m.close); err != nil {\n\t\tm.logger.Debug("link subscribe: ", err)\n\t}\n\tgo m.loopUpdate()\n\treturn nil\n}/' "$STPDIR/monitor_linux.go"
             if grep -q "route subscribe" "$STPDIR/monitor_linux.go" 2>/dev/null; then
+                if [ -f "$STPDIR/monitor_linux_default.go" ] && grep -q 'netlink.RouteListFiltered' "$STPDIR/monitor_linux_default.go"; then
+                    cat > "$STPDIR/monitor_linux_default_openharmony.go" <<'EOF'
+//go:build openharmony
+
+package tun
+
+func (m *defaultInterfaceMonitor) checkUpdate() error {
+	return ErrNoRoute
+}
+EOF
+                    perl -0pi -e 's#//go:build linux && !android#//go:build linux \&\& !android \&\& !openharmony#' "$STPDIR/monitor_linux_default.go"
+                    echo "==> sing-tun OpenHarmony default-interface check disabled without masking EPERM"
+                fi
                 echo "==> sing-tun monitor patched (netlink best-effort); replace applied in wrapper go.mod at build time"
             else
                 STPDIR=""

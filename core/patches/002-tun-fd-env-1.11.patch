@@ -654,6 +654,15 @@ index 70f78c0..b632ffb 100644
 +			err          error
 +		)
 +		monitor := taskmonitor.New(t.logger, C.StartTimeout)
++		if t.tunOptions.FileDescriptor == 0 {
++			if fdStr := os.Getenv("SING_BOX_TUN_FD"); fdStr != "" {
++				fd, fdErr := strconv.Atoi(fdStr)
++				if fdErr != nil || fd <= 0 {
++					return E.New("invalid SING_BOX_TUN_FD: ", fdStr)
++				}
++				t.tunOptions.FileDescriptor = fd
++			}
++		}
 +		tunOptions := t.tunOptions
 +		if t.autoRedirect == nil && !(runtime.GOOS == "android" && t.platformInterface != nil) {
 +			for _, ipSet := range t.routeAddressSet {
@@ -675,10 +684,6 @@ index 70f78c0..b632ffb 100644
 +				}
 +			}
 +		}
-+		if t.tunOptions.FileDescriptor == 0 {
-+			if fdStr := os.Getenv("SING_BOX_TUN_FD"); fdStr != "" {
-+				if fd, fdErr := strconv.Atoi(fdStr); fdErr == nil && fd > 0 {
-+					t.tunOptions.FileDescriptor = fd
  				}
 -				routeRuleSet.DecRef()
 -				t.routeAddressSet = append(t.routeAddressSet, ipSets...)
