@@ -343,6 +343,11 @@ function profileFromClash(m: Record<string, Object> | null): Profile | null {
   if (p.server.length === 0 || p.serverPort <= 0) {
     return null;
   }
+  // uTLS 指纹(vless/hysteria2/tuic 均可携带;reality 出站内核强制要求 uTLS)
+  const clientFp = mStr(m, 'client-fingerprint');
+  if (clientFp.length > 0) {
+    p.fingerprint = clientFp;
+  }
   switch (type) {
     case 'ss':
       p.type = ProfileType.SHADOWSOCKS;

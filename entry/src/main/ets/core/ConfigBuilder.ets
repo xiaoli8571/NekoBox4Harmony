@@ -65,6 +65,13 @@ function buildTls(p: Profile, s: AppSettings): Object | undefined {
     }
     tls['reality'] = reality;
   }
+  // 内核 reality 客户端强制要求 uTLS(reality_client.go: UTLS==nil||!Enabled → 启动失败)
+  // 非 reality 出站仅在用户指定指纹时启用
+  if (hasReality || p.fingerprint.length > 0) {
+    const utls: Record<string, Object> = { 'enabled': true };
+    utls['fingerprint'] = p.fingerprint.length > 0 ? p.fingerprint : 'chrome';
+    tls['utls'] = utls;
+  }
   return tls;
 }
 

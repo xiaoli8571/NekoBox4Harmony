@@ -47,6 +47,7 @@ export class Profile {
   sni: string = '';
   allowInsecure: boolean = false;
   alpn: string = '';
+  fingerprint: string = '';  // uTLS 指纹(chrome/firefox/safari…);reality 必须启用 uTLS
   realityPublicKey: string = '';
   realityShortId: string = '';
 

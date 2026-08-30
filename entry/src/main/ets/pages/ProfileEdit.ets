@@ -331,6 +331,7 @@ struct ProfileEdit {
 
       this.Field('SNI', '留空则使用服务器地址', this.p.sni, (v: string) => { this.p.sni = v; })
       this.Field('ALPN (逗号分隔)', 'h2,http/1.1 或 h3', this.p.alpn, (v: string) => { this.p.alpn = v; })
+      this.Field('uTLS 指纹 (fp, 留空默认)', 'chrome / firefox / safari / ios…', this.p.fingerprint, (v: string) => { this.p.fingerprint = v; })
       this.Field('REALITY 公钥 (pbk, 可选)', '', this.p.realityPublicKey, (v: string) => { this.p.realityPublicKey = v; })
       this.Field('REALITY short_id (可选)', '', this.p.realityShortId, (v: string) => { this.p.realityShortId = v; })
 

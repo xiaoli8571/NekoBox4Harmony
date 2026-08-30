@@ -190,6 +190,7 @@ function applyQueryTls(p: Profile, q: Record<string, string>): void {
   p.sni = qstr(q, 'sni', qstr(q, 'peer', qstr(q, 'host')));
   p.allowInsecure = qbool(q, 'allowInsecure') || qbool(q, 'insecure');
   p.alpn = qstr(q, 'alpn');
+  p.fingerprint = qstr(q, 'fp');
   p.flow = qstr(q, 'flow');
 }
 
