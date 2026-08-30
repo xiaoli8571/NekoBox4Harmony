@@ -78,8 +78,8 @@ else
     exit 1
 fi
 
-# ---- netlink 监控补丁(仅 1.4 的 sing-tun v0.1.x 需要) ----
-if grep -E "sing-tun v0\.(0|1)\." go.mod >/dev/null 2>&1; then
+# ---- netlink 监控补丁(OHOS 沙箱禁止 netlink 订阅,所有 sing-tun 版本都需要) ----
+if true; then
     SINGTUN_VER="$("$OHOS_GO_FORK/bin/go" list -m -f '{{.Version}}' github.com/sagernet/sing-tun 2>/dev/null || true)"
     if [ -n "$SINGTUN_VER" ]; then
         STDIR="$("$OHOS_GO_FORK/bin/go" env GOMODCACHE)/github.com/sagernet/sing-tun@$SINGTUN_VER"
@@ -90,7 +90,7 @@ if grep -E "sing-tun v0\.(0|1)\." go.mod >/dev/null 2>&1; then
             cp -R "$STDIR/." "$STPDIR/"
             chmod -R u+w "$STPDIR"
             perl -0pi -e 's/func \(m \*networkUpdateMonitor\) Start\(\) error \{\n\terr := netlink\.RouteSubscribe\(m\.routeUpdate, m\.close\)\n\tif err != nil \{\n\t\treturn err\n\t\}\n\terr = netlink\.LinkSubscribe\(m\.linkUpdate, m\.close\)\n\tif err != nil \{\n\t\treturn err\n\t\}\n\tgo m\.loopUpdate\(\)\n\treturn nil\n\}/func (m *networkUpdateMonitor) Start() error {\n\tif err := netlink.RouteSubscribe(m.routeUpdate, m.close); err != nil {\n\t\tm.logger.Debug("route subscribe: ", err)\n\t}\n\tif err := netlink.LinkSubscribe(m.linkUpdate, m.close); err != nil {\n\t\tm.logger.Debug("link subscribe: ", err)\n\t}\n\tgo m.loopUpdate()\n\treturn nil\n}/' "$STPDIR/monitor_linux.go"
-            if grep -q "best-effort" "$STPDIR/monitor_linux.go" 2>/dev/null; then
+            if grep -q "route subscribe" "$STPDIR/monitor_linux.go" 2>/dev/null; then
                 "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing-tun=$STPDIR"
                 echo "==> sing-tun monitor patched (netlink best-effort)"
             fi
