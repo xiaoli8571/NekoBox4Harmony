@@ -8,11 +8,16 @@ import { setPendingProfileId, clearPendingProfileId, LogStore } from '../model/S
  * 真正的 TUN/内核生命周期在 VpnExtAbility.ets 中完成。
  */
 
-function wantFor(context: common.UIAbilityContext): Want {
+function wantFor(context: common.UIAbilityContext, profileId: string = ''): Want {
   const w: Want = {
     bundleName: context.abilityInfo.bundleName,
     abilityName: 'VpnExtAbility'
   };
+  // 节点 ID 经 want 参数直达扩展,绕开跨进程 Preferences 缓存不刷新的问题
+  if (profileId.length > 0) {
+    const params: Record<string, Object> = { 'profileId': profileId };
+    w.parameters = params;
+  }
   return w;
 }
 
@@ -32,7 +37,7 @@ export class VpnService {
     await setPendingProfileId(profileId);
     AppStorage.setOrCreate('vpnStatus', '正在建立 VPN…');
     try {
-      await vpnExtension.startVpnExtensionAbility(wantFor(context));
+      await vpnExtension.startVpnExtensionAbility(wantFor(context, profileId));
       LogStore.addLog('[app] startVpnExtensionAbility 已调用,等待扩展回调…');
     } catch (e) {
       await clearPendingProfileId();

@@ -19,6 +19,7 @@ import "C"
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 
@@ -58,7 +59,8 @@ func CGoStartSingBox(configPath *C.char) *C.char {
 	if running {
 		return C.CString("sing-box already running")
 	}
-	content, err := os.ReadFile(C.GoString(configPath))
+	cfgPath := C.GoString(configPath)
+	content, err := os.ReadFile(cfgPath)
 	if err != nil {
 		return cErr(E.Cause(err, "read config"))
 	}
@@ -82,7 +84,15 @@ func CGoStartSingBox(configPath *C.char) *C.char {
 	if err = newInstance.Start(); err != nil {
 		newInstance.Close()
 		cancelFunc()
-		return cErr(E.Cause(err, "start service"))
+		startErrMsg := E.Cause(err, "start service").Error()
+		if logData, logErr := os.ReadFile(filepath.Join(filepath.Dir(cfgPath), "singbox.log")); logErr == nil && len(logData) > 0 {
+			tail := string(logData)
+			if len(tail) > 1500 {
+				tail = tail[len(tail)-1500:]
+			}
+			startErrMsg += " || " + tail
+		}
+		return C.CString(startErrMsg)
 	}
 	instance = newInstance
 	cancel = cancelFunc

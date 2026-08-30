@@ -7,7 +7,7 @@ import notificationManager from '@ohos.notificationManager';
 import notification from '@ohos.notification';
 import BusinessError from '@ohos.base';
 import { Profile, AppSettings } from '../model/Profile';
-import { initStore, loadProfiles, loadSettings, getPendingProfileId, clearPendingProfileId, setRunningProfileId, LogStore } from '../model/Store';
+import { initStore, loadProfiles, loadSettings, getPendingProfileId, setPendingProfileId, clearPendingProfileId, setRunningProfileId, LogStore } from '../model/Store';
 import { buildCoreConfig } from '../core/ConfigBuilder';
 import { CoreManager } from '../core/CoreManager';
 import { publishVpnLog, publishVpnStatus } from '../core/VpnIpc';
@@ -50,20 +50,28 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   private lifecycleGeneration: number = 0;
 
   onCreate(want: Want): void {
-    this.hookLifecycle('onCreate');
+    this.hookLifecycle('onCreate', want);
   }
 
   /** 本 SDK 上 startVpnExtensionAbility 实际走的是 onRequest(hilog 已证实) */
   onRequest(want: Want, startId: number): void {
-    this.hookLifecycle(`onRequest(startId=${startId})`);
+    this.hookLifecycle(`onRequest(startId=${startId})`, want);
   }
 
   async onConnect(want: Want): Promise<void> {
-    this.hookLifecycle('onConnect');
+    this.hookLifecycle('onConnect', want);
   }
 
-  private hookLifecycle(name: string): void {
+  private hookLifecycle(name: string, want: Want): void {
     LogStore.addLog(`[vpn] 扩展 ${name}`);
+    // 节点 ID 经 want 参数直达（跨进程 Preferences 缓存不刷新，不可靠）
+    if (want !== undefined && want.parameters !== undefined) {
+      const params = want.parameters as Record<string, Object>;
+      const wantProfileId = params['profileId'];
+      if (wantProfileId !== undefined && `${wantProfileId}`.length > 0) {
+        setPendingProfileId(`${wantProfileId}`);
+      }
+    }
     LogStore.setPublisher((line: string) => {
       publishVpnLog(line);
     });
@@ -159,8 +167,8 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   private async startVpn(context: common.Context, pendingId: string, generation: number): Promise<void> {
     // ---- 0. 待启动节点 ----
     if (pendingId.length === 0) {
-      LogStore.addLog('[vpn] 没有待启动的节点(可能授权框被取消),退出');
-      await this.stopSelf();
+      // 保持扩展待命:下一次 startVpnExtensionAbility 会带着新节点再次进入
+      LogStore.addLog('[vpn] 暂无待启动节点,扩展保持待命');
       return;
     }
     const profiles = await loadProfiles();

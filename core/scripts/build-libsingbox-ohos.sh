@@ -91,8 +91,10 @@ if true; then
             chmod -R u+w "$STPDIR"
             perl -0pi -e 's/func \(m \*networkUpdateMonitor\) Start\(\) error \{\n\terr := netlink\.RouteSubscribe\(m\.routeUpdate, m\.close\)\n\tif err != nil \{\n\t\treturn err\n\t\}\n\terr = netlink\.LinkSubscribe\(m\.linkUpdate, m\.close\)\n\tif err != nil \{\n\t\treturn err\n\t\}\n\tgo m\.loopUpdate\(\)\n\treturn nil\n\}/func (m *networkUpdateMonitor) Start() error {\n\tif err := netlink.RouteSubscribe(m.routeUpdate, m.close); err != nil {\n\t\tm.logger.Debug("route subscribe: ", err)\n\t}\n\tif err := netlink.LinkSubscribe(m.linkUpdate, m.close); err != nil {\n\t\tm.logger.Debug("link subscribe: ", err)\n\t}\n\tgo m.loopUpdate()\n\treturn nil\n}/' "$STPDIR/monitor_linux.go"
             if grep -q "route subscribe" "$STPDIR/monitor_linux.go" 2>/dev/null; then
-                "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing-tun=$STPDIR"
-                echo "==> sing-tun monitor patched (netlink best-effort)"
+                echo "==> sing-tun monitor patched (netlink best-effort); replace applied in wrapper go.mod at build time"
+            else
+                STPDIR=""
+                echo "WARN: sing-tun monitor patch did not match" >&2
             fi
         fi
     fi
@@ -125,7 +127,13 @@ export PATH="$OHOS_GO_FORK/bin:$PATH"
 "$OHOS_GO_FORK/bin/go" version
 
 "$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing-box 2>/dev/null || true
+"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing-tun 2>/dev/null || true
 "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing-box=$SINGBOX_SRC"
+if [ -n "${STPDIR:-}" ] && [ -d "$STPDIR" ]; then
+    # 关键:replace 必须写在主模块(wrapper)的 go.mod 里才会生效
+    "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing-tun=$STPDIR"
+    echo "==> wrapper replace: sing-tun -> patched"
+fi
 "$OHOS_GO_FORK/bin/go" mod download
 "$OHOS_GO_FORK/bin/go" mod tidy
 
