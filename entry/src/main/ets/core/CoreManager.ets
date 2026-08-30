@@ -53,14 +53,16 @@ export class CoreManager {
     nativeCore.startCoreNative(configPath, tunFd, onResult);
   }
 
-  static stopCore(onResult?: (err: string) => void): void {
-    nativeCore.stopCoreNative((err: string) => {
-      if (err !== undefined && err.length > 0) {
-        LogStore.addLog(`[app] 内核停止报错: ${err}`);
-      }
-      if (onResult !== undefined) {
-        onResult(err);
-      }
+  static stopCore(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      nativeCore.stopCoreNative((err: string) => {
+        if (err !== undefined && err.length > 0) {
+          LogStore.addLog(`[app] 内核停止报错: ${err}`);
+          reject(new Error(err));
+          return;
+        }
+        resolve();
+      });
     });
   }
 

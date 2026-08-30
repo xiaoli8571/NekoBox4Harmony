@@ -16,6 +16,17 @@ SRC="$ROOT/sing-box"
 WRAPPER="$ROOT/libsingbox14"
 OUT_DIR="$PROJECT/entry/libs/arm64-v8a"
 WORK_DIR="$ROOT/build/libsingbox-ohos"
+SING_BOX_VERSION="v1.5.5"
+SING_BOX_COMMIT="a7710c3845fc1b70c5b390fb5b303d6a776435e4"
+
+cleanup_module_replacements() {
+    if [ -n "${OHOS_GO_FORK:-}" ] && [ -d "$WRAPPER" ]; then
+        cd "$WRAPPER" || return
+        "$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/gvisor 2>/dev/null || true
+        "$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing-tun 2>/dev/null || true
+    fi
+}
+trap cleanup_module_replacements EXIT
 
 OHOS_GO_FORK="${OHOS_GO_FORK:-$HOME/ohos-go-build/ohos_golang_go}"
 DEVECO_SDK_HOME="${DEVECO_SDK_HOME:-C:\\Program Files\\Huawei\\DevEco Studio\\sdk}"
@@ -69,15 +80,33 @@ fi
 
 # ---- 内核源码 + 补丁 ----
 if [ ! -d "$SRC/.git" ]; then
-    git clone --depth 1 --branch v1.4.6 https://github.com/SagerNet/sing-box.git "$SRC"
+    git clone --depth 1 --branch "$SING_BOX_VERSION" https://github.com/SagerNet/sing-box.git "$SRC"
 fi
 cd "$SRC"
 git config core.autocrlf false
-git checkout -f HEAD -- . 2>/dev/null || true
-if ! grep -q "SING_BOX_TUN_FD" inbound/tun.go; then
+if ! git cat-file -e "$SING_BOX_COMMIT^{commit}" 2>/dev/null; then
+    git fetch --depth 1 origin tag "$SING_BOX_VERSION"
+fi
+[ "$(git rev-parse "$SING_BOX_VERSION^{commit}")" = "$SING_BOX_COMMIT" ] || {
+    echo "ERROR: $SING_BOX_VERSION does not resolve to expected commit $SING_BOX_COMMIT" >&2
+    exit 1
+}
+git checkout --detach "$SING_BOX_COMMIT"
+git reset --quiet "$SING_BOX_COMMIT"
+git checkout "$SING_BOX_COMMIT" -- .
+if git apply --check "$ROOT/patches/001-tun-fd-env.patch"; then
     git apply "$ROOT/patches/001-tun-fd-env.patch"
     echo "==> tun-fd patch applied"
+elif git apply --reverse --check "$ROOT/patches/001-tun-fd-env.patch"; then
+    echo "==> tun-fd patch already applied"
+else
+    echo "ERROR: tun-fd patch is neither applicable nor already applied" >&2
+    exit 1
 fi
+echo "==> sing-box version: $SING_BOX_VERSION"
+echo "==> sing-box commit: $(git rev-parse HEAD)"
+echo "==> sing-box source status:"
+git status --short
 
 # ---- 导出符号表 ----
 mkdir -p "$WORK_DIR" "$OUT_DIR"
@@ -105,6 +134,8 @@ export GOROOT="$OHOS_GO_FORK"
 export GOTOOLCHAIN=local
 export PATH="$OHOS_GO_FORK/bin:$PATH"
 "$OHOS_GO_FORK/bin/go" version
+echo "==> build target: openharmony/arm64"
+echo "==> wrapper module: $("$OHOS_GO_FORK/bin/go" list -m)"
 
 # 首次需要拉取依赖(go.sum)
 if [ ! -f go.sum ]; then
@@ -188,9 +219,8 @@ CGO_CFLAGS="${CGO_CFLAGS:--ftls-model=global-dynamic}" \
     -o "$OUT_DIR/libsingbox.so" \
     .
 
-# 清理临时 replace,保持 go.mod 干净
-"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/gvisor 2>/dev/null || true
-"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing-tun 2>/dev/null || true
+# 清理临时 replace,保持 go.mod 干净(EXIT trap 也保证失败路径清理)
+cleanup_module_replacements
 
 ls -la "$OUT_DIR"
 echo "==> done: $OUT_DIR/libsingbox.so"

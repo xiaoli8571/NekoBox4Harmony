@@ -16,14 +16,24 @@
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 typedef char *(*CGoStringFunc)(void);
 typedef char *(*CGoStartFunc)(char *);
 typedef void (*CGoSetFdFunc)(int);
 
-static std::atomic<bool> g_running(false);
-static std::atomic<bool> g_starting(false);
-static std::atomic<bool> g_stopping(false);
+enum class CoreState {
+    Stopped,
+    Starting,
+    Running,
+    Stopping,
+};
+
+static std::atomic<CoreState> g_coreState{CoreState::Stopped};
+static uint64_t g_coreGeneration = 0;
+static uint64_t g_cancelledGeneration = 0;
+static std::mutex g_stateMutex;
+static std::vector<napi_threadsafe_function> g_stopWaiters;
 static std::mutex g_libMutex;
 static void *g_coreLib = nullptr;
 static CGoStringFunc g_version = nullptr;
@@ -55,6 +65,32 @@ static void EmitString(napi_threadsafe_function tsf, const std::string &text)
     d->text = text;
     if (napi_call_threadsafe_function(tsf, d, napi_tsfn_nonblocking) != napi_ok) {
         delete d;
+    }
+}
+
+static napi_threadsafe_function CreateResultTsf(napi_env env, napi_value callback)
+{
+    if (callback == nullptr) {
+        return nullptr;
+    }
+    napi_threadsafe_function tsf = nullptr;
+    napi_value resName;
+    napi_create_string_utf8(env, "coreResult", NAPI_AUTO_LENGTH, &resName);
+    napi_create_threadsafe_function(env, callback, nullptr, resName, 0, 4, nullptr, nullptr, nullptr,
+                                    CallJsString, &tsf);
+    return tsf;
+}
+
+static void CompleteWaiters(const std::string &message)
+{
+    std::vector<napi_threadsafe_function> waiters;
+    {
+        std::lock_guard<std::mutex> lock(g_stateMutex);
+        waiters.swap(g_stopWaiters);
+    }
+    for (auto tsf : waiters) {
+        EmitString(tsf, message);
+        napi_release_threadsafe_function(tsf, napi_tsfn_release);
     }
 }
 
@@ -157,16 +193,18 @@ static napi_value StartCoreNative(napi_env env, napi_callback_info info)
     GetArgInt(env, argv[1], tunFd);
     napi_value onResult = argv[2];
 
-    if (g_running.load()) {
-        napi_value global, arg;
-        napi_get_global(env, &global);
-        napi_create_string_utf8(env, "", 0, &arg);
-        napi_call_function(env, global, onResult, 1, &arg, nullptr);
-        return nullptr;
-    }
-    if (g_starting.exchange(true)) {
-        // 已有启动流程在跑,忽略重复调用
-        return nullptr;
+    uint64_t generation = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_stateMutex);
+        if (g_coreState.load() != CoreState::Stopped) {
+            napi_value global, arg;
+            napi_get_global(env, &global);
+            napi_create_string_utf8(env, "core is not stopped", NAPI_AUTO_LENGTH, &arg);
+            napi_call_function(env, global, onResult, 1, &arg, nullptr);
+            return nullptr;
+        }
+        g_coreState.store(CoreState::Starting);
+        generation = ++g_coreGeneration;
     }
 
     napi_threadsafe_function tsf = nullptr;
@@ -193,9 +231,10 @@ static napi_value StartCoreNative(napi_env env, napi_callback_info info)
             FreeGoString(err);
         } while (false);
         if (message.empty()) {
-            g_running.store(true);
+            g_coreState.store(CoreState::Running);
+        } else {
+            g_coreState.store(CoreState::Stopped);
         }
-        g_starting.store(false);
         EmitString(tsf, message);
         usleep(200 * 1000);
         napi_release_threadsafe_function(tsf, napi_tsfn_release);
@@ -212,19 +251,21 @@ static napi_value StopCoreNative(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
     napi_value onResult = argc >= 1 ? argv[0] : nullptr;
 
-    if (!g_running.load()) {
+    CoreState expected = CoreState::Running;
+    if (!g_coreState.compare_exchange_strong(expected, CoreState::Stopping)) {
+        if (expected == CoreState::Starting) {
+            std::lock_guard<std::mutex> lock(g_stateMutex);
+            g_cancelledGeneration = g_coreGeneration;
+        }
         if (onResult != nullptr) {
             napi_threadsafe_function tsf = nullptr;
             napi_value resName;
             napi_create_string_utf8(env, "coreResult", NAPI_AUTO_LENGTH, &resName);
             napi_create_threadsafe_function(env, onResult, nullptr, resName, 0, 2, nullptr, nullptr, nullptr,
                                             CallJsString, &tsf);
-            EmitString(tsf, "");
+            EmitString(tsf, (expected == CoreState::Stopped || expected == CoreState::Starting) ? "" : "core is busy");
             napi_release_threadsafe_function(tsf, napi_tsfn_release);
         }
-        return nullptr;
-    }
-    if (g_stopping.exchange(true)) {
         return nullptr;
     }
 
@@ -233,8 +274,7 @@ static napi_value StopCoreNative(napi_env env, napi_callback_info info)
             if (g_stop != nullptr) {
                 FreeGoString(g_stop());
             }
-            g_running.store(false);
-            g_stopping.store(false);
+            g_coreState.store(CoreState::Stopped);
         }).detach();
         return nullptr;
     }
@@ -253,8 +293,7 @@ static napi_value StopCoreNative(napi_env env, napi_callback_info info)
                 FreeGoString(err);
             }
         }
-        g_running.store(false);
-        g_stopping.store(false);
+        g_coreState.store(CoreState::Stopped);
         EmitString(tsf, message);
         usleep(200 * 1000);
         napi_release_threadsafe_function(tsf, napi_tsfn_release);
@@ -265,7 +304,7 @@ static napi_value StopCoreNative(napi_env env, napi_callback_info info)
 static napi_value IsCoreRunning(napi_env env, napi_callback_info /*info*/)
 {
     napi_value result;
-    napi_get_boolean(env, g_running.load(), &result);
+    napi_get_boolean(env, g_coreState.load() == CoreState::Running, &result);
     return result;
 }
 

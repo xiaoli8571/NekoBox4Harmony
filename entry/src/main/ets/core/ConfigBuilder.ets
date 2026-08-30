@@ -339,5 +339,6 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   config['inbounds'] = inbounds;
   config['outbounds'] = outbounds;
   config['route'] = route;
+  config['experimental'] = experimental;
   return JSON.stringify(config, null, 2);
 }

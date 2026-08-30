@@ -1,6 +1,6 @@
 {
   "string": [
-    { "name": "app_name", "value": "NekoBox for Harmony" },
+    { "name": "app_name", "value": "NekBox" },
     { "name": "module_desc", "value": "sing-box VPN client" }
   ]
 }

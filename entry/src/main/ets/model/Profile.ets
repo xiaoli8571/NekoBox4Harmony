@@ -77,7 +77,7 @@ export class Profile {
 }
 
 export class AppSettings {
-  mtu: number = 9000;
+  mtu: number = 1400;
   stack: string = 'system';            // 1.4 内核 go1.24 构建不含 gvisor,使用 system 栈
   mode: string = 'rule';               // rule(规则)/ global(全局)/ direct(直连)
   directDomains: string = '';          // 规则模式:直连域名后缀,逗号分隔

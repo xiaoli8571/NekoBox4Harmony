@@ -218,17 +218,24 @@ function parseShadowsocks(link: string): Profile | null {
     const qi = rest.indexOf('?', at);
     const netloc = qi < 0 ? rest.substring(at + 1) : rest.substring(at + 1, qi);
     const q = parseQuery(qi < 0 ? '' : rest.substring(qi));
+    let plainUserinfo = false;
     try {
       userinfo = base64Decode(userinfo);
     } catch (e) {
-      // 可能是明文 (SIP002 也允许明文)
+      // SIP002 也允许明文 userinfo；明文分段后需要 URI decode。
+      plainUserinfo = true;
     }
     const ci = userinfo.indexOf(':');
     if (ci < 0) {
       return null;
     }
-    p.method = userinfo.substring(0, ci);
-    p.password = userinfo.substring(ci + 1);
+    if (plainUserinfo) {
+      p.method = decodeURIComponentSafe(userinfo.substring(0, ci));
+      p.password = decodeURIComponentSafe(userinfo.substring(ci + 1));
+    } else {
+      p.method = userinfo.substring(0, ci);
+      p.password = userinfo.substring(ci + 1);
+    }
     const hp = hostPortOf(netloc, 443);
     p.server = hp[0];
     p.serverPort = hp[1];

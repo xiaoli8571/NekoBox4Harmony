@@ -28,8 +28,10 @@ struct Index {
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   private switching: boolean = false;
   private speedTimer: number = -1;
+  private speedPollGeneration: number = 0;
   private lastUp: number = 0;
   private lastDown: number = 0;
+  private lastTrafficAt: number = 0;
 
   aboutToAppear(): void {
     setAppContext(this.context);
@@ -325,7 +327,7 @@ struct Index {
     Column() {
       // 顶栏
       Row() {
-        Text('NekoBox for Harmony')
+        Text('NekBox')
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .layoutWeight(1)
@@ -375,9 +377,9 @@ struct Index {
             Row() {
               Radio({ value: p.id, group: 'profiles' })
                 .checked(this.selectedId === p.id)
-                .onChange((v: boolean) => {
-                  if (v) {
-                    this.selectedId = p.id;
+                .onChange((checked: boolean) => {
+                  if (checked) {
+                    this.onNodeTap(p);
                   }
                 })
               Column() {
@@ -395,6 +397,9 @@ struct Index {
               .alignItems(HorizontalAlign.Start)
               .layoutWeight(1)
               .margin({ left: 4 })
+              .onClick(() => {
+                this.onNodeTap(p);
+              })
 
               if (this.latencies[p.id] !== undefined || this.testing) {
                 Text(this.latencyText(p))
@@ -416,9 +421,6 @@ struct Index {
             .borderRadius(12)
             .backgroundColor(this.selectedId === p.id ? '#E3F2FD' : '#FFFFFF')
             .gesture(LongPressGesture().onAction(() => this.deleteProfile(p)))
-            .onClick(() => {
-              this.onNodeTap(p);
-            })
           }
         }, (p: Profile) => p.id)
       }

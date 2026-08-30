@@ -46,6 +46,8 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   private starting: boolean = false;
   private started: boolean = false;
   private currentRunId: string = '';
+  private teardownPromise: Promise<void> | null = null;
+  private lifecycleGeneration: number = 0;
 
   onCreate(want: Want): void {
     this.hookLifecycle('onCreate');
@@ -70,23 +72,45 @@ export default class VpnExtAbility extends VpnExtensionAbility {
 
   onDisconnect(want: Want): void {
     LogStore.addLog('[vpn] 扩展 onDisconnect');
+    this.lifecycleGeneration++;
     this.teardown();
   }
 
   onDestroy(): void {
     LogStore.addLog('[vpn] 扩展 onDestroy');
+    this.lifecycleGeneration++;
     this.teardown();
   }
 
-  private teardown(silent: boolean = false): void {
-    CoreManager.stopCore();
+  private teardown(silent: boolean = false): Promise<void> {
+    if (this.teardownPromise !== null) {
+      return this.teardownPromise;
+    }
+    this.teardownPromise = this.doTeardown(silent).finally(() => {
+      this.teardownPromise = null;
+    });
+    return this.teardownPromise;
+  }
+
+  private async doTeardown(silent: boolean): Promise<void> {
+    try {
+      await CoreManager.stopCore();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : `${e}`;
+      LogStore.addLog(`[vpn] 停止内核失败,继续销毁隧道: ${msg}`);
+    }
     this.cancelNotification();
     if (this.vpnConnection !== null) {
-      this.vpnConnection.destroy().catch((e: Error) => {
-        LogStore.addLog(`[vpn] 销毁隧道失败: ${e.message}`);
-      });
+      try {
+        await this.vpnConnection.destroy();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : `${e}`;
+        LogStore.addLog(`[vpn] 销毁隧道失败: ${msg}`);
+      }
       this.vpnConnection = null;
     }
+    this.currentRunId = '';
+    await setRunningProfileId('');
     this.started = false;
     this.starting = false;
     if (!silent) {
@@ -102,6 +126,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     // 防重入标记必须在任何一个 await 之前同步置位:
     // onCreate/onRequest 会在同一瞬间连发,否则会出现双重启动互拆
     this.starting = true;
+    const generation = ++this.lifecycleGeneration;
     try {
       const context: common.Context = this.context;
       await initStore(context);
@@ -114,25 +139,24 @@ export default class VpnExtAbility extends VpnExtensionAbility {
         // 运行中收到不同节点:原地重启(免断开切换)
         LogStore.addLog('[vpn] 检测到节点切换,重启内核…');
         publishVpnStatus('正在切换节点…', true, pendingId);
-        this.teardown(true);
-        await this.startVpn(context, pendingId);
-        this.started = true;
+        await this.teardown(true);
+        this.starting = true;
+        await this.startVpn(context, pendingId, generation);
       } else {
-        await this.startVpn(context, pendingId);
-        this.started = true;
+        await this.startVpn(context, pendingId, generation);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
       LogStore.addLog(`[vpn] 启动失败: ${msg}`);
-      publishVpnStatus(`连接失败: ${msg}`, false);
       await clearPendingProfileId();
-      CoreManager.stopCore();
+      await this.teardown(true);
+      publishVpnStatus(`连接失败: ${msg}`, false);
     } finally {
       this.starting = false;
     }
   }
 
-  private async startVpn(context: common.Context, pendingId: string): Promise<void> {
+  private async startVpn(context: common.Context, pendingId: string, generation: number): Promise<void> {
     // ---- 0. 待启动节点 ----
     if (pendingId.length === 0) {
       LogStore.addLog('[vpn] 没有待启动的节点(可能授权框被取消),退出');
@@ -168,7 +192,10 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       LogStore.addLog(`[vpn] 物理网卡: ${ifname}`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
-      LogStore.addLog(`[vpn] 获取物理网卡失败(继续): ${msg}`);
+      LogStore.addLog(`[vpn] 获取物理网卡失败: ${msg}`);
+    }
+    if (settings.mode === 'global' && ifname.length === 0) {
+      throw new Error('全局模式无法获取物理网卡,为防止整机断网已取消启动');
     }
 
     // ---- 2. VpnConfig(LinkAddress.address 是嵌套的 NetAddress 对象) ----
@@ -238,32 +265,42 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     const tunFd: number = await withTimeout(this.vpnConnection.create(config), 60000,
       '创建 TUN 超时:未收到系统 VPN 授权,或系统 VPN 服务无响应');
     LogStore.addLog(`[vpn] TUN fd = ${tunFd}`);
+    if (generation !== this.lifecycleGeneration) {
+      throw new Error('VPN 启动已取消');
+    }
 
     // ---- 4.5 保护本进程后续 socket 不走 VPN(防回环,API 22+) ----
-    // 内核现在运行在本进程内,其出站 socket 同样受保护
+    // 必须在启动内核前完成。protectProcessNet 只保护随后创建的 socket,
+    // 因此 proxy outbound 和 DNS bootstrap 都会稳定走底层物理网络。
     try {
-      await this.vpnConnection.protectProcessNet();
+      await withTimeout(this.vpnConnection.protectProcessNet(), 10000, '防回环保护超时');
       LogStore.addLog('[vpn] protectProcessNet 成功:内核 socket 将绕过 VPN');
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
-      LogStore.addLog(`[vpn] protectProcessNet 失败(继续,依赖排除路由): ${msg}`);
+      LogStore.addLog(`[vpn] protectProcessNet 失败,终止启动并回滚 TUN: ${msg}`);
+      throw new Error(`防回环保护失败: ${msg}`);
     }
 
     // ---- 5. 启动内核(进程内 c-shared 库,无 exec) ----
-    CoreManager.startCore(configPath, tunFd, (err: string) => {
-      if (err.length > 0) {
-        LogStore.addLog(`[vpn] 内核启动失败: ${err}`);
-        this.teardown(true);
-        publishVpnStatus(`内核启动失败: ${err}`, false);
-        return;
-      }
-      LogStore.addLog('[vpn] 内核已启动(进程内)');
-      this.started = true;
-      this.currentRunId = pendingId;
-      setRunningProfileId(pendingId);
-      this.showConnectedNotification(node.name);
-      publishVpnStatus(`已连接: ${node.name}`, true, pendingId);
-    });
+    await withTimeout(new Promise<void>((resolve, reject) => {
+      CoreManager.startCore(configPath, tunFd, (err: string) => {
+        if (err.length > 0) {
+          LogStore.addLog(`[vpn] 内核启动失败: ${err}`);
+          reject(new Error(err));
+          return;
+        }
+        resolve();
+      });
+    }), 15000, 'sing-box 内核启动');
+    if (!this.starting || generation !== this.lifecycleGeneration) {
+      throw new Error('VPN 启动已取消');
+    }
+    LogStore.addLog('[vpn] 内核已启动(进程内)');
+    this.started = true;
+    this.currentRunId = pendingId;
+    await setRunningProfileId(pendingId);
+    this.showConnectedNotification(node.name);
+    publishVpnStatus(`已连接: ${node.name}`, true, pendingId);
     await clearPendingProfileId();
   }
 
@@ -275,7 +312,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
         normal: {
           title: 'VPN 已连接',
           text: nodeName,
-          additionalText: 'NekoBox for Harmony'
+          additionalText: 'NekBox'
         }
       };
       const request: notificationManager.NotificationRequest = {
@@ -303,8 +340,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
 
   private async stopSelf(): Promise<void> {
     await clearPendingProfileId();
-    CoreManager.stopCore();
-    publishVpnStatus('已断开', false);
+    await this.teardown();
     LogStore.addLog('[vpn] 扩展自退出清理完成');
   }
 }

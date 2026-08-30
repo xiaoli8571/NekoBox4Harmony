@@ -9,10 +9,12 @@ import { Profile } from '../model/Profile';
 export async function tcpPing(host: string, port: number, timeoutMs: number = 5000): Promise<number> {
   const client = socket.constructTCPSocketInstance();
   const start = Date.now();
+  const ipv6 = host.includes(':');
+  const family = ipv6 ? 2 : 1;
   try {
-    await client.bind({ address: '0.0.0.0', port: 0, family: 1 });
+    await client.bind({ address: ipv6 ? '::' : '0.0.0.0', port: 0, family: family });
     await client.connect({
-      address: { address: host, port: port, family: 1 },
+      address: { address: host, port: port, family: family },
       timeout: timeoutMs
     });
     return Date.now() - start;

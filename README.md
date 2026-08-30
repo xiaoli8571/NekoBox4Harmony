@@ -1,4 +1,4 @@
-# NekoBox for Harmony(鸿蒙 sing-box 1.4 VPN 客户端)
+# NekBox(鸿蒙 sing-box 1.4 VPN 客户端)
 
 一个参考 [NekoBoxForAndroid](https://github.com/MatsuriDayo/NekoBoxForAndroid)
 架构思路、基于 **sing-box v1.4.6** 内核的 HarmonyOS(Stage 模型,API 12+)VPN 客户端。

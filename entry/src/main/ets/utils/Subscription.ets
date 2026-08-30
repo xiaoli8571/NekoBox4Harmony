@@ -107,25 +107,30 @@ function indentOf(l: string): number {
 
 function parseBlockItem(rawLines: Array<string>): Record<string, Object> {
   const out: Record<string, Object> = {};
-  let skipIndent = -1;
+  const maps: Array<Record<string, Object>> = [out];
+  const indents: Array<number> = [-1];
   for (const l of rawLines) {
     const ind = indentOf(l);
-    if (skipIndent >= 0 && ind >= skipIndent) {
-      continue;
-    }
-    skipIndent = -1;
     const t = l.trim();
     const i = t.indexOf(':');
     if (i <= 0) {
       continue;
     }
+    while (indents.length > 1 && ind <= indents[indents.length - 1]) {
+      indents.pop();
+      maps.pop();
+    }
+    const current = maps[maps.length - 1];
     const k = t.substring(0, i).trim();
     const v = t.substring(i + 1).trim();
     if (v.length === 0) {
-      skipIndent = ind + 1; // 跳过块状嵌套(罕见,订阅多为一行流式)
-      continue;
+      const child: Record<string, Object> = {};
+      current[k] = child;
+      maps.push(child);
+      indents.push(ind);
+    } else {
+      current[k] = parseScalar(v);
     }
-    out[k] = parseScalar(v);
   }
   return out;
 }

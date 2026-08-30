@@ -103,7 +103,7 @@ func CGoStopSingBox() *C.char {
 
 //export CGoSingBoxVersion
 func CGoSingBoxVersion() *C.char {
-	return C.CString("1.4.6-ohos-inproc")
+	return C.CString("1.5.5-ohos-inproc")
 }
 
 func main() {}

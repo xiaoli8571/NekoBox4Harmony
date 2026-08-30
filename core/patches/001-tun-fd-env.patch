@@ -1,4 +1,4 @@
-Allow injecting an already-open TUN file descriptor into sing-box 1.4 via
+Allow injecting an already-open TUN file descriptor into sing-box 1.5 via
 environment variables.  On OpenHarmony the TUN device can only be created by
 the system through @ohos.net.vpnExtension (the app sandbox has no access to
 /dev/net/tun), so the fd obtained from vpnConnection.create() is inherited by
@@ -7,7 +7,7 @@ the sing-box child process and handed to sing-tun here.
 SING_BOX_TUN_FD   numeric fd of the platform TUN (required, > 0)
 SING_BOX_TUN_NAME optional interface name to report in logs
 
-sing-tun v0.1.12 treats a non-zero Options.FileDescriptor as
+sing-tun v0.1.16 treats a non-zero Options.FileDescriptor as
 "use this fd directly and skip all netlink setup", which is exactly what we
 want: route/address configuration is performed by the OS VPN framework.
 
@@ -21,7 +21,7 @@ want: route/address configuration is performed by the OS VPN framework.
  	"strconv"
  	"strings"
  
-@@ -145,6 +146,17 @@ func (t *Tun) Start() error {
+@@ -142,6 +143,17 @@ func (t *Tun) Start() error {
  	if t.tunOptions.Name == "" {
  		t.tunOptions.Name = tun.CalculateInterfaceName("")
  	}

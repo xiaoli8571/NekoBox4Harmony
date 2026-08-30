@@ -56,6 +56,7 @@ export async function loadSettings(): Promise<AppSettings> {
   } catch (e) {
     // keep defaults
   }
+  s.mtu = Math.max(1280, Math.min(1500, s.mtu));
   return s;
 }
 
