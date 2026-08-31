@@ -217,7 +217,7 @@ struct SettingsPage {
             TextInput({ text: this.s.remoteDns })
               .width('100%').height(40)
               .onChange((v: string) => { this.s.remoteDns = v; })
-            Text('远程 DNS 的主机部分必须是 IP(如 https://8.8.8.8/dns-query),避免启动时引导解析')
+            Text('推荐 tcp://8.8.8.8(ss 等节点可能不支持 UDP 转发);主机部分须为 IP,避免启动引导解析')
               .fontSize(11).fontColor('#999').width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
 

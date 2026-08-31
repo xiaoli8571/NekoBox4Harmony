@@ -84,7 +84,7 @@ export class AppSettings {
   mode: string = 'rule';               // rule(规则)/ global(全局)/ direct(直连)
   directDomains: string = '';          // 规则模式:直连域名后缀,逗号分隔
   directIpCidrs: string = '';          // 规则模式:直连 IP 段,逗号分隔
-  remoteDns: string = 'udp://8.8.8.8'; // 经代理,防泄漏(绕开 DoH task-succeed 缺陷)
+  remoteDns: string = 'tcp://8.8.8.8'; // 经代理;用 TCP:ss 等部分节点不支持 UDP 转发,UDP DNS 会全挂导致断网
   directDns: string = '223.5.5.5';     // 直连,用于解析代理服务器域名
   ipv6: boolean = false;
   allowInsecureAll: boolean = false;   // 全局放行不安全 TLS
