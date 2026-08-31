@@ -80,6 +80,26 @@ if [ -f "protocol/tun/inbound.go" ]; then
         exit 1
     fi
     echo "==> verified tun fd injection precedes tunOptions copy and tun.New()"
+    # OHOS monitor 早退必须由 openharmony build-tag 常量驱动(fork 的 runtime.GOOS 返回 "linux")
+    if ! grep -q "isOpenHarmonyRuntime && !enforceInterfaceMonitor" route/network.go; then
+        echo "ERROR: route/network.go must gate interface monitor on isOpenHarmonyRuntime, not runtime.GOOS" >&2
+        exit 1
+    fi
+    if [ ! -f "route/zz_ohos_openharmony.go" ] || [ ! -f "route/zz_ohos_other.go" ]; then
+        echo "ERROR: route/zz_ohos_*.go build-tag files missing" >&2
+        exit 1
+    fi
+    echo "==> verified OHOS interface-monitor skip via build-tag constant"
+    # OHOS 防回环主保险:dialer 层强制绑定物理网卡(SING_BOX_BIND_IFNAME)
+    if ! grep -q "ohosForceBindFunc(options.BindInterface" common/dialer/default.go; then
+        echo "ERROR: common/dialer/default.go must call ohosForceBindFunc (SO_BINDTODEVICE anti-loop)" >&2
+        exit 1
+    fi
+    if [ ! -f "common/dialer/zz_ohos_forcebind.go" ]; then
+        echo "ERROR: common/dialer/zz_ohos_forcebind.go missing" >&2
+        exit 1
+    fi
+    echo "==> verified OHOS dialer force-bind patch"
 elif [ -f "inbound/tun.go" ]; then
     if ! grep -q "SING_BOX_TUN_FD" inbound/tun.go; then
         perl -0pi -e 's/(\tif t\.tunOptions\.Name == "" \{\n\t\tt\.tunOptions\.Name = tun\.CalculateInterfaceName\(""\)\n\t\}\n)/$1\tif t.tunOptions.FileDescriptor == 0 {\n\t\tif fdStr := os.Getenv("SING_BOX_TUN_FD"); fdStr != "" {\n\t\t\tif fd, fdErr := strconv.Atoi(fdStr); fdErr == nil && fd > 0 {\n\t\t\t\tt.tunOptions.FileDescriptor = fd\n\t\t\t\tif tunName := os.Getenv("SING_BOX_TUN_NAME"); tunName != "" {\n\t\t\t\t\tt.tunOptions.Name = tunName\n\t\t\t\t}\n\t\t\t\tt.logger.Info("using platform tun file descriptor ", fd)\n\t\t\t}\n\t\t}\n\t}\n/' inbound/tun.go
@@ -125,6 +145,28 @@ EOF
     fi
 fi
 
+# ---- sing bind 补丁(OHOS 沙箱下接口枚举受限:finder.ByName 失败时按名字内核绑定) ----
+if true; then
+    SING_VER="$("$OHOS_GO_FORK/bin/go" list -m -f '{{.Version}}' github.com/sagernet/sing 2>/dev/null || true)"
+    if [ -n "$SING_VER" ]; then
+        SINGDIR="$("$OHOS_GO_FORK/bin/go" env GOMODCACHE)/github.com/sagernet/sing@$SING_VER"
+        SBL="$SINGDIR/common/control/bind_linux.go"
+        if [ -f "$SBL" ] && grep -q "iif, err := finder.ByName(interfaceName)" "$SBL"; then
+            SPDIR="$WORK_DIR/sing-patched"
+            rm -rf "$SPDIR"; mkdir -p "$SPDIR"
+            cp -R "$SINGDIR/." "$SPDIR/"
+            chmod -R u+w "$SPDIR"
+            perl -0pi -e 's/iif, err := finder\.ByName\(interfaceName\)\n(\t+)if err != nil \{\n\t+return err\n(\t+)\}/iif, err := finder.ByName(interfaceName)\n$1if err != nil {\n$1\t\/\/ OpenHarmony sandbox: fall back to kernel-side binding by name\n$1\treturn unix.BindToDevice(int(fd), interfaceName)\n$2}/' "$SPDIR/common/control/bind_linux.go"
+            if grep -q "fall back to kernel-side binding by name" "$SPDIR/common/control/bind_linux.go"; then
+                echo "==> sing bind patched (ByName fallback -> SO_BINDTODEVICE); replace applied in wrapper go.mod at build time"
+            else
+                SPDIR=""
+                echo "WARN: sing bind patch did not match" >&2
+            fi
+        fi
+    fi
+fi
+
 # ---- 导出符号表 ----
 mkdir -p "$WORK_DIR" "$OUT_DIR"
 EXPORTS_FILE="$WORK_DIR/libsingbox14.exports"
@@ -139,6 +181,7 @@ cat > "$EXPORTS_FILE" <<'MAP'
     CGoStartSingBox;
     CGoStopSingBox;
     CGoSetTunFd;
+    CGoSetBindIfname;
     CGoSingBoxVersion;
   local: *;
 };
@@ -153,11 +196,16 @@ export PATH="$OHOS_GO_FORK/bin:$PATH"
 
 "$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing-box 2>/dev/null || true
 "$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing-tun 2>/dev/null || true
+"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing 2>/dev/null || true
 "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing-box=$SINGBOX_SRC"
 if [ -n "${STPDIR:-}" ] && [ -d "$STPDIR" ]; then
     # 关键:replace 必须写在主模块(wrapper)的 go.mod 里才会生效
     "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing-tun=$STPDIR"
     echo "==> wrapper replace: sing-tun -> patched"
+fi
+if [ -n "${SPDIR:-}" ] && [ -d "$SPDIR" ]; then
+    "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing=$SPDIR"
+    echo "==> wrapper replace: sing -> patched"
 fi
 "$OHOS_GO_FORK/bin/go" mod download
 "$OHOS_GO_FORK/bin/go" mod tidy
@@ -184,6 +232,7 @@ CGO_CFLAGS="${CGO_CFLAGS:--ftls-model=global-dynamic}" \
     .
 
 "$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing-tun 2>/dev/null || true
+"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing 2>/dev/null || true
 "$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing-box 2>/dev/null || true
 
 ls -la "$OUT_DIR"
