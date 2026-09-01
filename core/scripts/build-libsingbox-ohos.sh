@@ -110,6 +110,24 @@ else
     exit 1
 fi
 
+# DEPGO-PRE: 在任何 go list/download 之前,预建 patched 依赖并降级 go 声明
+# (sing-tun@v0.8.15 / sing@v0.6.7 声明 go1.24.7 > fork 1.24.5,list 阶段即被拒)
+for PREPDIR in "$WORK_DIR/sing-tun-patched" "$WORK_DIR/sing-patched"; do
+    [ -d "$PREPDIR" ] && sed -i 's/^go 1\..*$/go 1.24.5/' "$PREPDIR/go.mod" 2>/dev/null || true
+done
+STVER_PRE="$(grep -oE 'github.com/sagernet/sing-tun v[0-9][^ ]*' "$WRAPPER/go.mod" | awk '{print $2}' | head -1)"
+if [ -n "$STVER_PRE" ]; then
+    STCACHE="$(cygpath "$($OHOS_GO_FORK/bin/go env GOMODCACHE)")/github.com/sagernet/sing-tun@$STVER_PRE"
+    if [ -d "$STCACHE" ]; then
+        mkdir -p "$WORK_DIR/sing-tun-patched"
+        cp -R "$STCACHE/." "$WORK_DIR/sing-tun-patched/" 2>/dev/null || true
+        chmod -R u+w "$WORK_DIR/sing-tun-patched" 2>/dev/null || true
+        sed -i 's/^go 1\..*$/go 1.24.5/' "$WORK_DIR/sing-tun-patched/go.mod" 2>/dev/null || true
+        "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing-tun=$WORK_DIR/sing-tun-patched"
+        echo "==> DEPGO-PRE: sing-tun pre-patched+downgraded ($STVER_PRE)"
+    fi
+fi
+
 # ---- netlink 监控补丁(OHOS 沙箱禁止 netlink 订阅,所有 sing-tun 版本都需要) ----
 if true; then
     SINGTUN_VER="$("$OHOS_GO_FORK/bin/go" list -m -f '{{.Version}}' github.com/sagernet/sing-tun 2>/dev/null || true)"
@@ -194,17 +212,31 @@ export GOTOOLCHAIN=local
 export PATH="$OHOS_GO_FORK/bin:$PATH"
 "$OHOS_GO_FORK/bin/go" version
 
-"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing-box 2>/dev/null || true
-"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing-tun 2>/dev/null || true
-"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing 2>/dev/null || true
+
+SINGVER_PRE="$(grep -oE 'github.com/sagernet/sing v[0-9][^ ]*' "$WRAPPER/go.mod" | awk '{print $2}' | head -1)"
+if [ -n "$SINGVER_PRE" ]; then
+    SINCACHE="$(cygpath "$($OHOS_GO_FORK/bin/go env GOMODCACHE)")/github.com/sagernet/sing@$SINGVER_PRE"
+    if [ -d "$SINCACHE" ]; then
+        mkdir -p "$WORK_DIR/sing-patched"
+        cp -R "$SINCACHE/." "$WORK_DIR/sing-patched/" 2>/dev/null || true
+        chmod -R u+w "$WORK_DIR/sing-patched" 2>/dev/null || true
+        sed -i 's/^go 1\..*$/go 1.24.5/' "$WORK_DIR/sing-patched/go.mod" 2>/dev/null || true
+        "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing=$WORK_DIR/sing-patched"
+        echo "==> DEPGO-PRE: sing pre-patched+downgraded ($SINGVER_PRE)"
+    fi
+fi
 "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing-box=$SINGBOX_SRC"
 if [ -n "${STPDIR:-}" ] && [ -d "$STPDIR" ]; then
     # 关键:replace 必须写在主模块(wrapper)的 go.mod 里才会生效
     "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing-tun=$STPDIR"
+    # DEPGO-DOWNGRADE: fork toolchain is go1.24.5; newer go directives in patched deps are rejected
+    sed -i 's/^go 1\..*$/go 1.24.5/' "$STPDIR/go.mod" 2>/dev/null || true
     echo "==> wrapper replace: sing-tun -> patched"
 fi
 if [ -n "${SPDIR:-}" ] && [ -d "$SPDIR" ]; then
     "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing=$SPDIR"
+    # DEPGO-DOWNGRADE: fork toolchain is go1.24.5; newer go directives in patched deps are rejected
+    sed -i 's/^go 1\..*$/go 1.24.5/' "$SPDIR/go.mod" 2>/dev/null || true
     echo "==> wrapper replace: sing -> patched"
 fi
 "$OHOS_GO_FORK/bin/go" mod download
@@ -232,10 +264,6 @@ CGO_CFLAGS="${CGO_CFLAGS:--ftls-model=global-dynamic}" \
     -buildmode=c-shared \
     -o "$OUT_DIR/libsingbox.so" \
     .
-
-"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing-tun 2>/dev/null || true
-"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing 2>/dev/null || true
-"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing-box 2>/dev/null || true
 
 ls -la "$OUT_DIR"
 echo "==> done: $OUT_DIR/libsingbox.so"

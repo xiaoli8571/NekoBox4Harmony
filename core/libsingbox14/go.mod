@@ -151,3 +151,7 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	lukechampine.com/blake3 v1.3.0 // indirect
 )
+
+replace github.com/sagernet/sing-box => C:/Users/xiaoli/Desktop/NekoBox/core/sing-box-1.13.21
+
+replace github.com/sagernet/sing => C:/Users/xiaoli/Desktop/NekoBox/core/build/libsingbox-ohos/sing-patched
