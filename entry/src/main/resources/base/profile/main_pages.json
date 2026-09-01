@@ -4,6 +4,14 @@
     "pages/ProfileEdit",
     "pages/SettingsPage",
     "pages/LogPage",
-    "pages/ConnectionsPage"
+    "pages/ConnectionsPage",
+    "pages/RoutePage",
+    "pages/SubscriptionPage",
+    "pages/AppList",
+    "pages/ToolsPage",
+    "pages/AboutPage",
+    "pages/TrafficPage",
+    "pages/DiagnosticsPage",
+    "pages/ShareImportPage"
   ]
 }

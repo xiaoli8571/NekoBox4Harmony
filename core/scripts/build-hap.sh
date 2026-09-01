@@ -25,7 +25,7 @@ if [ ! -f "$SO" ]; then
     echo "ERROR: $SO 不存在,先跑 core/scripts/build-libsingbox-ohos.sh" >&2
     exit 1
 fi
-NEWEST_SRC="$(find core/sing-box-1.11 core/libsingbox14 -name '*.go' -newer "$SO" 2>/dev/null | head -1 || true)"
+NEWEST_SRC="$(find core/sing-box-1.13.21 core/sing-box-1.13.12 core/sing-box-1.11 core/libsingbox14 -name '*.go' -newer "$SO" 2>/dev/null | head -1 || true)"
 if [ -n "$NEWEST_SRC" ]; then
     echo "ERROR: 内核源码比 .so 新($NEWEST_SRC),请先重跑内核构建脚本" >&2
     exit 1

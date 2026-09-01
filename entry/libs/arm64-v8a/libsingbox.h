@@ -80,6 +80,7 @@ extern "C" {
 #endif
 
 extern void CGoSetTunFd(int fd);
+extern void CGoSetBindIfname(char* ifname);
 extern char* CGoStartSingBox(char* configPath);
 extern char* CGoStopSingBox();
 extern char* CGoSingBoxVersion();

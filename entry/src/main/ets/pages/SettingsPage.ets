@@ -3,15 +3,23 @@ import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import pasteboard from '@ohos.pasteboard';
 import { AppSettings } from '../model/Profile';
-import { initStore, loadSettings, saveSettings, LogStore } from '../model/Store';
+import { ProfileStorage } from '../common/storage/ProfileStorage';
 import { SubInfo, listSubs, updateSubscription, removeSub } from '../core/Subscriptions';
 import { formatBytes } from '../utils/TrafficStats';
 import { exportBackup, importBackup } from '../core/Backup';
 import { getClipboardText } from '../utils/ClipboardHelper';
 import { geoReady, downloadGeoAssets } from '../utils/GeoAssets';
+import {
+  applyAppearance, THEME_SYSTEM, THEME_LIGHT, THEME_DARK,
+  LANGUAGE_ZH_CN, LANGUAGE_EN_US, themeLabel
+} from '../common/manager/AppearanceManager';
+import { t, isEnglish } from '../utils/I18n';
 
-const APP_MODES: Array<string> = ['off', 'exclude', 'include'];
-const APP_MODE_LABELS: Array<string> = ['关闭', '排除模式', '仅这些走代理'];
+// v1.7.0 只提供可与自身 blockedApplications 保险同时使用的模式。
+// “仅这些走代理”需要 trustedApplications，而 HarmonyOS SDK 禁止它与
+// blockedApplications 同时出现，留待后续分应用代理版本重新设计。
+const APP_MODES: Array<string> = ['off', 'exclude'];
+const APP_MODE_LABELS: Array<string> = ['关闭', '排除模式'];
 
 const STACKS: Array<string> = ['system'];
 const MODES: Array<string> = ['rule', 'global', 'direct'];
@@ -28,8 +36,12 @@ struct SettingsPage {
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear(): void {
-    initStore(this.context).then(async () => {
-      this.s = await loadSettings();
+    ProfileStorage.initialize(this.context).then(async () => {
+      this.s = await ProfileStorage.settings();
+      applyAppearance(this.context, this.s);
+      if (this.s.perAppMode === 'include') {
+        promptAction.showToast({ message: '旧版“仅这些走代理”模式已停用，请选择关闭或排除后保存' });
+      }
       this.subs = await listSubs();
       this.geoOk = geoReady(this.context);
     });
@@ -60,13 +72,21 @@ struct SettingsPage {
 
   async save(quiet: boolean = false): Promise<void> {
     try {
-      await saveSettings(this.s);
+      await ProfileStorage.initialize(this.context);
+      applyAppearance(this.context, this.s);
+      await ProfileStorage.saveSettings(this.s);
       if (!quiet) {
         promptAction.showToast({ message: '已保存,重连 VPN 后生效' });
       }
     } catch (e) {
       promptAction.showToast({ message: `保存失败: ${e}` });
     }
+  }
+
+  private async saveAppearance(): Promise<void> {
+    applyAppearance(this.context, this.s);
+    await this.save(true);
+    promptAction.showToast({ message: isEnglish(this.s.language) ? 'Appearance saved' : '外观设置已保存' });
   }
 
   async updateOne(sub: SubInfo): Promise<void> {
@@ -101,6 +121,51 @@ struct SettingsPage {
 
       Scroll() {
         Column({ space: 14 }) {
+          // v2.0 外观与语言。系统 API 会在窗口级应用选择，旧页面即使仍有
+          // 中文文案也不会影响 VPN 或存储兼容性。
+          Column({ space: 8 }) {
+            Text(t('appearance', this.s.language)).fontSize(14).fontWeight(FontWeight.Medium).width('100%')
+            Row({ space: 6 }) {
+              Text(t('theme', this.s.language)).fontSize(13).fontColor('#666666')
+              ForEach([THEME_SYSTEM, THEME_LIGHT, THEME_DARK], (mode: string) => {
+                Button(themeLabel(mode, isEnglish(this.s.language)))
+                  .height(32)
+                  .backgroundColor(this.s.theme === mode ? '#1E88E5' : '#F5F5F5')
+                  .fontColor(this.s.theme === mode ? '#FFFFFF' : '#333333')
+                  .onClick(() => {
+                    this.s.theme = mode;
+                    this.saveAppearance();
+                  })
+              }, (mode: string) => mode)
+            }.width('100%')
+            Row({ space: 6 }) {
+              Text(t('language', this.s.language)).fontSize(13).fontColor('#666666')
+              Button('中文')
+                .height(32)
+                .backgroundColor(this.s.language === LANGUAGE_ZH_CN ? '#1E88E5' : '#F5F5F5')
+                .fontColor(this.s.language === LANGUAGE_ZH_CN ? '#FFFFFF' : '#333333')
+                .onClick(() => {
+                  this.s.language = LANGUAGE_ZH_CN;
+                  this.saveAppearance();
+                })
+              Button('English')
+                .height(32)
+                .backgroundColor(this.s.language === LANGUAGE_EN_US ? '#1E88E5' : '#F5F5F5')
+                .fontColor(this.s.language === LANGUAGE_EN_US ? '#FFFFFF' : '#333333')
+                .onClick(() => {
+                  this.s.language = LANGUAGE_EN_US;
+                  this.saveAppearance();
+                })
+            }.width('100%')
+            Text(t('applyAfterRestart', this.s.language)).fontSize(11).fontColor('#999999').width('100%')
+          }.alignItems(HorizontalAlign.Start).width('100%')
+
+          // 系统集成入口集中在设置页，避免改变主页 VPN 状态卡的交互。
+          Row({ space: 8 }) {
+            Button(t('tools', this.s.language)).layoutWeight(1).onClick(() => router.pushUrl({ url: 'pages/ToolsPage' }))
+            Button(t('about', this.s.language)).layoutWeight(1).onClick(() => router.pushUrl({ url: 'pages/AboutPage' }))
+          }.width('100%')
+
           // 出站模式
           Column() {
             Text('出站模式').fontSize(13).fontColor('#666').width('100%')
@@ -250,12 +315,13 @@ struct SettingsPage {
                   })
               }, (m: string) => m)
             }.width('100%')
-            if (this.s.perAppMode !== 'off') {
+            if (this.s.perAppMode === 'include') {
+              Text('旧版“仅这些走代理”模式已停用，请先选择“关闭”或“排除模式”并保存。')
+                .fontSize(11).fontColor('#C62828').width('100%')
+            } else if (this.s.perAppMode === 'exclude') {
               TextInput({
                 text: this.s.perAppList,
-                placeholder: this.s.perAppMode === 'exclude'
-                  ? '不走 VPN 的应用包名,逗号分隔'
-                  : '仅走 VPN 的应用包名,逗号分隔'
+                placeholder: '不走 VPN 的应用包名,逗号分隔'
               })
                 .width('100%').height(40)
                 .onChange((v: string) => { this.s.perAppList = v; })
@@ -294,7 +360,7 @@ struct SettingsPage {
                       return;
                     }
                     const msg = await importBackup(this.context, text.trim());
-                    this.s = await loadSettings();
+                    this.s = await ProfileStorage.settings();
                     promptAction.showToast({ message: msg });
                   } catch (e) {
                     const msg = e instanceof Error ? e.message : `${e}`;
@@ -302,7 +368,7 @@ struct SettingsPage {
                   }
                 })
             }.width('100%')
-            Text('备份包含全部节点与设置(不含订阅列表),以 JSON 存于剪贴板,可自行保存。')
+            Text('备份包含全部节点、订阅列表与设置,以 JSON 存于剪贴板,可自行保存。旧版 v1 备份仍可恢复。')
               .fontSize(11).fontColor('#999').width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
 

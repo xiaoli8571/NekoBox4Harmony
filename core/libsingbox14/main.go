@@ -1,4 +1,4 @@
-// NekoBox4Harmony — sing-box 内核进程内包装层(1.11 API)。
+// NekoBox4Harmony — sing-box 内核进程内包装层 (sing-box 1.13 API).
 //
 // 编译为 HarmonyOS c-shared 库(libsingbox.so),由 NAPI 侧 dlopen 调用:
 //   CGoSetTunFd(fd)              — 注入 @ohos.net.vpnExtension 创建的 TUN fd
@@ -33,6 +33,7 @@ import (
 var (
 	mu       sync.Mutex
 	tunFd    int
+	bindIfname string
 	instance *box.Box
 	cancel   context.CancelFunc
 	running  bool
@@ -52,6 +53,13 @@ func CGoSetTunFd(fd C.int) {
 	tunFd = int(fd)
 }
 
+//export CGoSetBindIfname
+func CGoSetBindIfname(ifname *C.char) {
+	mu.Lock()
+	defer mu.Unlock()
+	bindIfname = C.GoString(ifname)
+}
+
 //export CGoStartSingBox
 func CGoStartSingBox(configPath *C.char) *C.char {
 	mu.Lock()
@@ -64,8 +72,9 @@ func CGoStartSingBox(configPath *C.char) *C.char {
 	if err != nil {
 		return cErr(E.Cause(err, "read config"))
 	}
-	ctx := box.Context(context.Background(),
-		include.InboundRegistry(), include.OutboundRegistry(), include.EndpointRegistry())
+	// 1.13 registers inbound/outbound/endpoint/DNS/service registries together;
+	// using include.Context keeps the wrapper aligned with the strict schema.
+	ctx := include.Context(context.Background())
 	options, err := json.UnmarshalExtendedContext[option.Options](ctx, content)
 	if err != nil {
 		return cErr(E.Cause(err, "parse config"))
@@ -74,6 +83,11 @@ func CGoStartSingBox(configPath *C.char) *C.char {
 		os.Setenv("SING_BOX_TUN_FD", strconv.Itoa(tunFd))
 	} else {
 		os.Unsetenv("SING_BOX_TUN_FD")
+	}
+	if bindIfname != "" {
+		os.Setenv("SING_BOX_BIND_IFNAME", bindIfname)
+	} else {
+		os.Unsetenv("SING_BOX_BIND_IFNAME")
 	}
 	runCtx, cancelFunc := context.WithCancel(ctx)
 	newInstance, err := box.New(box.Options{Context: runCtx, Options: options})
@@ -117,7 +131,7 @@ func CGoStopSingBox() *C.char {
 
 //export CGoSingBoxVersion
 func CGoSingBoxVersion() *C.char {
-	return C.CString("1.11.9-ohos-inproc")
+	return C.CString("1.13.21-ohos-inproc")
 }
 
 func main() {}

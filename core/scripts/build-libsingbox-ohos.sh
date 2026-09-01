@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 把 sing-box 内核编译成 HarmonyOS c-shared 库 libsingbox.so。
 #
-# 默认:v1.11.9(core/sing-box-1.11,支持 Hysteria2/TUIC v5)
+# 默认:v1.13.21(core/sing-box-1.13.21,支持 Hysteria2/TUIC v5)
 # 回退:v1.4.6(SINGBOX_TAG=v1.4.6 SINGBOX_SRC="$ROOT/sing-box" 调用)
 #
 # 必须用 OHOS Go fork + GOOS=openharmony(原版 Go 产物在 musl 上不可用)。
@@ -11,8 +11,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"        # vpn/core
 PROJECT="$(cd "$ROOT/.." && pwd)"               # vpn/
 
-SINGBOX_TAG="${SINGBOX_TAG:-v1.11.9}"
-SINGBOX_SRC="${SINGBOX_SRC:-$ROOT/sing-box-1.11}"
+SINGBOX_TAG="${SINGBOX_TAG:-v1.13.21}"
+SINGBOX_SRC="${SINGBOX_SRC:-$ROOT/sing-box-1.13.21}"
 WRAPPER="$ROOT/libsingbox14"
 OUT_DIR="$PROJECT/entry/libs/arm64-v8a"
 WORK_DIR="$ROOT/build/libsingbox-ohos"
@@ -91,7 +91,7 @@ if [ -f "protocol/tun/inbound.go" ]; then
     fi
     echo "==> verified OHOS interface-monitor skip via build-tag constant"
     # OHOS 防回环主保险:dialer 层强制绑定物理网卡(SING_BOX_BIND_IFNAME)
-    if ! grep -q "ohosForceBindFunc(options.BindInterface" common/dialer/default.go; then
+    if ! grep -q "ohosForceBindFunc(" common/dialer/default.go; then
         echo "ERROR: common/dialer/default.go must call ohosForceBindFunc (SO_BINDTODEVICE anti-loop)" >&2
         exit 1
     fi
@@ -211,7 +211,9 @@ fi
 "$OHOS_GO_FORK/bin/go" mod tidy
 
 if [ -f "$SINGBOX_SRC/protocol/tun/inbound.go" ]; then
-    BUILD_TAGS="with_utls,with_clash_api,with_quic"
+    # with_gvisor: sing-box 1.13 WireGuard endpoint(1.13 已删 legacy wireguard
+    # outbound)内部用 gVisor netstack 建设备,缺它则 wg 节点启动即 FATAL。
+    BUILD_TAGS="with_utls,with_clash_api,with_quic,with_wireguard,with_gvisor"
 else
     BUILD_TAGS="with_utls,with_clash_api,with_quic,with_hysteria,with_tuic"
 fi

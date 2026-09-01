@@ -1,0 +1,6 @@
+{
+  "string": [
+    { "name": "app_name", "value": "NekBox" },
+    { "name": "module_desc", "value": "sing-box VPN client" }
+  ]
+}

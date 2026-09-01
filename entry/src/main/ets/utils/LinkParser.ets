@@ -47,7 +47,8 @@ export function parseShareText(text: string): Array<Profile> {
   return result;
 }
 
-function parseOne(line: string): Profile | null {  if (line.startsWith('ss://')) {
+function parseOne(line: string): Profile | null {
+  if (line.startsWith('ss://')) {
     return parseShadowsocks(line);
   }
   if (line.startsWith('vmess://')) {
@@ -73,6 +74,9 @@ function parseOne(line: string): Profile | null {  if (line.startsWith('ss://'))
   }
   if (line.startsWith('socks://') || line.startsWith('socks5://')) {
     return parseUserinfoLink(line, ProfileType.SOCKS);
+  }
+  if (line.startsWith('wireguard://') || line.startsWith('wg://')) {
+    return parseWireguard(line);
   }
   return null;
 }
@@ -175,6 +179,135 @@ function hostPortOf(netloc: string, dfltPort: number): [string, number] {
     }
   }
   return [host, port];
+}
+
+/**
+ * 严格解析 HTTP(S)/SOCKS authority。
+ *
+ * 订阅地址和 HTTP 代理分享链接使用相同的 scheme；如果把 authority
+ * 中的路径、空 host 或坏端口静默当成节点，就会阻止导入入口回退到
+ * 订阅下载。因此这两类链接使用独立的严格解析器，旧协议继续沿用
+ * hostPortOf 的兼容行为。
+ */
+class StrictAuthority {
+  host: string = '';
+  port: number = 0;
+  explicitPort: boolean = false;
+
+  constructor(host: string, port: number, explicitPort: boolean) {
+    this.host = host;
+    this.port = port;
+    this.explicitPort = explicitPort;
+  }
+}
+
+function allDigits(text: string): boolean {
+  if (text.length === 0) {
+    return false;
+  }
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code < 48 || code > 57) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function validPort(text: string): boolean {
+  if (!allDigits(text)) {
+    return false;
+  }
+  const value = Number(text);
+  return !isNaN(value) && value !== Infinity && value !== -Infinity
+    && Math.floor(value) === value && value >= 1 && value <= 65535;
+}
+
+function validHost(text: string): boolean {
+  if (text.length === 0) {
+    return false;
+  }
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    // Authority 内的控制字符/空格和未配对的 URL 分隔符都不是可连接
+    // 的 host；其余字符（含 Unicode 域名和 IPv6 zone id）交给
+    // sing-box/DNS 继续处理。
+    if (code <= 32 || code === 127 || code === 47 || code === 63 || code === 35
+      || code === 64 || code === 91 || code === 92 || code === 93) {
+      return false;
+    }
+  }
+  // Percent-encoded separators must not turn a URL path or userinfo into a
+  // seemingly valid authority (for example host%2Fsubscription). Decode only
+  // the authority delimiter bytes here; normal percent-encoded DNS labels are
+  // left to the downstream parser.
+  for (let i = 0; i < text.length; i++) {
+    if (text.charAt(i) !== '%') {
+      continue;
+    }
+    if (i + 2 >= text.length) {
+      return false;
+    }
+    const h = text.substring(i + 1, i + 3);
+    if (!/^[0-9a-fA-F]{2}$/.test(h)) {
+      return false;
+    }
+    const decoded = parseInt(h, 16);
+    if (decoded <= 32 || decoded === 127 || decoded === 35 || decoded === 47
+      || decoded === 63 || decoded === 64 || decoded === 91 || decoded === 92
+      || decoded === 93) {
+      return false;
+    }
+    i += 2;
+  }
+  return true;
+}
+
+function strictAuthorityOf(netloc: string, dfltPort: number): StrictAuthority | null {
+  if (netloc.length === 0 || netloc.includes('/')) {
+    return null;
+  }
+  let host = '';
+  let port = dfltPort;
+  let explicitPort = false;
+  if (netloc.startsWith('[')) {
+    const end = netloc.indexOf(']');
+    if (end <= 1) {
+      return null;
+    }
+    host = netloc.substring(1, end);
+    const tail = netloc.substring(end + 1);
+    if (tail.length > 0) {
+      if (!tail.startsWith(':') || !validPort(tail.substring(1))) {
+        return null;
+      }
+      port = Number(tail.substring(1));
+      explicitPort = true;
+    }
+  } else {
+    const firstColon = netloc.indexOf(':');
+    const lastColon = netloc.lastIndexOf(':');
+    if (firstColon < 0) {
+      host = netloc;
+    } else {
+      // 未加方括号的 IPv6 authority 不符合 URL 语法，避免把其中一段
+      // 错当成端口；合法 IPv6 应写成 [2001:db8::1]:port。
+      if (firstColon !== lastColon) {
+        return null;
+      }
+      host = netloc.substring(0, firstColon);
+      const portText = netloc.substring(firstColon + 1);
+      if (!validPort(portText)) {
+        return null;
+      }
+      port = Number(portText);
+      explicitPort = true;
+    }
+  }
+  if (!validHost(host)) {
+    return null;
+  }
+  return new StrictAuthority(host, port, explicitPort);
 }
 
 function applyQueryTls(p: Profile, q: Record<string, string>): void {
@@ -328,7 +461,7 @@ function parseHysteria2(link: string): Profile | null {
   p.type = ProfileType.HYSTERIA2;
   p.server = hp[0];
   p.serverPort = hp[1];
-  p.name = newName(name, `:`);
+  p.name = newName(name, `${p.server}:${p.serverPort}`);
   p.password = password;
   p.tls = true;
   p.sni = qstr(q, 'sni');
@@ -352,15 +485,46 @@ function parseUserinfoLink(link: string, type: string): Profile | null {
   const netlocPart = qi < 0 ? frag[0] : frag[0].substring(0, qi);
   const q = parseQuery(qi < 0 ? '' : frag[0].substring(qi));
 
-  let userinfo = '';
-  let netloc = netlocPart;
-  const at = netlocPart.lastIndexOf('@');
-  if (at >= 0) {
-    userinfo = netlocPart.substring(0, at);
-    netloc = netlocPart.substring(at + 1);
+  // 这里的 authority 包含 userinfo；userinfo 中出现未编码的 '/' 同样
+  // 表示这是普通 URL 路径而非代理分享链接。URL 的根路径 `/` 是合法
+  // 的 authority 后缀（例如 http://proxy:8080/），去掉这一枚后再做
+  // 严格解析；多段路径仍然拒绝并交给订阅下载回退。
+  let authorityPart = netlocPart;
+  if ((type === ProfileType.HTTP || type === ProfileType.SOCKS) && authorityPart.endsWith('/')) {
+    authorityPart = authorityPart.substring(0, authorityPart.length - 1);
+  }
+  if ((type === ProfileType.HTTP || type === ProfileType.SOCKS) && authorityPart.includes('/')) {
+    return null;
   }
 
-  const hp = hostPortOf(netloc, 443);
+  let userinfo = '';
+  let netloc = authorityPart;
+  const at = authorityPart.lastIndexOf('@');
+  if (at >= 0) {
+    userinfo = authorityPart.substring(0, at);
+    netloc = authorityPart.substring(at + 1);
+  }
+
+  // HTTP/SOCKS 分享链接不能把路径、空 host 或坏端口静默当成节点。
+  // 尤其是 https://host/subscription，必须返回 null 让导入入口回退到
+  // 订阅下载流程。
+  let hp: [string, number] = ['', 443];
+  if (type === ProfileType.HTTP || type === ProfileType.SOCKS) {
+    // HTTP(S)/SOCKS 节点分享没有可消费的 query 字段；query-only URL
+    // 通常是带 token 的订阅地址，必须交给导入入口走下载回退。
+    if (qi >= 0) {
+      return null;
+    }
+    const scheme = link.substring(0, link.indexOf('://')).toLowerCase();
+    const defaultPort = type === ProfileType.SOCKS ? 1080 : (scheme === 'http' ? 80 : 443);
+    const strict = strictAuthorityOf(netloc, defaultPort);
+    if (strict === null) {
+      return null;
+    }
+    hp = [strict.host, strict.port];
+  } else {
+    hp = hostPortOf(netloc, 443);
+  }
   const p = new Profile();
   p.type = type;
   p.server = hp[0];
@@ -424,6 +588,35 @@ function parseUserinfoLink(link: string, type: string): Profile | null {
   return p;
 }
 
+// ---------------------------------------------------------------- wireguard:// (NekoBox 导出格式)
+function parseWireguard(link: string): Profile | null {
+  const noScheme = link.substring(link.indexOf('://') + 3);
+  const frag = splitFragment(noScheme);
+  const name = frag[1];
+  const qi = frag[0].indexOf('?');
+  const netlocPart = qi < 0 ? frag[0] : frag[0].substring(0, qi);
+  const q = parseQuery(qi < 0 ? '' : frag[0].substring(qi));
+  const at = netlocPart.lastIndexOf('@');
+  if (at <= 0) {
+    return null;
+  }
+  const privateKey = decodeURIComponentSafe(netlocPart.substring(0, at));
+  const hp = hostPortOf(netlocPart.substring(at + 1), 51820);
+  const p = new Profile();
+  p.type = ProfileType.WIREGUARD;
+  p.privateKey = privateKey;
+  p.server = hp[0];
+  p.serverPort = hp[1];
+  p.peerPublicKey = qstr(q, 'public_key', qstr(q, 'peer_public_key'));
+  p.preSharedKey = qstr(q, 'pre_shared_key', qstr(q, 'preshared_key'));
+  p.localAddress = qstr(q, 'local_address', qstr(q, 'address', p.localAddress));
+  p.name = newName(name, `${p.server}:${p.serverPort}`);
+  if (p.server.length === 0 || p.privateKey.length === 0 || p.peerPublicKey.length === 0) {
+    return null;
+  }
+  return p;
+}
+
 function decodeURIComponentSafe(s: string): string {
   try {
     return decodeURIComponent(s);
@@ -435,6 +628,51 @@ function decodeURIComponentSafe(s: string): string {
 /** 供编辑页「粘贴节点链接」使用的单条链接解析。 */
 export function parseSingleLink(link: string): Profile | null {
   return parseOne(link);
+}
+
+/**
+ * 区分 HTTP(S) 代理分享链接与订阅 URL。
+ *
+ * 两者共用 http(s) scheme，不能只看前缀：带账号或节点名 fragment 的
+ * 链接才有足够强的“单节点”信号；仅有 host:port 的根 URL 仍可能是订阅，
+ * 交给导入入口先下载，下载失败再回退到单节点解析。
+ */
+export function looksLikeHttpProxyLink(link: string): boolean {
+  const text = link.trim();
+  if (!text.startsWith('http://') && !text.startsWith('https://')) {
+    return false;
+  }
+  const rest = text.substring(text.indexOf('://') + 3);
+  const cutSlash = rest.indexOf('/');
+  const cutQuery = rest.indexOf('?');
+  const cutFragment = rest.indexOf('#');
+  // 只有 query/fragment 之前的 '/' 才是 authority 后面的路径；
+  // fragment 内容本身可以包含 '/'，不能因此误判订阅 URL。
+  let boundary = rest.length;
+  if (cutQuery >= 0 && cutQuery < boundary) {
+    boundary = cutQuery;
+  }
+  if (cutFragment >= 0 && cutFragment < boundary) {
+    boundary = cutFragment;
+  }
+  if (cutSlash >= 0 && cutSlash < boundary) {
+    return false;
+  }
+  // authority 后只有 query（例如 https://host:443?token=...）时，
+  // 与订阅 URL 的歧义无法可靠消除；按订阅处理，避免静默保存错误节点。
+  if (cutQuery >= 0 && (cutFragment < 0 || cutQuery < cutFragment)) {
+    return false;
+  }
+  const authority = rest.substring(0, boundary);
+  const at = authority.lastIndexOf('@');
+  const hostAuthority = at >= 0 ? authority.substring(at + 1) : authority;
+  const strict = strictAuthorityOf(hostAuthority, 443);
+  if (strict === null) {
+    return false;
+  }
+  // userinfo（user:pass@host）或显式节点名 fragment 是单节点分享的
+  // 可靠信号。host:port 本身故意视为歧义地址，由调用方做下载回退。
+  return at >= 0 || cutFragment >= 0;
 }
 
 export { base64Decode, base64Encode };

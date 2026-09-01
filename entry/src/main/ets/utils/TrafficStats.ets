@@ -9,6 +9,38 @@ export interface TrafficTotals {
   down: number;
 }
 
+/** 通过当前运行节点的 Clash API proxy tag 执行 URL Test。 */
+export async function fetchProxyDelay(tag: string, testUrl: string = 'https://www.gstatic.com/generate_204',
+  timeout: number = 5000): Promise<number> {
+  const client = http.createHttp();
+  try {
+    const encodedTag = encodeURIComponent(tag);
+    const encodedUrl = encodeURIComponent(testUrl);
+    const resp = await client.request(
+      `http://127.0.0.1:${CLASH_API_PORT}/proxies/${encodedTag}/delay?url=${encodedUrl}&timeout=${timeout}`,
+      {
+        method: http.RequestMethod.GET,
+        connectTimeout: timeout + 1000,
+        readTimeout: timeout + 1000,
+        expectDataType: http.HttpDataType.STRING
+      }
+    );
+    if (resp.responseCode !== 200) {
+      return -1;
+    }
+    const obj = JSON.parse(`${resp.result}`) as Record<string, Object>;
+    const delay = Number(obj['delay']);
+    if (isNaN(delay) || delay < 0) {
+      return -1;
+    }
+    return delay;
+  } catch (e) {
+    return -1;
+  } finally {
+    client.destroy();
+  }
+}
+
 export async function fetchTrafficTotals(): Promise<TrafficTotals | null> {
   const client = http.createHttp();
   try {

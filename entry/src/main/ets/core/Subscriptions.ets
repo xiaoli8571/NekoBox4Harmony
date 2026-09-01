@@ -1,6 +1,7 @@
 import common from '@ohos.app.ability.common';
 import { Profile } from '../model/Profile';
-import { initStore, loadProfiles, saveProfiles, readPrefString, writePrefString } from '../model/Store';
+import { readPrefString, writePrefString } from '../model/Store';
+import { ProfileStorage } from '../common/storage/ProfileStorage';
 import { fetchSubscriptionWithInfo, parseSubUserInfo, looksLikeClashYaml, parseClashProxies } from '../utils/Subscription';
 import { parseShareText } from '../utils/LinkParser';
 
@@ -17,6 +18,10 @@ export class SubInfo {
   download: number = 0;
   total: number = 0;
   expire: number = 0;
+  updateIntervalMs: number = AUTO_UPDATE_INTERVAL;
+  consecutiveFailures: number = 0;
+  paused: boolean = false;
+  lastError: string = '';
 }
 
 export interface SubUpdateResult {
@@ -28,7 +33,28 @@ export interface SubUpdateResult {
 export async function listSubs(): Promise<Array<SubInfo>> {
   try {
     const raw = await readPrefString(KEY_SUBS, '[]');
-    return JSON.parse(raw) as Array<SubInfo>;
+    const parsed = JSON.parse(raw) as Array<SubInfo>;
+    const result: Array<SubInfo> = [];
+    for (const source of parsed) {
+      const item = new SubInfo();
+      if (source !== undefined && source !== null) {
+        item.url = source.url;
+        item.name = source.name;
+        item.lastUpdate = source.lastUpdate;
+        item.upload = source.upload;
+        item.download = source.download;
+        item.total = source.total;
+        item.expire = source.expire;
+        item.updateIntervalMs = source.updateIntervalMs;
+        item.consecutiveFailures = source.consecutiveFailures;
+        item.paused = source.paused;
+        item.lastError = source.lastError;
+      }
+      item.updateIntervalMs = item.updateIntervalMs > 0 ? item.updateIntervalMs : AUTO_UPDATE_INTERVAL;
+      item.consecutiveFailures = Math.max(0, Math.floor(item.consecutiveFailures));
+      result.push(item);
+    }
+    return result;
   } catch (e) {
     return [];
   }
@@ -102,7 +128,8 @@ export async function needAutoUpdate(): Promise<Array<SubInfo>> {
     return [];
   }
   const now = Date.now();
-  return subs.filter(s => now - s.lastUpdate > AUTO_UPDATE_INTERVAL);
+  return subs.filter(s => !s.paused
+    && now - s.lastUpdate > (s.updateIntervalMs > 0 ? s.updateIntervalMs : AUTO_UPDATE_INTERVAL));
 }
 
 function genId(): string {
@@ -110,7 +137,7 @@ function genId(): string {
 }
 
 /** 更新单个订阅:下载 → 解析 → 原子替换该订阅的节点(保留运行中节点);同时记录流量/到期 */
-export async function updateSubscription(url: string): Promise<SubUpdateResult> {
+async function performSubscriptionUpdate(url: string): Promise<SubUpdateResult> {
   const fetched = await fetchSubscriptionWithInfo(url);
   const content = fetched.content;
   let parsed: Array<Profile> = [];
@@ -122,8 +149,8 @@ export async function updateSubscription(url: string): Promise<SubUpdateResult> 
   if (parsed.length === 0) {
     throw new Error('订阅内容中没有可用节点');
   }
-  await initStore(globalContext());
-  const profiles = await loadProfiles();
+  await ProfileStorage.initialize(globalContext());
+  const profiles = await ProfileStorage.profiles();
   const runningId = AppStorage.get<string>('vpnRunningProfileId') ?? '';
 
   const kept: Array<Profile> = [];
@@ -144,11 +171,13 @@ export async function updateSubscription(url: string): Promise<SubUpdateResult> 
     }
     p.id = `${genId()}_${added}`;
     p.subUrl = url;
+    p.groupId = `subscription:${url}`;
+    p.groupName = subNameOf(url);
     p.updatedAt = Date.now();
     kept.push(p);
     added++;
   }
-  await saveProfiles(kept);
+  await ProfileStorage.saveProfiles(kept);
   await touchSub(url);
   // 记录订阅流量/到期信息(响应头 subscription-userinfo)
   if (fetched.userinfo.length > 0) {
@@ -170,7 +199,68 @@ export async function updateSubscription(url: string): Promise<SubUpdateResult> 
   return result;
 }
 
-// 简单的上下文注入(由 Index 在启动时设置,供 updateSubscription 内部 initStore 使用)
+/** 更新订阅的统一入口：连续失败三次自动暂停，成功后清除失败状态。 */
+export async function updateSubscription(url: string): Promise<SubUpdateResult> {
+  try {
+    const result = await performSubscriptionUpdate(url);
+    await markSubscriptionSuccess(url);
+    return result;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : `${e}`;
+    await markSubscriptionFailure(url, message);
+    throw new Error(message);
+  }
+}
+
+export async function markSubscriptionFailure(url: string, message: string): Promise<void> {
+  const list = await listSubs();
+  const target = list.find(s => s.url === url);
+  if (target === undefined) {
+    return;
+  }
+  target.consecutiveFailures = Math.max(0, target.consecutiveFailures) + 1;
+  target.lastError = message;
+  target.paused = target.consecutiveFailures >= 3;
+  await saveSubs(list);
+}
+
+export async function markSubscriptionSuccess(url: string): Promise<void> {
+  const list = await listSubs();
+  const target = list.find(s => s.url === url);
+  if (target === undefined) {
+    return;
+  }
+  target.consecutiveFailures = 0;
+  target.lastError = '';
+  target.paused = false;
+  await saveSubs(list);
+}
+
+export async function setSubscriptionPaused(url: string, paused: boolean): Promise<void> {
+  const list = await listSubs();
+  const target = list.find(s => s.url === url);
+  if (target === undefined) {
+    return;
+  }
+  target.paused = paused;
+  if (!paused) {
+    target.consecutiveFailures = 0;
+    target.lastError = '';
+  }
+  await saveSubs(list);
+}
+
+export async function setSubscriptionInterval(url: string, intervalMs: number): Promise<void> {
+  const list = await listSubs();
+  const target = list.find(s => s.url === url);
+  if (target === undefined) {
+    return;
+  }
+  target.updateIntervalMs = Math.max(15 * 60 * 1000, Math.floor(intervalMs));
+  await saveSubs(list);
+}
+
+// 简单的上下文注入(由 Index 在启动时设置,供 updateSubscription 初始化 ProfileStorage)
 let appContext: common.Context | null = null;
 
 export function setAppContext(ctx: common.Context): void {

@@ -22,6 +22,10 @@
           {
             "entities": ["entity.system.home"],
             "actions": ["action.system.home"]
+          },
+          {
+            "entities": ["entity.system.default"],
+            "actions": ["ohos.want.action.sendData"]
           }
         ]
       }

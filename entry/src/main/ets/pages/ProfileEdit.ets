@@ -2,9 +2,9 @@ import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import common from '@ohos.app.ability.common';
 import { Profile, ProfileType, profileTypeLabel, supportsTransport, needsTlsByDefault } from '../model/Profile';
-import { initStore, loadProfiles, saveProfiles } from '../model/Store';
+import { ProfileStorage } from '../common/storage/ProfileStorage';
 import { getClipboardText } from '../utils/ClipboardHelper';
-import { parseSingleLink, parseShareText } from '../utils/LinkParser';
+import { parseSingleLink, parseShareText, looksLikeHttpProxyLink } from '../utils/LinkParser';
 
 const ALL_TYPES: Array<string> = [
   ProfileType.SHADOWSOCKS, ProfileType.VMESS, ProfileType.VLESS, ProfileType.TROJAN,
@@ -23,8 +23,8 @@ struct ProfileEdit {
 
   aboutToAppear(): void {
     const id: string = AppStorage.get<string>('editProfileId') ?? '';
-    initStore(this.context).then(async () => {
-      const profiles = await loadProfiles();
+    ProfileStorage.initialize(this.context).then(async () => {
+      const profiles = await ProfileStorage.profiles();
       const found = profiles.find(x => x.id === id);
       if (found !== undefined) {
         this.p = found;
@@ -46,8 +46,8 @@ struct ProfileEdit {
       return;
     }
     try {
-      await initStore(this.context);
-      const profiles = await loadProfiles();
+      await ProfileStorage.initialize(this.context);
+      const profiles = await ProfileStorage.profiles();
       const idx = profiles.findIndex(x => x.id === this.p.id);
       this.p.updatedAt = Date.now();
       if (idx >= 0) {
@@ -55,7 +55,7 @@ struct ProfileEdit {
       } else {
         profiles.push(this.p);
       }
-      await saveProfiles(profiles);
+      await ProfileStorage.saveProfiles(profiles);
       promptAction.showToast({ message: '已保存' });
       router.back();
     } catch (e) {
@@ -71,7 +71,8 @@ struct ProfileEdit {
       return;
     }
     const firstLine = t.split(/[\r\n]+/)[0].trim();
-    if (firstLine.startsWith('http://') || firstLine.startsWith('https://')) {
+    if ((firstLine.startsWith('http://') || firstLine.startsWith('https://'))
+      && !looksLikeHttpProxyLink(firstLine)) {
       promptAction.showToast({ message: '这是订阅链接,请回主页用「导入链接」' });
       return;
     }
@@ -87,7 +88,17 @@ struct ProfileEdit {
         promptAction.showToast({ message: '无法识别的节点链接,请检查内容' });
         return;
       }
+      // 解析链接只更新连接参数；编辑已有节点时保留管理元数据，
+      // 否则置顶、测速结果及订阅来源会被一次“解析并填入”悄悄清空。
       p.id = this.p.id;
+      p.pinned = this.p.pinned;
+      p.lastDelay = this.p.lastDelay;
+      p.subUrl = this.p.subUrl;
+      p.groupId = this.p.groupId;
+      p.groupName = this.p.groupName;
+      p.favorite = this.p.favorite;
+      p.lastUsedAt = this.p.lastUsedAt;
+      p.updatedAt = this.p.updatedAt;
       this.p = p;
       promptAction.showToast({ message: '已解析,请核对后保存' });
     } catch (e) {
@@ -352,9 +363,9 @@ struct ProfileEdit {
   @Builder
   AdvancedFields() {
     Column({ space: 10 }) {
-      this.Field('附加 JSON (高级, 与出站对象合并)', '{"dialer":{}}', this.p.extra,
+      this.Field('附加 JSON (高级, 仅 sing-box 1.11 出站字段)', '{"tcp_fast_open":true}', this.p.extra,
         (v: string) => { this.p.extra = v; })
-      Text('长按主页节点可删除;支持从剪贴板导入 ss/vmess/vless/trojan/hysteria/tuic 链接与 base64 订阅')
+      Text('未知字段会跳过对应节点;长按主页节点可操作分享/编辑/测速/置顶/复制/删除')
         .fontSize(11).fontColor('#999').width('100%')
     }
   }

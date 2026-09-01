@@ -37,3 +37,8 @@ export async function getClipboardText(): Promise<string> {
   }
   return '';
 }
+
+export async function setClipboardText(text: string): Promise<void> {
+  const data = pasteboard.createPlainTextData(text);
+  await pasteboard.getSystemPasteboard().setData(data);
+}

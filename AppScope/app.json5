@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "com.example.jynxen",
     "vendor": "nekobox4harmony",
-    "versionCode": 1001605,
-    "versionName": "1.5.4",
+    "versionCode": 1001701,
+    "versionName": "1.7.1",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }

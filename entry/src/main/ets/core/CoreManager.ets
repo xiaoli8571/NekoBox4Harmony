@@ -53,12 +53,20 @@ export class CoreManager {
     nativeCore.startCoreNative(configPath, tunFd, onResult);
   }
 
+  static setBindIfname(ifname: string): void {
+    nativeCore.setBindIfnameNative(ifname);
+  }
+
   static stopCore(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       nativeCore.stopCoreNative((err: string) => {
-        if (err !== undefined && err.length > 0) {
-          LogStore.addLog(`[app] 内核停止报错: ${err}`);
-          reject(new Error(err));
+        // Older native wrappers may use null/undefined for a successful
+        // callback even though the ArkTS declaration says string. Normalize
+        // it here so teardown never throws while inspecting err.length.
+        const errorText: string = err === undefined || err === null ? '' : `${err}`;
+        if (errorText.length > 0) {
+          LogStore.addLog(`[app] 内核停止报错: ${errorText}`);
+          reject(new Error(errorText));
           return;
         }
         resolve();

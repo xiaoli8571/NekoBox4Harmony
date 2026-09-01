@@ -1,6 +1,6 @@
 /**
  * 数据模型 — 参考 NekoBoxForAndroid 的 Profile 概念。
- * 一个 Profile 对应一个 sing-box 1.4 出站(outbound)。
+ * 一个 Profile 对应一个 sing-box 1.11 出站(outbound)。
  */
 
 export class ProfileType {
@@ -75,6 +75,16 @@ export class Profile {
   // 来源订阅(自动更新用)
   subUrl: string = '';
 
+  // 分组与使用元数据(兼容旧版本:缺失字段由 Store 默认值补齐)
+  groupId: string = '';
+  groupName: string = '';
+  favorite: boolean = false;
+  lastUsedAt: number = 0;
+
+  // 节点管理元数据(v1.7.0)
+  pinned: boolean = false;
+  lastDelay: number = 0; // 0=未测速,-1=超时,正数=毫秒
+
   updatedAt: number = 0;
 }
 
@@ -89,8 +99,12 @@ export class AppSettings {
   ipv6: boolean = false;
   allowInsecureAll: boolean = false;   // 全局放行不安全 TLS
   autoUpdateSubs: boolean = true;      // 启动时自动更新超过 12h 的订阅
-  perAppMode: string = 'off';          // off / exclude(排除这些应用) / include(仅这些应用走代理)
+  perAppMode: string = 'off';          // off / exclude(排除这些应用); include 仅兼容读取旧数据
   perAppList: string = '';             // 应用包名,逗号分隔(如 com.huawei.hmos.browser)
+  // 主题与语言偏好(v2.0): system 跟随系统，light/dark 固定主题；语言使用
+  // BCP-47 标签，当前提供 zh-CN 与 en-US。旧设置没有这些字段时保留默认值。
+  theme: string = 'system';
+  language: string = 'zh-CN';
 }
 
 export function profileTypeLabel(type: string): string {

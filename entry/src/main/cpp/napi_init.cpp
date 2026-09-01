@@ -21,6 +21,7 @@
 typedef char *(*CGoStringFunc)(void);
 typedef char *(*CGoStartFunc)(char *);
 typedef void (*CGoSetFdFunc)(int);
+typedef void (*CGoSetBindIfnameFunc)(char *);
 
 enum class CoreState {
     Stopped,
@@ -40,6 +41,7 @@ static CGoStringFunc g_version = nullptr;
 static CGoStartFunc g_start = nullptr;
 static CGoStringFunc g_stop = nullptr;
 static CGoSetFdFunc g_setTunFd = nullptr;
+static CGoSetBindIfnameFunc g_setBindIfname = nullptr;
 
 struct TsfData {
     std::string text;
@@ -162,12 +164,33 @@ static bool LoadCoreLib(std::string &message)
     g_start = reinterpret_cast<CGoStartFunc>(dlsym(handle, "CGoStartSingBox"));
     g_stop = reinterpret_cast<CGoStringFunc>(dlsym(handle, "CGoStopSingBox"));
     g_setTunFd = reinterpret_cast<CGoSetFdFunc>(dlsym(handle, "CGoSetTunFd"));
+    g_setBindIfname = reinterpret_cast<CGoSetBindIfnameFunc>(dlsym(handle, "CGoSetBindIfname"));
     if (g_start == nullptr || g_stop == nullptr || g_setTunFd == nullptr) {
         message = "libsingbox.so 缺少导出符号(CGoStartSingBox/CGoStopSingBox/CGoSetTunFd)";
         return false;
     }
     g_coreLib = handle;
     return true;
+}
+
+// setBindIfnameNative(ifname): configure the physical interface before the
+// worker thread invokes CGoStartSingBox, enabling SO_BINDTODEVICE in OHOS.
+static napi_value SetBindIfnameNative(napi_env env, napi_callback_info info)
+{
+    std::string ifname;
+    if (!GetArgString(env, info, 0, ifname)) {
+        napi_throw_error(env, nullptr, "setBindIfnameNative expects (ifname)");
+        return nullptr;
+    }
+    std::string message;
+    if (!LoadCoreLib(message) || g_setBindIfname == nullptr) {
+        napi_throw_error(env, nullptr, message.empty() ? "libsingbox.so missing CGoSetBindIfname" : message.c_str());
+        return nullptr;
+    }
+    char *value = strdup(ifname.c_str());
+    g_setBindIfname(value);
+    free(value);
+    return nullptr;
 }
 
 static void FreeGoString(char *p)
@@ -315,6 +338,7 @@ static napi_value Init(napi_env env, napi_value exports)
         {"startCoreNative", nullptr, StartCoreNative, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"stopCoreNative", nullptr, StopCoreNative, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"isCoreRunning", nullptr, IsCoreRunning, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"setBindIfnameNative", nullptr, SetBindIfnameNative, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     return exports;
