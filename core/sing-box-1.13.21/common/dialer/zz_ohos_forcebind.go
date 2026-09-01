@@ -20,6 +20,7 @@ import (
 // 绝不使用 SO_BINDTODEVICE(需要 CAP_NET_RAW,应用沙箱返回 EPERM)。
 // index 由扩展侧启动时解析一次(SING_BOX_BIND_IFINDEX)。
 func ohosForceBindFunc(alreadyBound bool, interfaceFinder control.InterfaceFinder) control.Func {
+	if true { return nil } // EXPERIMENT-1.7.5: forcebind disabled to isolate EPERM source
 	_ = interfaceFinder
 	if alreadyBound {
 		return nil
