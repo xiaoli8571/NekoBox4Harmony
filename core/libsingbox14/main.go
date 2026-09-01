@@ -1,4 +1,4 @@
-// NekoBox4Harmony — sing-box 内核进程内包装层 (sing-box 1.13 API).
+// NekoBox4Harmony — sing-box 内核进程内包装层 (sing-box 1.11 API).
 //
 // 编译为 HarmonyOS c-shared 库(libsingbox.so),由 NAPI 侧 dlopen 调用:
 //   CGoSetTunFd(fd)              — 注入 @ohos.net.vpnExtension 创建的 TUN fd
@@ -73,9 +73,10 @@ func CGoStartSingBox(configPath *C.char) *C.char {
 	if err != nil {
 		return cErr(E.Cause(err, "read config"))
 	}
-	// 1.13 registers inbound/outbound/endpoint/DNS/service registries together;
-	// using include.Context keeps the wrapper aligned with the strict schema.
-	ctx := include.Context(context.Background())
+	// 1.11: registry context 由 box.Context + include 各 Registry 构造
+	// (include.Context 是 1.12+ 才有的 API,1.11 内核编译不过)。
+	ctx := box.Context(context.Background(),
+		include.InboundRegistry(), include.OutboundRegistry(), include.EndpointRegistry())
 	options, err := json.UnmarshalExtendedContext[option.Options](ctx, content)
 	if err != nil {
 		return cErr(E.Cause(err, "parse config"))
@@ -139,7 +140,7 @@ func CGoStopSingBox() *C.char {
 
 //export CGoSingBoxVersion
 func CGoSingBoxVersion() *C.char {
-	return C.CString("1.13.21-ohos-inproc")
+	return C.CString("1.11.9-ohos-inproc")
 }
 
 func main() {}

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 把 sing-box 内核编译成 HarmonyOS c-shared 库 libsingbox.so。
 #
-# 默认:v1.13.21(core/sing-box-1.13.21,支持 Hysteria2/TUIC v5)
+# 默认:v1.11.9(core/sing-box-1.11,支持 Hysteria2/TUIC v5)
 # 回退:v1.4.6(SINGBOX_TAG=v1.4.6 SINGBOX_SRC="$ROOT/sing-box" 调用)
 #
 # 必须用 OHOS Go fork + GOOS=openharmony(原版 Go 产物在 musl 上不可用)。
@@ -11,8 +11,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"        # vpn/core
 PROJECT="$(cd "$ROOT/.." && pwd)"               # vpn/
 
-SINGBOX_TAG="${SINGBOX_TAG:-v1.13.21}"
-SINGBOX_SRC="${SINGBOX_SRC:-$ROOT/sing-box-1.13.21}"
+SINGBOX_TAG="${SINGBOX_TAG:-v1.11.9}"
+SINGBOX_SRC="${SINGBOX_SRC:-$ROOT/sing-box-1.11}"
 WRAPPER="$ROOT/libsingbox14"
 OUT_DIR="$PROJECT/entry/libs/arm64-v8a"
 WORK_DIR="$ROOT/build/libsingbox-ohos"
@@ -91,7 +91,7 @@ if [ -f "protocol/tun/inbound.go" ]; then
     fi
     echo "==> verified OHOS interface-monitor skip via build-tag constant"
     # OHOS 防回环主保险:dialer 层强制绑定物理网卡(SING_BOX_BIND_IFNAME)
-    if ! grep -q "ohosForceBindFunc(" common/dialer/default.go; then
+    if ! grep -q "ohosForceBindFunc(options.BindInterface" common/dialer/default.go; then
         echo "ERROR: common/dialer/default.go must call ohosForceBindFunc (SO_BINDTODEVICE anti-loop)" >&2
         exit 1
     fi
@@ -108,24 +108,6 @@ elif [ -f "inbound/tun.go" ]; then
 else
     echo "ERROR: unknown sing-box layout: $SINGBOX_SRC" >&2
     exit 1
-fi
-
-# DEPGO-PRE: 在任何 go list/download 之前,预建 patched 依赖并降级 go 声明
-# (sing-tun@v0.8.15 / sing@v0.6.7 声明 go1.24.7 > fork 1.24.5,list 阶段即被拒)
-for PREPDIR in "$WORK_DIR/sing-tun-patched" "$WORK_DIR/sing-patched"; do
-    [ -d "$PREPDIR" ] && sed -i 's/^go 1\..*$/go 1.24.5/' "$PREPDIR/go.mod" 2>/dev/null || true
-done
-STVER_PRE="$(grep -oE 'github.com/sagernet/sing-tun v[0-9][^ ]*' "$WRAPPER/go.mod" | awk '{print $2}' | head -1)"
-if [ -n "$STVER_PRE" ]; then
-    STCACHE="$(cygpath "$($OHOS_GO_FORK/bin/go env GOMODCACHE)")/github.com/sagernet/sing-tun@$STVER_PRE"
-    if [ -d "$STCACHE" ]; then
-        mkdir -p "$WORK_DIR/sing-tun-patched"
-        cp -R "$STCACHE/." "$WORK_DIR/sing-tun-patched/" 2>/dev/null || true
-        chmod -R u+w "$WORK_DIR/sing-tun-patched" 2>/dev/null || true
-        sed -i 's/^go 1\..*$/go 1.24.5/' "$WORK_DIR/sing-tun-patched/go.mod" 2>/dev/null || true
-        "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing-tun=$WORK_DIR/sing-tun-patched"
-        echo "==> DEPGO-PRE: sing-tun pre-patched+downgraded ($STVER_PRE)"
-    fi
 fi
 
 # ---- netlink 监控补丁(OHOS 沙箱禁止 netlink 订阅,所有 sing-tun 版本都需要) ----
@@ -174,9 +156,9 @@ if true; then
             rm -rf "$SPDIR"; mkdir -p "$SPDIR"
             cp -R "$SINGDIR/." "$SPDIR/"
             chmod -R u+w "$SPDIR"
-            perl "$ROOT/scripts/sing-bind-fallback.pl" "$SPDIR/common/control/bind_linux.go"
-            if grep -q "SING_BOX_BIND_IFINDEX" "$SPDIR/common/control/bind_linux.go"; then
-                echo "==> sing bind patched (ByName fallback -> pre-resolved index binding); replace applied in wrapper go.mod at build time"
+            perl -0pi -e 's/iif, err := finder\.ByName\(interfaceName\)\n(\t+)if err != nil \{\n\t+return err\n(\t+)\}/iif, err := finder.ByName(interfaceName)\n$1if err != nil {\n$1\t\/\/ OpenHarmony sandbox: fall back to kernel-side binding by name\n$1\treturn unix.BindToDevice(int(fd), interfaceName)\n$2}/' "$SPDIR/common/control/bind_linux.go"
+            if grep -q "fall back to kernel-side binding by name" "$SPDIR/common/control/bind_linux.go"; then
+                echo "==> sing bind patched (ByName fallback -> SO_BINDTODEVICE); replace applied in wrapper go.mod at build time"
             else
                 SPDIR=""
                 echo "WARN: sing bind patch did not match" >&2
@@ -212,28 +194,24 @@ export GOTOOLCHAIN=local
 export PATH="$OHOS_GO_FORK/bin:$PATH"
 "$OHOS_GO_FORK/bin/go" version
 
-
+"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing-box 2>/dev/null || true
+"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing-tun 2>/dev/null || true
+"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing 2>/dev/null || true
 "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing-box=$SINGBOX_SRC"
 if [ -n "${STPDIR:-}" ] && [ -d "$STPDIR" ]; then
     # 关键:replace 必须写在主模块(wrapper)的 go.mod 里才会生效
     "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing-tun=$STPDIR"
-    # DEPGO-DOWNGRADE: fork toolchain is go1.24.5; newer go directives in patched deps are rejected
-    sed -i 's/^go 1\..*$/go 1.24.5/' "$STPDIR/go.mod" 2>/dev/null || true
     echo "==> wrapper replace: sing-tun -> patched"
 fi
 if [ -n "${SPDIR:-}" ] && [ -d "$SPDIR" ]; then
     "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing=$SPDIR"
-    # DEPGO-DOWNGRADE: fork toolchain is go1.24.5; newer go directives in patched deps are rejected
-    sed -i 's/^go 1\..*$/go 1.24.5/' "$SPDIR/go.mod" 2>/dev/null || true
     echo "==> wrapper replace: sing -> patched"
 fi
 "$OHOS_GO_FORK/bin/go" mod download
 "$OHOS_GO_FORK/bin/go" mod tidy
 
 if [ -f "$SINGBOX_SRC/protocol/tun/inbound.go" ]; then
-    # with_gvisor: sing-box 1.13 WireGuard endpoint(1.13 已删 legacy wireguard
-    # outbound)内部用 gVisor netstack 建设备,缺它则 wg 节点启动即 FATAL。
-    BUILD_TAGS="with_utls,with_clash_api,with_quic,with_wireguard,with_gvisor"
+    BUILD_TAGS="with_utls,with_clash_api,with_quic"
 else
     BUILD_TAGS="with_utls,with_clash_api,with_quic,with_hysteria,with_tuic"
 fi
@@ -252,6 +230,10 @@ CGO_CFLAGS="${CGO_CFLAGS:--ftls-model=global-dynamic}" \
     -buildmode=c-shared \
     -o "$OUT_DIR/libsingbox.so" \
     .
+
+"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing-tun 2>/dev/null || true
+"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing 2>/dev/null || true
+"$OHOS_GO_FORK/bin/go" mod edit -dropreplace github.com/sagernet/sing-box 2>/dev/null || true
 
 ls -la "$OUT_DIR"
 echo "==> done: $OUT_DIR/libsingbox.so"
