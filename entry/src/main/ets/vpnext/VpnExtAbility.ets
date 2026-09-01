@@ -404,7 +404,9 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     // 原始 promise，等回调 settle 后才能调用 stopCore。
     // 把实际物理网卡名传给 Go wrapper；SO_BINDTODEVICE 必须在任何
     // sing-box 出站 socket 创建前设置，否则 DNS transport 可能回到 TUN。
-    CoreManager.setBindIfname(ifname);
+    // 1.11.9 内核回退:不再激活 forcebind(其 BindToDevice 回退在沙箱返回 EPERM);
+    // 防回环由 default_interface 绑定(1.5.6 真机验证)+ protectProcessNet + blockedApplications 承担。
+    // CoreManager.setBindIfname(ifname);
     const coreStart = new Promise<void>((resolve, reject) => {
       CoreManager.startCore(configPath, tunFd, (err: string) => {
         // Native callbacks are declared as string, but older wrappers may

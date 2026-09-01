@@ -1050,10 +1050,6 @@ function buildOutbound(p: Profile, s: AppSettings, tag: string): Record<string, 
   }
   // 节点 tag 属于运行时拓扑，不能被高级 JSON 覆盖。
   o['tag'] = tag;
-  // 引导解析必须走直连 DNS(与 WireGuard endpoint 的 domain_resolver 一致):
-  // 出站服务器域名解析若落到 final=remote,会经本节点建连,回环断网。
-  // 放在 extra 之后强制覆盖,保证高级 JSON 无法破坏引导解析。
-  o['domain_resolver'] = 'local';
   return o;
 }
 
@@ -1076,9 +1072,6 @@ function buildWireGuardEndpoint(p: Profile, s: AppSettings, tag: string): Record
   }
   peer['allowed_ips'] = ['0.0.0.0/0', '::/0'];
   endpoint['peers'] = [peer];
-  // Keep the physical-interface escape hatch available to the endpoint's
-  // handshake sockets; the OHOS dialer patch applies this field globally.
-  endpoint['domain_resolver'] = 'local';
   return endpoint;
 }
 
@@ -1096,6 +1089,7 @@ export function buildCoreConfig(p: Profile, profiles: Array<Profile>, s: AppSett
   const tun: Record<string, Object> = {};
   tun['type'] = 'tun';
   tun['tag'] = 'tun-in';
+  tun['sniff'] = true;
   if (s.ipv6) {
     tun['address'] = [TUN_ADDR_V4, TUN_ADDR_V6];
   } else {
@@ -1294,7 +1288,6 @@ export function buildCoreConfig(p: Profile, profiles: Array<Profile>, s: AppSett
   route['default_interface'] = physicalIfname;
   // 全局兜底:任何 dial 字段的域名地址(含域名形态的 DNS 服务器、WireGuard
   // endpoint、未来协议)缺省解析器都指向直连 DNS,引导解析不依赖代理本身。
-  route['default_domain_resolver'] = 'local';
   if (routeProfile !== null && routeProfile.ruleSets.length > 0) {
     const ruleSetOptions: Array<Object> = [];
     for (const metadata of routeProfile.ruleSets) {

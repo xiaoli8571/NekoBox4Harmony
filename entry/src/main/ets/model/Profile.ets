@@ -90,7 +90,7 @@ export class Profile {
 
 export class AppSettings {
   mtu: number = 1400;
-  stack: string = 'gvisor';            // 1.13 system 栈 TCP 靠内核 NAT(OHOS 沙箱不可用:UDP 通 TCP 死);gvisor 用户态栈无此依赖
+  stack: string = 'system';            // 1.11.9 内核:system 栈真机验证可用(1.5.6 组合)
   mode: string = 'rule';               // rule(规则)/ global(全局)/ direct(直连)
   directDomains: string = '';          // 规则模式:直连域名后缀,逗号分隔
   directIpCidrs: string = '';          // 规则模式:直连 IP 段,逗号分隔
