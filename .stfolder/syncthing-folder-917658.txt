@@ -1,5 +1,5 @@
 # This directory is a Syncthing folder marker.
 # Do not delete.
 
-folderID: 2fxnc-can9g
-created: 2026-09-01T11:21:48+08:00
+folderID: xnhct-xatfg
+created: 2026-09-01T11:17:24+08:00
