@@ -2,6 +2,6 @@
  * 应用版本单一来源。
  * 升级版本时必须与 AppScope/app.json5 的 versionName/versionCode 同步修改。
  */
-export const APP_VERSION: string = '1.7.5';
-export const APP_VERSION_CODE: number = 1001705;
+export const APP_VERSION: string = '1.7.6';
+export const APP_VERSION_CODE: number = 1001706;
 export const APP_VERSION_LABEL: string = `v${APP_VERSION} (${APP_VERSION_CODE})`;

@@ -57,6 +57,10 @@ export async function loadSettings(): Promise<AppSettings> {
     // keep defaults
   }
   s.mtu = Math.max(1280, Math.min(1500, s.mtu));
+  // 迁移:1.13 内核的 system 栈 TCP 在 OHOS 沙箱不可用(UDP 通 TCP 死),统一切 gvisor 用户态栈
+  if (s.stack === 'system') {
+    s.stack = 'gvisor';
+  }
   // 迁移 1:旧默认的 DoH 远程 DNS 在全局模式下整体失效,迁到经代理的 TCP DNS
   if (s.remoteDns === 'https://8.8.8.8/dns-query') {
     s.remoteDns = 'tcp://8.8.8.8';
