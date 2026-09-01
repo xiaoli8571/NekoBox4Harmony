@@ -174,9 +174,9 @@ if true; then
             rm -rf "$SPDIR"; mkdir -p "$SPDIR"
             cp -R "$SINGDIR/." "$SPDIR/"
             chmod -R u+w "$SPDIR"
-            perl -0pi -e 's/iif, err := finder\.ByName\(interfaceName\)\n(\t+)if err != nil \{\n\t+return err\n(\t+)\}/iif, err := finder.ByName(interfaceName)\n$1if err != nil {\n$1\t\/\/ OpenHarmony sandbox: fall back to kernel-side binding by name\n$1\treturn unix.BindToDevice(int(fd), interfaceName)\n$2}/' "$SPDIR/common/control/bind_linux.go"
-            if grep -q "fall back to kernel-side binding by name" "$SPDIR/common/control/bind_linux.go"; then
-                echo "==> sing bind patched (ByName fallback -> SO_BINDTODEVICE); replace applied in wrapper go.mod at build time"
+            perl "$ROOT/scripts/sing-bind-fallback.pl" "$SPDIR/common/control/bind_linux.go"
+            if grep -q "SING_BOX_BIND_IFINDEX" "$SPDIR/common/control/bind_linux.go"; then
+                echo "==> sing bind patched (ByName fallback -> pre-resolved index binding); replace applied in wrapper go.mod at build time"
             else
                 SPDIR=""
                 echo "WARN: sing bind patch did not match" >&2
@@ -213,18 +213,6 @@ export PATH="$OHOS_GO_FORK/bin:$PATH"
 "$OHOS_GO_FORK/bin/go" version
 
 
-SINGVER_PRE="$(grep -oE 'github.com/sagernet/sing v[0-9][^ ]*' "$WRAPPER/go.mod" | awk '{print $2}' | head -1)"
-if [ -n "$SINGVER_PRE" ]; then
-    SINCACHE="$(cygpath "$($OHOS_GO_FORK/bin/go env GOMODCACHE)")/github.com/sagernet/sing@$SINGVER_PRE"
-    if [ -d "$SINCACHE" ]; then
-        mkdir -p "$WORK_DIR/sing-patched"
-        cp -R "$SINCACHE/." "$WORK_DIR/sing-patched/" 2>/dev/null || true
-        chmod -R u+w "$WORK_DIR/sing-patched" 2>/dev/null || true
-        sed -i 's/^go 1\..*$/go 1.24.5/' "$WORK_DIR/sing-patched/go.mod" 2>/dev/null || true
-        "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing=$WORK_DIR/sing-patched"
-        echo "==> DEPGO-PRE: sing pre-patched+downgraded ($SINGVER_PRE)"
-    fi
-fi
 "$OHOS_GO_FORK/bin/go" mod edit -replace "github.com/sagernet/sing-box=$SINGBOX_SRC"
 if [ -n "${STPDIR:-}" ] && [ -d "$STPDIR" ]; then
     # 关键:replace 必须写在主模块(wrapper)的 go.mod 里才会生效

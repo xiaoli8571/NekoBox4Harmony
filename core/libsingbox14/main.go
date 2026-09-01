@@ -18,6 +18,7 @@ import "C"
 
 import (
 	"context"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -86,8 +87,15 @@ func CGoStartSingBox(configPath *C.char) *C.char {
 	}
 	if bindIfname != "" {
 		os.Setenv("SING_BOX_BIND_IFNAME", bindIfname)
+		// 预解析接口 index(启动时一次完成,拨号热路径直接用 index 绑定)
+		if iface, ifErr := net.InterfaceByName(bindIfname); ifErr == nil && iface != nil {
+			os.Setenv("SING_BOX_BIND_IFINDEX", strconv.Itoa(iface.Index))
+		} else {
+			os.Unsetenv("SING_BOX_BIND_IFINDEX")
+		}
 	} else {
 		os.Unsetenv("SING_BOX_BIND_IFNAME")
+		os.Unsetenv("SING_BOX_BIND_IFINDEX")
 	}
 	runCtx, cancelFunc := context.WithCancel(ctx)
 	newInstance, err := box.New(box.Options{Context: runCtx, Options: options})
