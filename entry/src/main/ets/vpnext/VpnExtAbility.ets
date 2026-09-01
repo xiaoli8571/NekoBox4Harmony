@@ -347,7 +347,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       const routeError = e instanceof Error ? e.message : `${e}`;
       LogStore.addLog(`[vpn] 路由配置不可用,使用默认路由: ${routeError}`);
     }
-    const configJson = buildCoreConfig(profile, profiles, settings, ifname, logPath, geositePath, geoIpPath, routeProfile);
+    const configJson = buildCoreConfig(profile, settings, ifname, logPath, geositePath, geoIpPath);
     const configPath = CoreManager.writeConfigFile(context, configJson);
     LogStore.addLog(`[vpn] sing-box 配置已写入 ${configPath}`);
 

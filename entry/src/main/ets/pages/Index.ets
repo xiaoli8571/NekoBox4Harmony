@@ -17,7 +17,12 @@ import { exportProfileLink } from '../utils/LinkExporter';
 import { fetchSubscriptionWithInfo, looksLikeClashYaml, parseClashProxies, ClashParseResult } from '../utils/Subscription';
 import { upsertSub, needAutoUpdate, updateSubscription, setAppContext, subNameOf, listSubs, SubInfo } from '../core/Subscriptions';
 import { fetchTrafficTotals, fetchProxyDelay, formatSpeed, formatBytes } from '../utils/TrafficStats';
-import { profileOutboundTag } from '../core/ConfigBuilder';
+
+// 单出站架构(1.7.8 回退):clash API 中仅 proxy 一个出站,URL Test 测当前选中节点
+function profileOutboundTag(_profileId: string): string {
+  return 'proxy';
+}
+
 
 // API 24's ArkTS standard library does not declare Number.MAX_SAFE_INTEGER.
 const MAX_DELAY_SORT = 9007199254740991;
