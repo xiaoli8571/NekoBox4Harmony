@@ -109,6 +109,11 @@ func NewNetworkManager(ctx context.Context, logger logger.ContextLogger, options
 	usePlatformDefaultInterfaceMonitor := nm.platformInterface != nil
 	enforceInterfaceMonitor := options.AutoDetectInterface
 	if isOpenHarmonyRuntime && !enforceInterfaceMonitor {
+		// OpenHarmony patch: no netlink monitor in sandbox; pre-populate the
+		// interface finder once so ByName/bind lookups resolve without a monitor.
+		if err := nm.interfaceFinder.Update(); err != nil {
+			nm.logger.Warn("initial interface enumeration failed: ", err)
+		}
 		return nm, nil
 	}
 	if !usePlatformDefaultInterfaceMonitor {
