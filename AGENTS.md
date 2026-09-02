@@ -2,7 +2,7 @@
 
 任何 AI Agent 接手本项目前必读。代码根目录:`C:\Users\Administrator\NekoBox4Harmony`(git 仓库,main 分支,对应 GitHub https://github.com/xiaoli8571/NekoBox4Harmony )。
 
-> 2026-09-02 起,仓库已改为「克隆即可构建」:内核源码(含全部 OHOS 补丁)随仓库分发,不再依赖本地散落的 sing-box 目录。
+> 2026-09-02 起,仓库已改为「克隆即可构建」:内核源码(含全部 OHOS 补丁)**和成品内核 `entry/libs/arm64-v8a/libsingbox.so`** 随仓库分发;`build-profile.json5` 为无签名配置(`signingConfigs: []`),克隆后直接 assembleHap 即得未签名 HAP,零额外步骤。`hvigorw.js` 已打补丁修复 Node ≥ 18.20 下 `.cmd` 子进程 EINVAL 问题(见下)。
 
 ## 项目是什么
 
@@ -22,6 +22,8 @@ HarmonyOS NEXT 原生 VPN 客户端,参考 [NekoBoxForAndroid](https://github.co
 
 ## 构建方法(命令行,勿开 DevEco GUI)
 
+**克隆后直接构建 HAP 只需第 2 步**(成品 .so 已入库);第 0/1 步仅在改内核时需要。产物为未签名 HAP,安装前在 DevEco 里签名(见"注意事项")。
+
 ```bash
 cd /c/Users/Administrator/NekoBox4Harmony
 
@@ -38,6 +40,7 @@ DEVECO_SDK_HOME='C:\Program Files\Huawei\DevEco Studio\sdk' node hvigorw.js --mo
 ```
 
 - 内核构建脚本幂等:仓库源码已带补丁则全部跳过;若 `SINGBOX_SRC` 指向上游裸源码会自动补齐(缺一 fail-closed)。Go 模块代理默认 `goproxy.cn`(可用环境变量 `GOPROXY` 覆盖);hvigor 打包需要命令行有 java,构建前把 DevEco 自带 JBR 加进 PATH(`export PATH="/c/Program Files/Huawei/DevEco Studio/jbr/bin:$PATH"`,否则 PackageHap 报 `spawn java ENOENT`)。
+- **`hvigorw.js` 带 `__ohosCmdPatch` 补丁**:hvigor 包装器给新项目缓存目录装 hvigor 依赖时用 `spawnSync` 直接执行 `pnpm.cmd`,Node ≥ 18.20 对无 shell 的 `.cmd` spawn 返回 EINVAL(报 00308002 "pnpm.cmd install execute failed")。补丁把 `.cmd/.bat` 子进程改走 `cmd.exe /d /s /c`,对任何 Node 版本免疫。若将来用 DevEco 重新生成 hvigorw.js,**必须重打该补丁**(补丁文件模式见 git 历史本文件说明;幂等,检测 `__ohosCmdPatch` 标记)。DevEco IDE 打开项目构建不受此问题影响(IDE 用自己的依赖安装路径)。
 - 每次改内核源码后:**必须**重跑内核构建脚本 **并** 重新 assembleHap(HAP 里的 .so 不会自动更新,此坑已踩过一次)。
 
 ## 内核(core/)构成
@@ -81,7 +84,8 @@ hdc shell hilog -x | grep '\[NB\]'                                              
 
 ## 注意事项
 
-- **不动 `module.json5` 的 VPN type(`"vpn"`);签名用户自理**:签名材料是机器本地 DevEco 生成的(`~/.ohos/config/`),`build-profile.json5` 的签名段改动属机器本地状态,不要随手提交。
+- **不动 `module.json5` 的 VPN type(`"vpn"`)。签名用户自理**:仓库内 `build-profile.json5` 是**无签名配置**(`signingConfigs: []`),命令行/IDE 直接构建出的都是未签名 HAP。要装真机:在 DevEco 里 File → Project Structure → Signing Configs 勾自动签名(需登录华为账号),DevEco 会把机器本地的签名段写进 `build-profile.json5`——**这段本地改动不要提交**,提交回去会让其他机器因找不到证书文件而构建失败(此坑已踩过:曾把本机证书路径提交到 GitHub)。
+- `entry/libs/arm64-v8a/libsingbox.so` 是**冻结内核成品,随仓库分发**(`.gitignore` 已移除对它的忽略);没有它克隆后无法直接 assembleHap(重编内核需要整套 OHOS Go 工具链)。不要把它当构建产物重新 ignore。
 - UI 迭代在 `entry/src/main/ets/`,内核冻结在 `core/`;改内核前先确认没有更简单的 UI 层方案。
 - 版本演进记录在 git log 与 Notion 文档;dist 产物按 `NekoBox4Harmony-<版本>-unsigned.hap` 命名。同一 versionCode 的 HAP 无法覆盖安装,发新包先在 `AppScope/app.json5` 升 versionCode/versionName。
 - 历史开发会话:`sess_0b799182-b5b4-4610-8759-5e5cd2a89166`(旧机器 xiaoli 时期,ZCode 会话可用 ReadSessionContext 读取)。

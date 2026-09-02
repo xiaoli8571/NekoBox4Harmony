@@ -1,3 +1,26 @@
+/* OHOS patch: Node >= 18.20 refuses spawnSync of .cmd/.bat without shell (EINVAL).
+ * Route .cmd/.bat children through cmd.exe so the wrapper's dependency install
+ * works on any Node version. Idempotent: skipped if applied already. */
+(function () {
+  var cp = require('child_process');
+  if (cp.__ohosCmdPatch) return;
+  var _spawnSync = cp.spawnSync;
+  cp.spawnSync = function (file, args, opts) {
+    try {
+      if (typeof file === 'string' && /\.(cmd|bat)$/i.test(file.trim()) && !(opts && opts.shell)) {
+        var parts = [file.trim()].concat(Array.isArray(args) ? args.map(String) : []);
+        var cmdline = parts
+          .map(function (p) { return /\s/.test(p) ? '"' + p + '"' : p; })
+          .join(' ');
+        var o = Object.assign({}, opts || {}, { windowsVerbatimArguments: true });
+        return _spawnSync.call(cp, process.env.comspec || 'cmd.exe', ['/d', '/s', '/c', cmdline], o);
+      }
+    } catch (e) { /* fall through to original */ }
+    return _spawnSync.apply(cp, arguments);
+  };
+  cp.__ohosCmdPatch = true;
+})();
+
 "use strict";
 
 var e, t = require("fs"), r = require("path"), n = require("process"), o = require("crypto"), i = require("child_process"), a = require("os"), s = require("constants"), u = require("stream"), c = require("util"), l = require("assert"), d = require("module"), f = require("tty"), p = require("url"), h = require("zlib"), m = require("net"), g = require("fs/promises"), v = "undefined" != typeof globalThis ? globalThis : "undefined" != typeof window ? window : "undefined" != typeof global ? global : "undefined" != typeof self ? self : {}, y = {}, _ = {}, E = {};

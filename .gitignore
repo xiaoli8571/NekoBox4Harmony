@@ -15,8 +15,8 @@ core/dist
 entry/src/main/resources/rawfile/sing-box-arm64
 entry/src/main/resources/rawfile/sing-box-amd64
 
-# 内核库(构建产物)
-entry/libs/arm64-v8a/libsingbox.so
+# 注意:entry/libs/arm64-v8a/libsingbox.so 是冻结内核成品,必须入库,
+# 否则克隆后无法直接 assembleHap(重编内核需要整套 OHOS Go 工具链)。
 
 # 构建与调试产物
 core/*.log
