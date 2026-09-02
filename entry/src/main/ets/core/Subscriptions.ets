@@ -17,6 +17,8 @@ export class SubInfo {
   download: number = 0;
   total: number = 0;
   expire: number = 0;
+  // 连续更新失败次数(成功一次即清零);≥3 次跳过自动更新,由手动更新复位
+  failCount: number = 0;
 }
 
 export interface SubUpdateResult {
@@ -102,7 +104,35 @@ export async function needAutoUpdate(): Promise<Array<SubInfo>> {
     return [];
   }
   const now = Date.now();
-  return subs.filter(s => now - s.lastUpdate > AUTO_UPDATE_INTERVAL);
+  // 连续失败 ≥3 次的订阅跳过自动更新(手动更新成功后由 markSubSuccess 清零恢复)
+  return subs.filter(s => now - s.lastUpdate > AUTO_UPDATE_INTERVAL && !(Number(s.failCount) >= 3));
+}
+
+/** 记录订阅更新成功:失败计数清零,恢复自动更新资格 */
+export async function markSubSuccess(url: string): Promise<void> {
+  const list = await listSubs();
+  let changed = false;
+  for (const s of list) {
+    if (s.url === url && Number(s.failCount) !== 0) {
+      s.failCount = 0;
+      changed = true;
+    }
+  }
+  if (changed) {
+    await saveSubs(list);
+  }
+}
+
+/** 记录订阅更新失败:失败计数 +1(由调用方在 catch 中调用) */
+export async function markSubFailure(url: string): Promise<void> {
+  const list = await listSubs();
+  for (const s of list) {
+    if (s.url === url) {
+      const cur = Number(s.failCount);
+      s.failCount = (isNaN(cur) ? 0 : cur) + 1;
+    }
+  }
+  await saveSubs(list);
 }
 
 function genId(): string {

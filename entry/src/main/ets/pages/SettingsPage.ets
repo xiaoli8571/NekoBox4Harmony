@@ -4,7 +4,7 @@ import promptAction from '@ohos.promptAction';
 import pasteboard from '@ohos.pasteboard';
 import { AppSettings } from '../model/Profile';
 import { initStore, loadSettings, saveSettings, LogStore } from '../model/Store';
-import { SubInfo, listSubs, updateSubscription, removeSub } from '../core/Subscriptions';
+import { SubInfo, listSubs, updateSubscription, removeSub, markSubSuccess, markSubFailure } from '../core/Subscriptions';
 import { formatBytes } from '../utils/TrafficStats';
 import { exportBackup, importBackup } from '../core/Backup';
 import { getClipboardText } from '../utils/ClipboardHelper';
@@ -77,9 +77,12 @@ struct SettingsPage {
     promptAction.showToast({ message: '正在更新订阅…' });
     try {
       const r = await updateSubscription(sub.url);
+      await markSubSuccess(sub.url);
       promptAction.showToast({ message: `订阅已更新:新增 ${r.added},移除 ${r.removed}` });
       this.subs = await listSubs();
     } catch (e) {
+      await markSubFailure(sub.url);
+      this.subs = await listSubs();
       const msg = e instanceof Error ? e.message : `${e}`;
       promptAction.showToast({ message: `更新失败: ${msg}` });
     } finally {
@@ -120,6 +123,17 @@ struct SettingsPage {
               : this.s.mode === 'global' ? '所有流量走代理' : '私网与自定义列表直连,其余走代理')
               .fontSize(11).fontColor('#999').width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
+
+          Row() {
+            Column() {
+              Text('自定义路由规则').fontSize(14)
+              Text('按域名、IP、端口指定代理、直连或拒绝').fontSize(11).fontColor('#999')
+            }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+            Text('进入 ›').fontSize(14).fontColor('#1E88E5')
+          }
+          .width('100%')
+          .padding({ top: 8, bottom: 8 })
+          .onClick(() => router.pushUrl({ url: 'pages/RouteRulesPage' }))
 
           if (this.s.mode === 'rule') {
             Column() {

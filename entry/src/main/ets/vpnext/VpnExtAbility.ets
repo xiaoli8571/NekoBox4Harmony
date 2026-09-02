@@ -9,6 +9,7 @@ import BusinessError from '@ohos.base';
 import { Profile, AppSettings } from '../model/Profile';
 import { initStore, loadProfiles, loadSettings, getPendingProfileId, setPendingProfileId, clearPendingProfileId, setRunningProfileId, LogStore } from '../model/Store';
 import { buildCoreConfig } from '../core/ConfigBuilder';
+import { loadRouteRules, RouteRule } from '../model/RouteRule';
 import { CoreManager } from '../core/CoreManager';
 import { publishVpnLog, publishVpnStatus } from '../core/VpnIpc';
 import { geoReady, geoSitePath as geoSiteFile, geoIpPath as geoIpFile } from '../utils/GeoAssets';
@@ -254,7 +255,18 @@ export default class VpnExtAbility extends VpnExtensionAbility {
         // ignore
       }
     }
-    const configJson = buildCoreConfig(profile, settings, ifname, logPath, geositePath, geoIpPath);
+    // 自定义路由规则(仅追加注入,不改变 DNS 与出站结构)
+    let customRules: Array<RouteRule> = [];
+    try {
+      customRules = await loadRouteRules();
+      const enabledCount = customRules.filter((r: RouteRule) => r.enabled).length;
+      if (enabledCount > 0) {
+        LogStore.addLog(`[vpn] 注入自定义路由规则 ${enabledCount} 条`);
+      }
+    } catch (e) {
+      LogStore.addLog('[vpn] 读取自定义路由规则失败,本次连接忽略');
+    }
+    const configJson = buildCoreConfig(profile, settings, ifname, logPath, geositePath, geoIpPath, customRules);
     const configPath = CoreManager.writeConfigFile(context, configJson);
     LogStore.addLog(`[vpn] sing-box 配置已写入 ${configPath}`);
 

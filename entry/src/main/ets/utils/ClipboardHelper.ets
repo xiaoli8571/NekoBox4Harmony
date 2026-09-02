@@ -6,6 +6,12 @@ import pasteboard from '@ohos.pasteboard';
  *  2) 逐条记录 convertToText(兼容 URI/HTML 等记录类型)
  * 取不到返回空串,由调用方提示。
  */
+
+/** 写入纯文本到系统剪贴板(分享链接 / 复制节点等) */
+export async function setClipboardText(text: string): Promise<void> {
+  const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
+  await pasteboard.getSystemPasteboard().setData(data);
+}
 export async function getClipboardText(): Promise<string> {
   let data: pasteboard.PasteData;
   try {

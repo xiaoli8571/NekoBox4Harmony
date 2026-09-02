@@ -4,6 +4,8 @@
     "pages/ProfileEdit",
     "pages/SettingsPage",
     "pages/LogPage",
-    "pages/ConnectionsPage"
+    "pages/ConnectionsPage",
+    "pages/SubDetailPage",
+    "pages/RouteRulesPage"
   ]
 }

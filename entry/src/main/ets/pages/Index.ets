@@ -5,11 +5,13 @@ import { Profile, AppSettings, profileTypeLabel } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, loadSettings, LogStore } from '../model/Store';
 import { VpnService } from '../core/VpnService';
 import { parseShareText } from '../utils/LinkParser';
-import { getClipboardText } from '../utils/ClipboardHelper';
+import { getClipboardText, setClipboardText } from '../utils/ClipboardHelper';
 import { fetchSubscriptionWithInfo, fetchSubscription, looksLikeClashYaml, parseClashProxies, ClashParseResult } from '../utils/Subscription';
-import { testProfiles } from '../utils/LatencyTester';
-import { upsertSub, needAutoUpdate, updateSubscription, setAppContext, subNameOf } from '../core/Subscriptions';
+import { testProfiles, tcpPing } from '../utils/LatencyTester';
+import { upsertSub, needAutoUpdate, updateSubscription, setAppContext, subNameOf, markSubSuccess, markSubFailure } from '../core/Subscriptions';
 import { fetchTrafficTotals, formatSpeed, formatBytes } from '../utils/TrafficStats';
+import { fetchCurrentProxyDelay } from '../utils/ClashApi';
+import { exportProfileLink } from '../utils/LinkExporter';
 
 @Entry
 @Component
@@ -120,9 +122,11 @@ struct Index {
       for (const sub of stale) {
         try {
           const r = await updateSubscription(sub.url);
+          await markSubSuccess(sub.url);
           LogStore.addLog(`[app] 订阅 ${sub.name} 自动更新:新增 ${r.added},移除 ${r.removed}`);
           this.refresh();
         } catch (e) {
+          await markSubFailure(sub.url);
           LogStore.addLog(`[app] 订阅 ${sub.name} 自动更新失败: ${e}`);
         }
       }
@@ -310,6 +314,72 @@ struct Index {
     return `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
   }
 
+  sortedProfiles(): Array<Profile> {
+    return this.profiles.slice().sort((a: Profile, b: Profile) => {
+      if (a.pinned !== b.pinned) {
+        return a.pinned ? -1 : 1;
+      }
+      const aLatency = this.latencies[a.id];
+      const bLatency = this.latencies[b.id];
+      const aValue = aLatency === undefined || aLatency < 0 ? Number.MAX_SAFE_INTEGER : aLatency;
+      const bValue = bLatency === undefined || bLatency < 0 ? Number.MAX_SAFE_INTEGER : bLatency;
+      return aValue - bValue;
+    });
+  }
+
+  sourceHost(p: Profile): string {
+    if (p.subUrl.length === 0) {
+      return '本地节点';
+    }
+    try {
+      const withoutScheme = p.subUrl.split('://').pop() ?? p.subUrl;
+      return withoutScheme.split('/')[0];
+    } catch (e) {
+      return '订阅节点';
+    }
+  }
+
+  async togglePinned(p: Profile): Promise<void> {
+    p.pinned = !p.pinned;
+    await saveProfiles(this.profiles);
+    this.profiles = this.profiles.slice();
+  }
+
+  async copyProfileLink(p: Profile): Promise<void> {
+    const link = exportProfileLink(p);
+    if (link.length === 0) {
+      promptAction.showToast({ message: '该协议暂不支持导出' });
+      return;
+    }
+    await setClipboardText(link);
+    promptAction.showToast({ message: '节点链接已复制' });
+  }
+
+  async runUrlTest(p: Profile): Promise<void> {
+    if (!this.isRunning) {
+      promptAction.showToast({ message: 'URL Test 需要先连接该节点' });
+      return;
+    }
+    const runningId = AppStorage.get<string>('vpnRunningProfileId') ?? '';
+    if (runningId !== p.id) {
+      promptAction.showToast({ message: 'URL Test 仅支持当前连接节点' });
+      return;
+    }
+    try {
+      const delay = await fetchCurrentProxyDelay();
+      const next: Record<string, number> = {};
+      for (const key of Object.keys(this.latencies)) {
+        next[key] = this.latencies[key];
+      }
+      next[p.id] = delay;
+      this.latencies = next;
+      promptAction.showToast({ message: `URL Test: ${delay}ms` });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : `${e}`;
+      promptAction.showToast({ message });
+    }
+  }
+
   deleteProfile(p: Profile): void {
     AlertDialog.show({
       message: `删除节点 "${p.name}"?`,
@@ -324,6 +394,24 @@ struct Index {
         }
       }
     });
+  }
+
+  @Builder
+  profileContextMenu(p: Profile) {
+    Column() {
+      MenuItem({ content: p.pinned ? '取消置顶' : '置顶' })
+        .onClick(() => this.togglePinned(p))
+      MenuItem({ content: 'URL Test' })
+        .onClick(() => this.runUrlTest(p))
+      MenuItem({ content: '复制分享链接' })
+        .onClick(() => this.copyProfileLink(p))
+      if (p.subUrl.length > 0) {
+        MenuItem({ content: '查看订阅' })
+          .onClick(() => router.pushUrl({ url: 'pages/SubDetailPage', params: { url: p.subUrl } }))
+      }
+      MenuItem({ content: '删除', labelInfo: '不可撤销' })
+        .onClick(() => this.deleteProfile(p))
+    }
   }
 
   build() {
@@ -366,22 +454,42 @@ struct Index {
       .width('100%')
       .padding({ left: 16, right: 8, top: 8 })
 
-      // 状态
-      Text(this.statusText)
-        .fontSize(13)
-        .fontColor(this.isRunning ? '#2E7D32' : '#757575')
-        .padding({ left: 16, bottom: 2 })
+      // 连接状态卡片
+      Column({ space: 6 }) {
+        Row({ space: 8 }) {
+          Text(this.isRunning ? '●' : '○')
+            .fontSize(16)
+            .fontColor(this.isRunning ? '#2E7D32' : '#9E9E9E')
+          Text(this.statusText)
+            .fontSize(15)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.isRunning ? '#2E7D32' : '#616161')
+            .layoutWeight(1)
+          Text(this.modeLabel())
+            .fontSize(11)
+            .fontColor('#1E88E5')
+            .backgroundColor('#E3F2FD')
+            .borderRadius(10)
+            .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+        }
+        .width('100%')
 
-      if (this.isRunning) {
-        Text(`↑ ${formatSpeed(this.upSpeed)}  ↓ ${formatSpeed(this.downSpeed)}   ·   总计 ↑ ${formatBytes(this.totalUp)} ↓ ${formatBytes(this.totalDown)}`)
-          .fontSize(11)
-          .fontColor('#666666')
-          .padding({ left: 16, bottom: 6 })
+        if (this.isRunning) {
+          Text(`↑ ${formatSpeed(this.upSpeed)}  ↓ ${formatSpeed(this.downSpeed)}   ·   总计 ↑ ${formatBytes(this.totalUp)} ↓ ${formatBytes(this.totalDown)}`)
+            .fontSize(11)
+            .fontColor('#666666')
+            .width('100%')
+        }
       }
+      .width('calc(100% - 24vp)')
+      .margin({ left: 12, right: 12, bottom: 10 })
+      .padding(12)
+      .borderRadius(12)
+      .backgroundColor('#FFFFFF')
 
       // 节点列表
       List({ space: 8 }) {
-        ForEach(this.profiles, (p: Profile) => {
+        ForEach(this.sortedProfiles(), (p: Profile) => {
           ListItem() {
             Row() {
               Radio({ value: p.id, group: 'profiles' })
@@ -429,7 +537,7 @@ struct Index {
             .padding(12)
             .borderRadius(12)
             .backgroundColor(this.selectedId === p.id ? '#E3F2FD' : '#FFFFFF')
-            .gesture(LongPressGesture().onAction(() => this.deleteProfile(p)))
+            .bindContextMenu(this.profileContextMenu(p), ResponseType.LongPress)
           }
         }, (p: Profile) => p.id)
       }

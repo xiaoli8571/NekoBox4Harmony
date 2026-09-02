@@ -76,6 +76,9 @@ export class Profile {
   subUrl: string = '';
 
   updatedAt: number = 0;
+
+  // 置顶(节点列表排序时置顶节点恒排在前)
+  pinned: boolean = false;
 }
 
 export class AppSettings {

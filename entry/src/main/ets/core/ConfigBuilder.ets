@@ -1,5 +1,6 @@
 import { Profile, AppSettings, ProfileType, supportsTransport, needsTlsByDefault } from '../model/Profile';
 import { CLASH_API_PORT } from '../utils/TrafficStats';
+import { RouteRule, ruleValueList } from '../model/RouteRule';
 
 /**
  * sing-box 1.4 配置生成器。
@@ -218,8 +219,39 @@ function buildOutbound(p: Profile, s: AppSettings): Record<string, Object> {
   return o;
 }
 
+/** 把自定义路由规则生成 sing-box 1.11 rule 对象(reject 出站改用 rule action) */
+export function buildCustomRule(r: RouteRule): Record<string, Object> | null {
+  const rule: Record<string, Object> = {};
+  if (r.type === 'port') {
+    const ports: Array<Object> = [];
+    for (const v of ruleValueList(r)) {
+      const n = parseInt(v);
+      if (!isNaN(n)) {
+        ports.push(n);
+      }
+    }
+    if (ports.length === 0) {
+      return null;
+    }
+    rule['port'] = ports;
+  } else {
+    const items: Array<string> = ruleValueList(r);
+    if (items.length === 0) {
+      return null;
+    }
+    rule[r.type] = items;
+  }
+  if (r.outbound === 'reject') {
+    rule['action'] = 'reject';
+  } else {
+    rule['outbound'] = r.outbound;
+  }
+  return rule;
+}
+
 export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: string,
-  logPath: string = '', geositePath: string = '', geoIpPath: string = ''): string {
+  logPath: string = '', geositePath: string = '', geoIpPath: string = '',
+  customRules: Array<RouteRule> = []): string {
   if (p.server.length === 0) {
     throw new Error('服务器地址为空');
   }
@@ -289,6 +321,17 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   ];
   privateRule['outbound'] = 'direct';
   const routeRules: Array<Object> = [dnsRule, privateRule];
+
+  // 自定义路由规则:插在私网直连规则之后、geosite 规则之前(私网优先),顺序即优先级
+  for (const r of customRules) {
+    if (!r.enabled) {
+      continue;
+    }
+    const rule = buildCustomRule(r);
+    if (rule !== null) {
+      routeRules.push(rule);
+    }
+  }
 
   // 模式:direct(全部直连)/ rule(规则:私网+自定义直连+CN分流,其余走代理)/ global(全部走代理)
   let finalOutbound = 'proxy';
