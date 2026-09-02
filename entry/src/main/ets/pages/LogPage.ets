@@ -74,7 +74,7 @@ struct LogPage {
     try {
       const documentPicker = new picker.DocumentViewPicker(this.context);
       const options = new picker.DocumentSaveOptions();
-      options.newFileNames = [`nekobox-${Date.now()}.log`];
+      options.newFileNames = [`NekoBox-${Date.now()}.log`];
       const uris = await documentPicker.save(options);
       if (uris.length === 0) {
         return;

@@ -332,7 +332,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
         normal: {
           title: 'VPN 已连接',
           text: nodeName,
-          additionalText: 'NekBox'
+          additionalText: 'NekoBox'
         }
       };
       const request: notificationManager.NotificationRequest = {

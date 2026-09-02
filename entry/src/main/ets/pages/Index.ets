@@ -418,7 +418,7 @@ struct Index {
     Column() {
       // 顶栏
       Row() {
-        Text('NekBox')
+        Text('NekoBox')
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .layoutWeight(1)

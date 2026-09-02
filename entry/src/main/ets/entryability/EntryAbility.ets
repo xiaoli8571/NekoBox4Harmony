@@ -10,7 +10,7 @@ import { subscribeVpnEvents } from '../core/VpnIpc';
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
-    LogStore.addLog('[app] NekBox 启动');
+    LogStore.addLog('[app] NekoBox 启动');
     initStore(this.context).catch((e: Error) => {
       LogStore.addLog(`[app] 初始化存储失败: ${e.message}`);
     });
