@@ -1,5 +1,22 @@
 {
   "color": [
-    { "name": "start_window_background", "value": "#F2F4F7" }
+    { "name": "start_window_background", "value": "#F5F7FA" },
+    { "name": "app_background", "value": "#F5F7FA" },
+    { "name": "surface", "value": "#FFFFFF" },
+    { "name": "surface_selected", "value": "#E8F1FF" },
+    { "name": "primary", "value": "#3478F6" },
+    { "name": "primary_pressed", "value": "#2364D8" },
+    { "name": "text_primary", "value": "#182230" },
+    { "name": "text_secondary", "value": "#667085" },
+    { "name": "divider", "value": "#E4E7EC" },
+    { "name": "success", "value": "#12A150" },
+    { "name": "warning", "value": "#F79009" },
+    { "name": "error", "value": "#D92D20" },
+    { "name": "protocol_vmess", "value": "#7C3AED" },
+    { "name": "protocol_vless", "value": "#2563EB" },
+    { "name": "protocol_trojan", "value": "#DB2777" },
+    { "name": "protocol_shadowsocks", "value": "#0891B2" },
+    { "name": "protocol_hysteria2", "value": "#EA580C" },
+    { "name": "protocol_tuic", "value": "#16A34A" }
   ]
 }
