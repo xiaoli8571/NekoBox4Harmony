@@ -46,8 +46,17 @@ struct RouteRulesPage {
   updateRule(index: number, field: string, value: Object): void {
     const next = this.rules.slice();
     const rule = next[index];
-    const record = rule as Record<string, Object>;
-    record[field] = value;
+    if (field === 'remark') {
+      rule.remark = value as string;
+    } else if (field === 'enabled') {
+      rule.enabled = value as boolean;
+    } else if (field === 'type') {
+      rule.type = value as string;
+    } else if (field === 'value') {
+      rule.value = value as string;
+    } else if (field === 'outbound') {
+      rule.outbound = value as string;
+    }
     next[index] = rule;
     this.rules = next;
     this.persist();
