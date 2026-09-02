@@ -416,43 +416,56 @@ struct Index {
 
   build() {
     Column() {
-      // 顶栏
-      Row() {
-        Text('NekoBox')
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .layoutWeight(1)
-        Text(`· ${this.modeLabel()}`)
-          .fontSize(13)
-          .fontColor('#1E88E5')
-          .onClick(() => {
-            router.pushUrl({ url: 'pages/SettingsPage' });
-          })
-        Text(this.testing ? '⏳' : '⚡')
-          .fontSize(20)
-          .padding(8)
+      // Android NekoBox 风格顶栏与快捷导航
+      Row({ space: 4 }) {
+        Column({ space: 2 }) {
+          Text('NekoBox')
+            .fontSize(22)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.text_primary'))
+          Text(this.modeLabel())
+            .fontSize(12)
+            .fontColor($r('app.color.primary'))
+            .onClick(() => {
+              router.pushUrl({ url: 'pages/SettingsPage' });
+            })
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+
+        Button(this.testing ? '测速中' : '测速')
+          .height(34)
+          .fontSize(12)
+          .fontColor($r('app.color.primary'))
+          .backgroundColor($r('app.color.surface_selected'))
           .onClick(() => this.runSpeedTest())
-        Text('⚙')
-          .fontSize(22)
-          .padding(8)
-          .onClick(() => {
-            router.pushUrl({ url: 'pages/SettingsPage' });
-          })
-        Text('🔗')
-          .fontSize(20)
-          .padding(8)
+        Button('连接')
+          .height(34)
+          .fontSize(12)
+          .fontColor($r('app.color.text_secondary'))
+          .backgroundColor($r('app.color.surface'))
           .onClick(() => {
             router.pushUrl({ url: 'pages/ConnectionsPage' });
           })
-        Text('📋')
-          .fontSize(20)
-          .padding(8)
+        Button('日志')
+          .height(34)
+          .fontSize(12)
+          .fontColor($r('app.color.text_secondary'))
+          .backgroundColor($r('app.color.surface'))
           .onClick(() => {
             router.pushUrl({ url: 'pages/LogPage' });
           })
+        Button('设置')
+          .height(34)
+          .fontSize(12)
+          .fontColor($r('app.color.text_secondary'))
+          .backgroundColor($r('app.color.surface'))
+          .onClick(() => {
+            router.pushUrl({ url: 'pages/SettingsPage' });
+          })
       }
       .width('100%')
-      .padding({ left: 16, right: 8, top: 8 })
+      .padding({ left: 16, right: 12, top: 12, bottom: 8 })
 
       // 连接状态卡片
       Column({ space: 6 }) {
