@@ -1,6 +1,20 @@
 {
   "app": {
-    "signingConfigs": [],
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\Administrator\\.ohos\\config\\default_NekoBox__lWi-AdR9KPIgZK9hWB_YYYaZSIU8FzTpE4P5b4MHjA=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001B0768E7050D355847E409996EA027F3278D1651BDFF39E5AAA4AEE9CC866DAA583B73E889B818BF",
+          "profile": "C:\\Users\\Administrator\\.ohos\\config\\default_NekoBox__lWi-AdR9KPIgZK9hWB_YYYaZSIU8FzTpE4P5b4MHjA=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\Administrator\\.ohos\\config\\default_NekoBox__lWi-AdR9KPIgZK9hWB_YYYaZSIU8FzTpE4P5b4MHjA=.p12",
+          "storePassword": "0000001B47901D4640DDF5BB220C7E8706F3E00A5792544FA4D17B5C561F353DBB294FED47AD86B7BC0125"
+        }
+      }
+    ],
     "products": [
       {
         "name": "default",
@@ -12,14 +26,21 @@
             "path": "./entry/src/main/cpp/CMakeLists.txt",
             "arguments": "",
             "cppFlags": "",
-            "abiFilters": ["arm64-v8a"]
+            "abiFilters": [
+              "arm64-v8a"
+            ]
           }
-        }
+        },
+        "targetSdkVersion": "26.0.0"
       }
     ],
     "buildModeSet": [
-      { "name": "debug" },
-      { "name": "release" }
+      {
+        "name": "debug"
+      },
+      {
+        "name": "release"
+      }
     ]
   },
   "modules": [
@@ -29,7 +50,9 @@
       "targets": [
         {
           "name": "default",
-          "applyToProducts": ["default"]
+          "applyToProducts": [
+            "default"
+          ]
         }
       ]
     }
