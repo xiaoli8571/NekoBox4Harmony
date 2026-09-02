@@ -72,12 +72,18 @@ export class Profile {
   // 附加 sing-box JSON(与出站对象浅合并,用于高级场景)
   extra: string = '';
 
-  // 来源订阅(自动更新用)
+  // 统一分组标识。旧数据缺少该字段时，由分组加载流程根据 subUrl 迁移。
+  groupId: string = '';
+
+  // 来源订阅 URL，保留用于兼容旧数据和订阅更新定位。
   subUrl: string = '';
 
   updatedAt: number = 0;
 
-  // 置顶(节点列表排序时置顶节点恒排在前)
+  // 组内稳定排序序号。
+  sortOrder: number = 0;
+
+  // 置顶属于本地元数据，订阅更新时必须保留。
   pinned: boolean = false;
 }
 

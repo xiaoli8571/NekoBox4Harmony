@@ -1,6 +1,7 @@
 import common from '@ohos.app.ability.common';
 import { Profile } from '../model/Profile';
-import { initStore, loadProfiles, saveProfiles, readPrefString, writePrefString } from '../model/Store';
+import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, readPrefString, writePrefString } from '../model/Store';
+import { subscriptionGroupId } from '../model/Group';
 import { fetchSubscriptionWithInfo, parseSubUserInfo, looksLikeClashYaml, parseClashProxies } from '../utils/Subscription';
 import { parseShareText } from '../utils/LinkParser';
 
@@ -17,6 +18,8 @@ export class SubInfo {
   download: number = 0;
   total: number = 0;
   expire: number = 0;
+  // 每个订阅独立的自动更新周期，默认 12 小时；设为 0 时关闭该订阅自动更新。
+  autoUpdateInterval: number = AUTO_UPDATE_INTERVAL;
   // 连续更新失败次数(成功一次即清零);≥3 次跳过自动更新,由手动更新复位
   failCount: number = 0;
 }
@@ -30,7 +33,24 @@ export interface SubUpdateResult {
 export async function listSubs(): Promise<Array<SubInfo>> {
   try {
     const raw = await readPrefString(KEY_SUBS, '[]');
-    return JSON.parse(raw) as Array<SubInfo>;
+    const parsed = JSON.parse(raw) as Array<SubInfo>;
+    const result: Array<SubInfo> = [];
+    for (const item of parsed) {
+      const info = new SubInfo();
+      info.url = item.url ?? '';
+      info.name = item.name ?? '';
+      info.lastUpdate = Number(item.lastUpdate ?? 0);
+      info.upload = Number(item.upload ?? 0);
+      info.download = Number(item.download ?? 0);
+      info.total = Number(item.total ?? 0);
+      info.expire = Number(item.expire ?? 0);
+      info.autoUpdateInterval = item.autoUpdateInterval === undefined
+        ? AUTO_UPDATE_INTERVAL
+        : Math.max(0, Number(item.autoUpdateInterval));
+      info.failCount = Math.max(0, Number(item.failCount ?? 0));
+      result.push(info);
+    }
+    return result;
   } catch (e) {
     return [];
   }
@@ -104,8 +124,12 @@ export async function needAutoUpdate(): Promise<Array<SubInfo>> {
     return [];
   }
   const now = Date.now();
-  // 连续失败 ≥3 次的订阅跳过自动更新(手动更新成功后由 markSubSuccess 清零恢复)
-  return subs.filter(s => now - s.lastUpdate > AUTO_UPDATE_INTERVAL && !(Number(s.failCount) >= 3));
+  // 连续失败 ≥3 次的订阅跳过自动更新；每个订阅使用独立周期，0 表示关闭自动更新。
+  return subs.filter(s => {
+    const configured = Number(s.autoUpdateInterval);
+    const interval = isNaN(configured) ? AUTO_UPDATE_INTERVAL : configured;
+    return interval > 0 && now - s.lastUpdate > interval && !(Number(s.failCount) >= 3);
+  });
 }
 
 /** 记录订阅更新成功:失败计数清零,恢复自动更新资格 */
@@ -135,11 +159,33 @@ export async function markSubFailure(url: string): Promise<void> {
   await saveSubs(list);
 }
 
+function stableNodeKey(profile: Profile): string {
+  return [
+    profile.type,
+    profile.server,
+    `${profile.serverPort}`,
+    profile.uuid,
+    profile.username,
+    profile.method,
+    profile.transport,
+    profile.path,
+    profile.host,
+    profile.serviceName,
+    profile.sni
+  ].join('\n');
+}
+
+function copyLocalMetadata(target: Profile, source: Profile): void {
+  target.id = source.id;
+  target.pinned = source.pinned;
+  target.sortOrder = source.sortOrder;
+}
+
 function genId(): string {
   return `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
 }
 
-/** 更新单个订阅:下载 → 解析 → 原子替换该订阅的节点(保留运行中节点);同时记录流量/到期 */
+/** 更新单个订阅:下载 → 解析 → 按稳定节点身份原子替换，并保留运行节点及本地元数据 */
 export async function updateSubscription(url: string): Promise<SubUpdateResult> {
   const fetched = await fetchSubscriptionWithInfo(url);
   const content = fetched.content;
@@ -154,31 +200,47 @@ export async function updateSubscription(url: string): Promise<SubUpdateResult> 
   }
   await initStore(globalContext());
   const profiles = await loadProfiles();
+  const groups = await loadGroups(profiles);
+  const groupId = subscriptionGroupId(url);
   const runningId = AppStorage.get<string>('vpnRunningProfileId') ?? '';
+  const oldNodes = profiles.filter(p => p.subUrl === url);
+  const oldByKey: Record<string, Profile> = {};
+  for (const oldNode of oldNodes) {
+    oldByKey[stableNodeKey(oldNode)] = oldNode;
+  }
 
-  const kept: Array<Profile> = [];
-  let removed = 0;
-  for (const p of profiles) {
-    if (p.subUrl === url && p.id !== runningId) {
-      removed++;
-      continue;
-    }
-    kept.push(p);
-  }
+  const replacements: Array<Profile> = [];
   let added = 0;
-  for (const p of parsed) {
-    const dup = kept.find(x => x.type === p.type && x.server === p.server
-      && x.serverPort === p.serverPort && x.uuid === p.uuid);
-    if (dup !== undefined) {
-      continue;
+  for (let i = 0; i < parsed.length; i++) {
+    const node = parsed[i];
+    const oldNode = oldByKey[stableNodeKey(node)];
+    if (oldNode !== undefined) {
+      copyLocalMetadata(node, oldNode);
+    } else {
+      node.id = `${genId()}_${i}`;
+      node.sortOrder = i;
+      added++;
     }
-    p.id = `${genId()}_${added}`;
-    p.subUrl = url;
-    p.updatedAt = Date.now();
-    kept.push(p);
-    added++;
+    node.subUrl = url;
+    node.groupId = groupId;
+    node.updatedAt = Date.now();
+    replacements.push(node);
   }
-  await saveProfiles(kept);
+
+  const runningNode = oldNodes.find(p => p.id === runningId);
+  if (runningNode !== undefined && replacements.find(p => p.id === runningId) === undefined) {
+    replacements.push(runningNode);
+  }
+  const nextProfiles = profiles.filter(p => p.subUrl !== url).concat(replacements);
+  const removed = oldNodes.filter(oldNode => replacements.find(node => node.id === oldNode.id) === undefined).length;
+  await saveProfiles(nextProfiles);
+
+  const group = groups.find(item => item.id === groupId);
+  if (group !== undefined) {
+    group.subscriptionUrl = url;
+    group.updatedAt = Date.now();
+    await saveGroups(groups);
+  }
   await touchSub(url);
   // 记录订阅流量/到期信息(响应头 subscription-userinfo)
   if (fetched.userinfo.length > 0) {
@@ -196,7 +258,7 @@ export async function updateSubscription(url: string): Promise<SubUpdateResult> 
       await saveSubs(subs);
     }
   }
-  const result: SubUpdateResult = { added: added, removed: removed, total: kept.length };
+  const result: SubUpdateResult = { added: added, removed: removed, total: replacements.length };
   return result;
 }
 
