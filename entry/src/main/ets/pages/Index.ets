@@ -350,7 +350,10 @@ struct Index {
   async copyProfileLink(p: Profile): Promise<void> {
     const link = exportProfileLink(p);
     if (link.length === 0) {
-      promptAction.showToast({ message: '该协议暂不支持导出' });
+      const message = p.type === 'wireguard'
+        ? 'WireGuard 暂不支持导出分享链接，请使用备份功能迁移节点配置'
+        : '该协议暂不支持导出分享链接';
+      promptAction.showToast({ message });
       return;
     }
     await setClipboardText(link);
@@ -383,6 +386,11 @@ struct Index {
   }
 
   deleteProfile(p: Profile): void {
+    const runningId = AppStorage.get<string>('vpnRunningProfileId') ?? '';
+    if (runningId === p.id) {
+      promptAction.showToast({ message: '当前节点正在运行，请先断开 VPN 再删除' });
+      return;
+    }
     AlertDialog.show({
       message: `删除节点 "${p.name}"?`,
       primaryButton: {
@@ -556,6 +564,11 @@ struct Index {
                 .fontSize(18)
                 .padding(8)
                 .onClick(() => {
+                  const runningId = AppStorage.get<string>('vpnRunningProfileId') ?? '';
+                  if (runningId === p.id) {
+                    promptAction.showToast({ message: '当前节点正在运行，请先断开 VPN 再编辑' });
+                    return;
+                  }
                   AppStorage.setOrCreate('editProfileId', p.id);
                   router.pushUrl({ url: 'pages/ProfileEdit' });
                 })

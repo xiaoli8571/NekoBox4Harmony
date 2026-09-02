@@ -25,3 +25,6 @@ core/toolchain-build.log
 dist/
 core/sing-box-1.11
 .hermes/
+
+# Session-local task notes
+*_TODO.md
