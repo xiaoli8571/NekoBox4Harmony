@@ -67,6 +67,7 @@ function parseConnections(raw: string): Array<ConnItem> {
 struct ConnectionsPage {
   @State conns: Array<ConnItem> = [];
   @State lastError: string = '';
+  @State loading: boolean = true;
   private timer: number = -1;
 
   aboutToAppear(): void {
@@ -90,6 +91,8 @@ struct ConnectionsPage {
       this.lastError = '';
     } catch (e) {
       this.lastError = '无法连接内核 API(VPN 未运行?)';
+    } finally {
+      this.loading = false;
     }
   }
 
@@ -113,8 +116,49 @@ struct ConnectionsPage {
       }
       .width('100%').padding(12)
 
-      if (this.lastError.length > 0) {
-        Text(this.lastError).fontSize(13).fontColor('#E53935').padding(12)
+      if (this.loading) {
+        Column({ space: 10 }) {
+          LoadingProgress()
+            .width(32)
+            .height(32)
+            .color($r('app.color.primary'))
+          Text('正在加载连接…')
+            .fontSize(13)
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .width('100%')
+        .padding({ top: 36, bottom: 20 })
+      } else if (this.lastError.length > 0) {
+        Column({ space: 8 }) {
+          Text('连接信息暂不可用')
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_primary'))
+          Text(this.lastError)
+            .fontSize(13)
+            .fontColor($r('app.color.error'))
+          Button('重新加载')
+            .height(36)
+            .backgroundColor($r('app.color.primary'))
+            .onClick(() => {
+              this.loading = true;
+              this.refresh();
+            })
+        }
+        .width('100%')
+        .padding({ top: 28, bottom: 20 })
+      } else if (this.conns.length === 0) {
+        Column({ space: 8 }) {
+          Text('暂无活动连接')
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_primary'))
+          Text('启动 VPN 并访问网络后，连接会显示在这里。')
+            .fontSize(13)
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .width('100%')
+        .padding({ top: 36, bottom: 20 })
       }
 
       List({ space: 6 }) {
