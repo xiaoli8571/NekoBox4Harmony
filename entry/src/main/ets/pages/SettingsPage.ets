@@ -365,6 +365,36 @@ struct SettingsPage {
 
           Blank().height(2)
 
+          Column({ space: 10 }) {
+            Text('外观与交互').fontSize(14).fontWeight(FontWeight.Medium).width('100%')
+            Row() {
+              Column() {
+                Text('触感交互').fontSize(14)
+                Text('为主要按钮、卡片和工具栏操作启用按压反馈').fontSize(11).fontColor('#999')
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.tactileInteraction })
+                .onChange((v: boolean) => {
+                  this.s.tactileInteraction = v;
+                  this.save(true);
+                })
+            }.width('100%')
+            Row() {
+              Column() {
+                Text('液态玻璃').fontSize(14)
+                Text('为主页顶部、状态卡、节点卡、按钮和导入弹窗启用半透明玻璃外观').fontSize(11).fontColor('#999')
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.liquidGlass })
+                .onChange((v: boolean) => {
+                  this.s.liquidGlass = v;
+                  this.save(true);
+                })
+            }.width('100%')
+            Text('外观设置立即生效；日志页始终保持固定深色主题。')
+              .fontSize(11).fontColor('#999').width('100%')
+          }.alignItems(HorizontalAlign.Start).width('100%')
+
+          Blank().height(2)
+
           Row() {
             Column() {
               Text('全局放行不安全 TLS').fontSize(14)

@@ -94,6 +94,8 @@ export class AppSettings {
   autoUpdateSubs: boolean = true;      // 启动时自动更新超过 12h 的订阅
   perAppMode: string = 'off';          // off / exclude(排除这些应用) / include(仅这些应用走代理)
   perAppList: string = '';             // 应用包名,逗号分隔(如 com.huawei.hmos.browser)
+  tactileInteraction: boolean = true;  // 主要交互启用按压反馈与轻量缩放
+  liquidGlass: boolean = true;         // 主页卡片、按钮和弹窗启用液态玻璃外观
 }
 
 export function profileTypeLabel(type: string): string {

@@ -227,6 +227,8 @@ struct Index {
   private importDialog: CustomDialogController = new CustomDialogController({
     builder: ImportDialog({
       text: $importText,
+      liquidGlass: this.settings.liquidGlass,
+      tactileInteraction: this.settings.tactileInteraction,
       onImport: (t: string) => {
         this.doImport(t);
       },
@@ -437,13 +439,15 @@ struct Index {
           .height(34)
           .fontSize(12)
           .fontColor($r('app.color.primary'))
-          .backgroundColor($r('app.color.surface_selected'))
+          .backgroundColor(this.settings.liquidGlass ? '#CCE3F2FD' : $r('app.color.surface_selected'))
+          .stateEffect(this.settings.tactileInteraction)
           .onClick(() => this.runSpeedTest())
         Button('连接')
           .height(34)
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(this.settings.liquidGlass ? '#CCFFFFFF' : $r('app.color.surface'))
+          .stateEffect(this.settings.tactileInteraction)
           .onClick(() => {
             router.pushUrl({ url: 'pages/ConnectionsPage' });
           })
@@ -451,7 +455,8 @@ struct Index {
           .height(34)
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(this.settings.liquidGlass ? '#CCFFFFFF' : $r('app.color.surface'))
+          .stateEffect(this.settings.tactileInteraction)
           .onClick(() => {
             router.pushUrl({ url: 'pages/LogPage' });
           })
@@ -459,13 +464,19 @@ struct Index {
           .height(34)
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(this.settings.liquidGlass ? '#CCFFFFFF' : $r('app.color.surface'))
+          .stateEffect(this.settings.tactileInteraction)
           .onClick(() => {
             router.pushUrl({ url: 'pages/SettingsPage' });
           })
       }
       .width('100%')
       .padding({ left: 16, right: 12, top: 12, bottom: 8 })
+      .borderRadius(this.settings.liquidGlass ? 18 : 0)
+      .backgroundColor(this.settings.liquidGlass ? '#CCFFFFFF' : '#00FFFFFF')
+      .border(this.settings.liquidGlass ? { width: 1, color: '#80FFFFFF' } : { width: 0, color: '#00FFFFFF' })
+      .shadow(this.settings.liquidGlass ? { radius: 18, color: '#18000000', offsetX: 0, offsetY: 6 } : { radius: 0, color: '#00000000', offsetX: 0, offsetY: 0 })
+      .stateEffect(this.settings.tactileInteraction)
 
       // 连接状态卡片
       Column({ space: 6 }) {
@@ -497,8 +508,11 @@ struct Index {
       .width('calc(100% - 24vp)')
       .margin({ left: 12, right: 12, bottom: 10 })
       .padding(12)
-      .borderRadius(12)
-      .backgroundColor('#FFFFFF')
+      .borderRadius(this.settings.liquidGlass ? 18 : 12)
+      .backgroundColor(this.settings.liquidGlass ? '#CCFFFFFF' : '#FFFFFF')
+      .border(this.settings.liquidGlass ? { width: 1, color: '#80FFFFFF' } : { width: 0, color: '#00FFFFFF' })
+      .shadow(this.settings.liquidGlass ? { radius: 16, color: '#16000000', offsetX: 0, offsetY: 5 } : { radius: 0, color: '#00000000', offsetX: 0, offsetY: 0 })
+      .stateEffect(this.settings.tactileInteraction)
 
       // 节点列表
       List({ space: 8 }) {
@@ -548,8 +562,13 @@ struct Index {
             }
             .width('100%')
             .padding(12)
-            .borderRadius(12)
-            .backgroundColor(this.selectedId === p.id ? '#E3F2FD' : '#FFFFFF')
+            .borderRadius(this.settings.liquidGlass ? 18 : 12)
+            .backgroundColor(this.selectedId === p.id
+              ? (this.settings.liquidGlass ? '#CCE3F2FD' : '#E3F2FD')
+              : (this.settings.liquidGlass ? '#CCFFFFFF' : '#FFFFFF'))
+            .border(this.settings.liquidGlass ? { width: 1, color: '#80FFFFFF' } : { width: 0, color: '#00FFFFFF' })
+            .shadow(this.settings.liquidGlass ? { radius: 12, color: '#12000000', offsetX: 0, offsetY: 4 } : { radius: 0, color: '#00000000', offsetX: 0, offsetY: 0 })
+            .stateEffect(this.settings.tactileInteraction)
             .bindContextMenu(this.profileContextMenu(p), ResponseType.LongPress)
           }
         }, (p: Profile) => p.id)
@@ -568,7 +587,12 @@ struct Index {
         Button(this.isRunning ? '断开连接' : '启动 VPN')
           .layoutWeight(1)
           .height(46)
-          .backgroundColor(this.isRunning ? $r('app.color.error') : $r('app.color.primary'))
+          .backgroundColor(this.settings.liquidGlass
+            ? (this.isRunning ? '#DDE53935' : '#DD1E88E5')
+            : (this.isRunning ? $r('app.color.error') : $r('app.color.primary')))
+          .border(this.settings.liquidGlass ? { width: 1, color: '#80FFFFFF' } : { width: 0, color: '#00FFFFFF' })
+          .shadow(this.settings.liquidGlass ? { radius: 16, color: '#26000000', offsetX: 0, offsetY: 5 } : { radius: 0, color: '#00000000', offsetX: 0, offsetY: 0 })
+          .stateEffect(this.settings.tactileInteraction)
           .onClick(() => {
             if (this.isRunning) {
               this.disconnect();
@@ -587,9 +611,11 @@ struct Index {
           .height(52)
           .fontSize(28)
           .fontColor('#FFFFFF')
-          .backgroundColor($r('app.color.primary'))
+          .backgroundColor(this.settings.liquidGlass ? '#DD1E88E5' : $r('app.color.primary'))
           .borderRadius(26)
-          .shadow({ radius: 8, color: '#40000000', offsetX: 0, offsetY: 3 })
+          .border(this.settings.liquidGlass ? { width: 1, color: '#A0FFFFFF' } : { width: 0, color: '#00FFFFFF' })
+          .shadow(this.settings.liquidGlass ? { radius: 18, color: '#30000000', offsetX: 0, offsetY: 6 } : { radius: 8, color: '#40000000', offsetX: 0, offsetY: 3 })
+          .stateEffect(this.settings.tactileInteraction)
           .onClick(() => {
             AppStorage.setOrCreate('editProfileId', '');
             router.pushUrl({ url: 'pages/ProfileEdit' });
@@ -610,6 +636,8 @@ struct Index {
 struct ImportDialog {
   controller?: CustomDialogController;
   @Link text: string;
+  liquidGlass: boolean = true;
+  tactileInteraction: boolean = true;
   onImport: (t: string) => void = (t: string) => {
   };
   onPickClipboard: () => void = () => {
@@ -630,8 +658,9 @@ struct ImportDialog {
         })
       Row({ space: 8 }) {
         Button('取消')
-          .backgroundColor('#F5F5F5')
+          .backgroundColor(this.liquidGlass ? '#CCFFFFFF' : '#F5F5F5')
           .fontColor('#333333')
+          .stateEffect(this.tactileInteraction)
           .onClick(() => {
             if (this.controller !== undefined) {
               this.controller.close();
@@ -639,11 +668,13 @@ struct ImportDialog {
           })
         Blank()
         Button('从剪贴板读取')
-          .backgroundColor('#F5F5F5')
+          .backgroundColor(this.liquidGlass ? '#CCFFFFFF' : '#F5F5F5')
           .fontColor('#333333')
+          .stateEffect(this.tactileInteraction)
           .onClick(() => this.onPickClipboard())
         Button('导入')
-          .backgroundColor('#1E88E5')
+          .backgroundColor(this.liquidGlass ? '#DD1E88E5' : '#1E88E5')
+          .stateEffect(this.tactileInteraction)
           .onClick(() => {
             const t = this.text;
             if (this.controller !== undefined) {
@@ -656,5 +687,10 @@ struct ImportDialog {
     }
     .padding(16)
     .width('100%')
+    .borderRadius(this.liquidGlass ? 22 : 12)
+    .backgroundColor(this.liquidGlass ? '#E6FFFFFF' : '#FFFFFF')
+    .border(this.liquidGlass ? { width: 1, color: '#A0FFFFFF' } : { width: 0, color: '#00FFFFFF' })
+    .shadow(this.liquidGlass ? { radius: 24, color: '#28000000', offsetX: 0, offsetY: 8 } : { radius: 0, color: '#00000000', offsetX: 0, offsetY: 0 })
+    .stateEffect(this.tactileInteraction)
   }
 }
