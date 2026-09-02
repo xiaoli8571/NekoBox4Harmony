@@ -6,13 +6,23 @@ import { RouteRule, loadRouteRules, saveRouteRules } from '../model/RouteRule';
 @Component
 struct RouteRulesPage {
   @State rules: Array<RouteRule> = [];
+  @State loading: boolean = true;
+  @State loadError: string = '';
 
   aboutToAppear(): void {
     this.load();
   }
 
   async load(): Promise<void> {
-    this.rules = await loadRouteRules();
+    this.loading = true;
+    this.loadError = '';
+    try {
+      this.rules = await loadRouteRules();
+    } catch (e) {
+      this.loadError = e instanceof Error ? e.message : `${e}`;
+    } finally {
+      this.loading = false;
+    }
   }
 
   async persist(): Promise<void> {
@@ -69,6 +79,48 @@ struct RouteRulesPage {
         Text('自定义路由规则').fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
         Button('添加').height(34).onClick(() => this.addRule())
       }.width('100%').padding(12)
+
+      if (this.loading) {
+        Column({ space: 10 }) {
+          LoadingProgress()
+            .width(32)
+            .height(32)
+            .color($r('app.color.primary'))
+          Text('正在加载路由规则…')
+            .fontSize(13)
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .width('100%')
+        .padding({ top: 36, bottom: 20 })
+      } else if (this.loadError.length > 0) {
+        Column({ space: 8 }) {
+          Text('路由规则加载失败')
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_primary'))
+          Text(this.loadError)
+            .fontSize(13)
+            .fontColor($r('app.color.error'))
+          Button('重新加载')
+            .height(36)
+            .backgroundColor($r('app.color.primary'))
+            .onClick(() => this.load())
+        }
+        .width('100%')
+        .padding({ top: 28, bottom: 20 })
+      } else if (this.rules.length === 0) {
+        Column({ space: 8 }) {
+          Text('暂无自定义路由规则')
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_primary'))
+          Text('点击右上角“添加”创建第一条规则。')
+            .fontSize(13)
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .width('100%')
+        .padding({ top: 36, bottom: 20 })
+      }
 
       List({ space: 10 }) {
         ForEach(this.rules, (rule: RouteRule, index: number) => {

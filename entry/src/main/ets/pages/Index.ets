@@ -558,41 +558,46 @@ struct Index {
       .width('100%')
       .padding({ left: 12, right: 12 })
 
-      // 底部操作区
+      // 底部主操作与独立悬浮按钮
       Row({ space: 10 }) {
         Button('导入链接')
-          .backgroundColor('#F5F5F5')
-          .fontColor('#333333')
+          .backgroundColor($r('app.color.surface'))
+          .fontColor($r('app.color.text_primary'))
           .onClick(() => this.openImportDialog())
-        Button('新建节点')
-          .backgroundColor('#F5F5F5')
-          .fontColor('#333333')
+
+        Button(this.isRunning ? '断开连接' : '启动 VPN')
+          .layoutWeight(1)
+          .height(46)
+          .backgroundColor(this.isRunning ? $r('app.color.error') : $r('app.color.primary'))
+          .onClick(() => {
+            if (this.isRunning) {
+              this.disconnect();
+            } else {
+              const target = this.profiles.find(x => x.id === this.selectedId);
+              if (target === undefined) {
+                promptAction.showToast({ message: '请先选择或创建一个节点' });
+                return;
+              }
+              this.connectTo(target);
+            }
+          })
+
+        Button('+')
+          .width(52)
+          .height(52)
+          .fontSize(28)
+          .fontColor('#FFFFFF')
+          .backgroundColor($r('app.color.primary'))
+          .borderRadius(26)
+          .shadow({ radius: 8, color: '#40000000', offsetX: 0, offsetY: 3 })
           .onClick(() => {
             AppStorage.setOrCreate('editProfileId', '');
             router.pushUrl({ url: 'pages/ProfileEdit' });
           })
       }
       .width('100%')
-      .justifyContent(FlexAlign.Center)
-      .padding({ top: 8 })
-
-      Button(this.isRunning ? '断开连接' : '启动 VPN')
-        .width('90%')
-        .height(46)
-        .margin({ top: 10, bottom: 20 })
-        .backgroundColor(this.isRunning ? '#E53935' : '#1E88E5')
-        .onClick(() => {
-          if (this.isRunning) {
-            this.disconnect();
-          } else {
-            const target = this.profiles.find(x => x.id === this.selectedId);
-            if (target === undefined) {
-              promptAction.showToast({ message: '请先选择或创建一个节点' });
-              return;
-            }
-            this.connectTo(target);
-          }
-        })
+      .alignItems(VerticalAlign.Center)
+      .padding({ left: 16, right: 16, top: 10, bottom: 20 })
     }
     .width('100%')
     .height('100%')

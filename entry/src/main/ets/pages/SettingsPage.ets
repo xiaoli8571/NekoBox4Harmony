@@ -25,14 +25,27 @@ struct SettingsPage {
   @State updatingUrl: string = '';
   @State geoOk: boolean = false;
   @State geoLoading: boolean = false;
+  @State loading: boolean = true;
+  @State loadError: string = '';
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear(): void {
-    initStore(this.context).then(async () => {
+    this.load();
+  }
+
+  async load(): Promise<void> {
+    this.loading = true;
+    this.loadError = '';
+    try {
+      await initStore(this.context);
       this.s = await loadSettings();
       this.subs = await listSubs();
       this.geoOk = geoReady(this.context);
-    });
+    } catch (e) {
+      this.loadError = e instanceof Error ? e.message : `${e}`;
+    } finally {
+      this.loading = false;
+    }
   }
 
   async downloadGeo(): Promise<void> {
@@ -101,6 +114,36 @@ struct SettingsPage {
         Button('保存').height(34).onClick(() => this.save())
       }
       .width('100%').padding(12)
+
+      if (this.loading) {
+        Column({ space: 10 }) {
+          LoadingProgress()
+            .width(32)
+            .height(32)
+            .color($r('app.color.primary'))
+          Text('正在加载设置…')
+            .fontSize(13)
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .width('100%')
+        .padding({ top: 36, bottom: 20 })
+      } else if (this.loadError.length > 0) {
+        Column({ space: 8 }) {
+          Text('设置加载失败')
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_primary'))
+          Text(this.loadError)
+            .fontSize(13)
+            .fontColor($r('app.color.error'))
+          Button('重新加载')
+            .height(36)
+            .backgroundColor($r('app.color.primary'))
+            .onClick(() => this.load())
+        }
+        .width('100%')
+        .padding({ top: 28, bottom: 20 })
+      }
 
       Scroll() {
         Column({ space: 14 }) {
