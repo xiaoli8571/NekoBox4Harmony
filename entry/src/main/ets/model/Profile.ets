@@ -72,18 +72,12 @@ export class Profile {
   // 附加 sing-box JSON(与出站对象浅合并,用于高级场景)
   extra: string = '';
 
-  // 统一分组标识。旧数据缺少该字段时，由分组加载流程根据 subUrl 迁移。
-  groupId: string = '';
-
-  // 来源订阅 URL，保留用于兼容旧数据和订阅更新定位。
+  // 来源订阅(自动更新用)
   subUrl: string = '';
 
   updatedAt: number = 0;
 
-  // 组内稳定排序序号。
-  sortOrder: number = 0;
-
-  // 置顶属于本地元数据，订阅更新时必须保留。
+  // 置顶(节点列表排序时置顶节点恒排在前)
   pinned: boolean = false;
 }
 
@@ -100,8 +94,6 @@ export class AppSettings {
   autoUpdateSubs: boolean = true;      // 启动时自动更新超过 12h 的订阅
   perAppMode: string = 'off';          // off / exclude(排除这些应用) / include(仅这些应用走代理)
   perAppList: string = '';             // 应用包名,逗号分隔(如 com.huawei.hmos.browser)
-  tactileInteraction: boolean = true;  // 主要交互启用按压反馈与轻量缩放
-  liquidGlass: boolean = true;         // 主页卡片、按钮和弹窗启用液态玻璃外观
 }
 
 export function profileTypeLabel(type: string): string {

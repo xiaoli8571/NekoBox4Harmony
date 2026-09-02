@@ -12,8 +12,6 @@ const ALL_TYPES: Array<string> = [
   ProfileType.HTTP, ProfileType.SOCKS
 ];
 const TRANSPORTS: Array<string> = ['', 'ws', 'grpc', 'http', 'httpupgrade', 'quic'];
-const UUID_PATTERN: RegExp = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
-const REALITY_SHORT_ID_PATTERN: RegExp = /^([0-9a-fA-F]{2}){1,8}$/;
 
 @Entry
 @Component
@@ -39,77 +37,14 @@ struct ProfileEdit {
     });
   }
 
-  validationError(): string {
-    if (this.p.server.trim().length === 0) {
-      return '服务器地址不能为空';
-    }
-    if (!Number.isInteger(this.p.serverPort) || this.p.serverPort < 1 || this.p.serverPort > 65535) {
-      return '端口必须是 1 到 65535 之间的整数';
-    }
-    if (this.p.type === ProfileType.SHADOWSOCKS) {
-      if (this.p.method.trim().length === 0) return 'Shadowsocks 加密方式不能为空';
-      if (this.p.password.length === 0) return 'Shadowsocks 密码不能为空';
-    }
-    if (this.p.type === ProfileType.VMESS || this.p.type === ProfileType.VLESS || this.p.type === ProfileType.TUIC) {
-      if (this.p.uuid.trim().length === 0) return `${profileTypeLabel(this.p.type)} UUID 不能为空`;
-      if (!UUID_PATTERN.test(this.p.uuid.trim())) return `${profileTypeLabel(this.p.type)} UUID 格式无效`;
-    }
-    if (this.p.type === ProfileType.TROJAN && this.p.password.length === 0) {
-      return 'Trojan 密码不能为空';
-    }
-    if (this.p.type === ProfileType.HYSTERIA && this.p.password.length === 0) {
-      return 'Hysteria 认证字符串不能为空';
-    }
-    if (this.p.type === ProfileType.HYSTERIA2 && this.p.password.length === 0) {
-      return 'Hysteria2 密码不能为空';
-    }
-    if (this.p.type === ProfileType.WIREGUARD) {
-      if (this.p.localAddress.trim().length === 0) return 'WireGuard 本地地址不能为空';
-      if (this.p.privateKey.trim().length === 0) return 'WireGuard 本机私钥不能为空';
-      if (this.p.peerPublicKey.trim().length === 0) return 'WireGuard 对端公钥不能为空';
-    }
-    if (this.p.realityPublicKey.trim().length > 0) {
-      if (!this.p.tls) return '使用 REALITY 时必须启用 TLS';
-      if (this.p.sni.trim().length === 0) return '使用 REALITY 时 SNI 不能为空';
-      if (this.p.realityShortId.trim().length > 0 && !REALITY_SHORT_ID_PATTERN.test(this.p.realityShortId.trim())) {
-        return 'REALITY short_id 必须是 2 到 16 位偶数长度十六进制字符';
-      }
-    } else if (this.p.realityShortId.trim().length > 0) {
-      return '填写 REALITY short_id 前必须填写 REALITY 公钥';
-    }
-    if (this.p.extra.trim().length > 0) {
-      try {
-        const extra = JSON.parse(this.p.extra) as Object;
-        if (extra === null || Array.isArray(extra) || typeof extra !== 'object') {
-          return '高级 JSON 必须是 JSON 对象，例如 {"dialer":{}}';
-        }
-      } catch (e) {
-        const message = e instanceof Error ? e.message : `${e}`;
-        return `高级 JSON 格式无效: ${message}`;
-      }
-    }
-    return '';
-  }
-
   async save(): Promise<void> {
-    const runningId = AppStorage.get<string>('vpnRunningProfileId') ?? '';
-    if (!this.isNew && runningId === this.p.id) {
-      promptAction.showToast({ message: '当前节点正在运行，请先断开 VPN 再编辑' });
+    if (this.p.name.length === 0) {
+      this.p.name = `${this.p.server}:${this.p.serverPort}`;
+    }
+    if (this.p.server.length === 0) {
+      promptAction.showToast({ message: '服务器地址不能为空' });
       return;
     }
-    const error = this.validationError();
-    if (error.length > 0) {
-      promptAction.showToast({ message: error });
-      return;
-    }
-    if (this.p.name.trim().length === 0) {
-      this.p.name = `${this.p.server.trim()}:${this.p.serverPort}`;
-    }
-    this.p.server = this.p.server.trim();
-    this.p.uuid = this.p.uuid.trim();
-    this.p.sni = this.p.sni.trim();
-    this.p.realityPublicKey = this.p.realityPublicKey.trim();
-    this.p.realityShortId = this.p.realityShortId.trim();
     try {
       await initStore(this.context);
       const profiles = await loadProfiles();
@@ -391,59 +326,35 @@ struct ProfileEdit {
       Row() {
         Text('启用 TLS').fontSize(14).layoutWeight(1)
         Toggle({ type: ToggleType.Switch, isOn: this.p.tls })
-          .onChange((v: boolean) => {
-            this.p.tls = v;
-            if (!v) {
-              this.p.realityPublicKey = '';
-              this.p.realityShortId = '';
-            }
-          })
+          .onChange((v: boolean) => { this.p.tls = v; })
       }.width('100%')
-      Text('TLS 用于加密传输。Trojan、Hysteria、Hysteria2 和 TUIC 默认需要启用。')
-        .fontSize(11).fontColor('#999').width('100%')
 
-      if (this.p.tls) {
-        this.Field('SNI', '留空则使用服务器地址', this.p.sni, (v: string) => { this.p.sni = v; })
-        this.Field('ALPN (逗号分隔)', 'h2,http/1.1 或 h3', this.p.alpn, (v: string) => { this.p.alpn = v; })
-        this.Field('uTLS 指纹 (fp, 留空默认)', 'chrome / firefox / safari / ios', this.p.fingerprint,
-          (v: string) => { this.p.fingerprint = v; })
-        Text('REALITY（可选）').fontSize(13).fontWeight(FontWeight.Medium).width('100%')
-        Text('仅在服务端配置 REALITY 时填写。公钥存在时必须同时填写 SNI；short_id 为 2 到 16 位偶数长度十六进制字符。')
-          .fontSize(11).fontColor('#999').width('100%')
-        this.Field('REALITY 公钥 (pbk)', '服务端提供的公钥', this.p.realityPublicKey,
-          (v: string) => { this.p.realityPublicKey = v; })
-        if (this.p.realityPublicKey.trim().length > 0) {
-          this.Field('REALITY short_id', '例如 6ba85179e30d4fc2', this.p.realityShortId,
-            (v: string) => { this.p.realityShortId = v; })
-        }
-        Row() {
-          Text('允许不安全 TLS (insecure)').fontSize(14).layoutWeight(1)
-          Toggle({ type: ToggleType.Switch, isOn: this.p.allowInsecure })
-            .onChange((v: boolean) => { this.p.allowInsecure = v; })
-        }.width('100%')
-        Text('仅用于证书无法验证的可信服务器；开启会降低连接安全性。')
-          .fontSize(11).fontColor('#C62828').width('100%')
-      }
+      this.Field('SNI', '留空则使用服务器地址', this.p.sni, (v: string) => { this.p.sni = v; })
+      this.Field('ALPN (逗号分隔)', 'h2,http/1.1 或 h3', this.p.alpn, (v: string) => { this.p.alpn = v; })
+      this.Field('uTLS 指纹 (fp, 留空默认)', 'chrome / firefox / safari / ios…', this.p.fingerprint, (v: string) => { this.p.fingerprint = v; })
+      this.Field('REALITY 公钥 (pbk, 可选)', '', this.p.realityPublicKey, (v: string) => { this.p.realityPublicKey = v; })
+      this.Field('REALITY short_id (可选)', '', this.p.realityShortId, (v: string) => { this.p.realityShortId = v; })
 
       Row() {
-        Text('多路复用 (MUX)').fontSize(14).layoutWeight(1)
+        Text('允许不安全 TLS (insecure)').fontSize(14).layoutWeight(1)
+        Toggle({ type: ToggleType.Switch, isOn: this.p.allowInsecure })
+          .onChange((v: boolean) => { this.p.allowInsecure = v; })
+      }.width('100%')
+
+      Row() {
+        Text('多路复用 (mux)').fontSize(14).layoutWeight(1)
         Toggle({ type: ToggleType.Switch, isOn: this.p.mux })
           .onChange((v: boolean) => { this.p.mux = v; })
       }.width('100%')
-      Text(this.p.mux ? '已启用：多个请求将复用连接；若服务端不兼容，请关闭。' : '默认关闭；仅在服务端支持时启用。')
-        .fontSize(11).fontColor('#999').width('100%')
     }
   }
 
   @Builder
   AdvancedFields() {
     Column({ space: 10 }) {
-      Text('高级 JSON').fontSize(13).fontWeight(FontWeight.Medium).width('100%')
-      Text('必须填写 JSON 对象，保存时会校验格式，并与生成的 sing-box 出站对象浅合并。重名字段会覆盖表单生成值，请谨慎使用。')
-        .fontSize(11).fontColor('#999').width('100%')
-      this.Field('附加 JSON', '{"dialer":{}}', this.p.extra,
+      this.Field('附加 JSON (高级, 与出站对象合并)', '{"dialer":{}}', this.p.extra,
         (v: string) => { this.p.extra = v; })
-      Text('节点导入支持 ss、vmess、vless、trojan、hysteria、hysteria2、tuic 链接及 base64 订阅。')
+      Text('长按主页节点可删除;支持从剪贴板导入 ss/vmess/vless/trojan/hysteria/tuic 链接与 base64 订阅')
         .fontSize(11).fontColor('#999').width('100%')
     }
   }

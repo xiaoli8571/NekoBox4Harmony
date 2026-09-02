@@ -1,9 +1,8 @@
 import common from '@ohos.app.ability.common';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
-import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups } from '../model/Store';
-import { SubInfo, listSubs, saveSubs, removeSub, updateSubscription, markSubSuccess, markSubFailure } from '../core/Subscriptions';
-import { subscriptionGroupId } from '../model/Group';
+import { initStore, loadProfiles, saveProfiles } from '../model/Store';
+import { SubInfo, listSubs, removeSub, updateSubscription, markSubSuccess, markSubFailure } from '../core/Subscriptions';
 import { formatBytes } from '../utils/TrafficStats';
 
 @Entry
@@ -15,8 +14,6 @@ struct SubDetailPage {
   @State loading: boolean = true;
   @State loadError: string = '';
   @State notFound: boolean = false;
-  @State editingName: boolean = false;
-  @State nameDraft: string = '';
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear(): void {
@@ -49,59 +46,6 @@ struct SubDetailPage {
     } finally {
       this.loading = false;
     }
-  }
-
-  async saveSubscriptionSettings(): Promise<void> {
-    const name = this.nameDraft.trim();
-    if (name.length === 0) {
-      promptAction.showToast({ message: '订阅名称不能为空' });
-      return;
-    }
-    const subs = await listSubs();
-    for (const item of subs) {
-      if (item.url === this.sub.url) {
-        item.name = name;
-        item.autoUpdateInterval = this.sub.autoUpdateInterval;
-      }
-    }
-    await saveSubs(subs);
-    const profiles = await loadProfiles();
-    const groups = await loadGroups(profiles);
-    const group = groups.find(item => item.id === subscriptionGroupId(this.sub.url));
-    if (group !== undefined) {
-      group.name = name;
-      group.updatedAt = Date.now();
-      await saveGroups(groups);
-    }
-    this.editingName = false;
-    await this.load();
-  }
-
-  async setAutoUpdateInterval(interval: number): Promise<void> {
-    this.sub.autoUpdateInterval = interval;
-    const subs = await listSubs();
-    for (const item of subs) {
-      if (item.url === this.sub.url) {
-        item.autoUpdateInterval = interval;
-      }
-    }
-    await saveSubs(subs);
-    this.sub = this.sub;
-  }
-
-  formatExpire(): string {
-    if (this.sub.expire <= 0) {
-      return '未知';
-    }
-    return new Date(this.sub.expire * 1000).toLocaleString();
-  }
-
-  formatAutoUpdateInterval(): string {
-    const interval = Number(this.sub.autoUpdateInterval);
-    if (interval <= 0) {
-      return '关闭';
-    }
-    return `${Math.round(interval / 3600000)} 小时`;
   }
 
   async updateNow(): Promise<void> {
@@ -197,41 +141,12 @@ struct SubDetailPage {
       } else {
         Scroll() {
           Column({ space: 14 }) {
-            if (this.editingName) {
-              TextInput({ text: this.nameDraft, placeholder: '订阅名称' })
-                .width('100%')
-                .onChange((value: string) => {
-                  this.nameDraft = value;
-                })
-              Row({ space: 8 }) {
-                Button('保存').onClick(() => this.saveSubscriptionSettings())
-                Button('取消').onClick(() => {
-                  this.editingName = false;
-                  this.nameDraft = '';
-                })
-              }.width('100%')
-            } else {
-              Row({ space: 8 }) {
-                Text(this.sub.name.length > 0 ? this.sub.name : '未命名订阅')
-                  .fontSize(20).fontWeight(FontWeight.Bold).layoutWeight(1)
-                Button('重命名').onClick(() => {
-                  this.nameDraft = this.sub.name;
-                  this.editingName = true;
-                })
-              }.width('100%')
-            }
+            Text(this.sub.name.length > 0 ? this.sub.name : '未命名订阅')
+              .fontSize(20).fontWeight(FontWeight.Bold).width('100%')
             Text(this.sub.url).fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
             Text(`节点数量: ${this.profileCount}`).width('100%')
             Text(`已用流量: ${formatBytes(this.sub.upload + this.sub.download)}`).width('100%')
             Text(`总流量: ${this.sub.total > 0 ? formatBytes(this.sub.total) : '未知'}`).width('100%')
-            Text(`到期时间: ${this.formatExpire()}`).width('100%')
-            Text(`自动更新: ${this.formatAutoUpdateInterval()}`).width('100%')
-            Row({ space: 8 }) {
-              Button('关闭').onClick(() => this.setAutoUpdateInterval(0))
-              Button('6 小时').onClick(() => this.setAutoUpdateInterval(6 * 3600000))
-              Button('12 小时').onClick(() => this.setAutoUpdateInterval(12 * 3600000))
-              Button('24 小时').onClick(() => this.setAutoUpdateInterval(24 * 3600000))
-            }.width('100%')
             Text(`连续失败: ${Number(this.sub.failCount)} 次`)
               .fontColor(Number(this.sub.failCount) >= 3 ? $r('app.color.error') : $r('app.color.text_secondary')).width('100%')
             Button(this.updating ? '正在更新…' : '立即更新')

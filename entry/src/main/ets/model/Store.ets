@@ -2,13 +2,11 @@ import dataPreferences from '@ohos.data.preferences';
 import common from '@ohos.app.ability.common';
 import emitter from '@ohos.events.emitter';
 import { Profile, AppSettings } from './Profile';
-import { ProfileGroup, LOCAL_GROUP_ID, subscriptionGroupId } from './Group';
 
 /** 持久化(Preferences) + 全局日志缓冲。 */
 
 const PREF_NAME = 'nekobox_store';
 const KEY_PROFILES = 'profiles';
-const KEY_GROUPS = 'profile_groups';
 const KEY_SETTINGS = 'settings';
 const KEY_PENDING = 'pending_profile_id';
 export const LOG_EVENT_ID: number = 1001;
@@ -46,70 +44,6 @@ export async function loadProfiles(): Promise<Array<Profile>> {
 export async function saveProfiles(list: Array<Profile>): Promise<void> {
   const pref = await requirePref();
   await pref.put(KEY_PROFILES, JSON.stringify(list));
-  await pref.flush();
-}
-
-export async function loadGroups(profiles: Array<Profile>): Promise<Array<ProfileGroup>> {
-  const pref = await requirePref();
-  const raw: string = (await pref.get(KEY_GROUPS, '[]')) as string;
-  const groups: Array<ProfileGroup> = [];
-  try {
-    const parsed = JSON.parse(raw) as Array<ProfileGroup>;
-    for (let i = 0; i < parsed.length; i++) {
-      const group = new ProfileGroup();
-      fillFrom(group, parsed[i]);
-      groups.push(group);
-    }
-  } catch (e) {
-    // Migrate from profiles and subscription URLs below.
-  }
-
-  let changed = false;
-  const now = Date.now();
-  if (groups.find(group => group.id === LOCAL_GROUP_ID) === undefined) {
-    const local = new ProfileGroup();
-    local.id = LOCAL_GROUP_ID;
-    local.name = '本地节点';
-    local.sortOrder = 0;
-    local.createdAt = now;
-    local.updatedAt = now;
-    groups.push(local);
-    changed = true;
-  }
-
-  for (let i = 0; i < profiles.length; i++) {
-    const profile = profiles[i];
-    const expectedGroupId = profile.subUrl.length > 0 ? subscriptionGroupId(profile.subUrl) : LOCAL_GROUP_ID;
-    if (profile.groupId.length === 0) {
-      profile.groupId = expectedGroupId;
-      profile.sortOrder = i;
-      changed = true;
-    }
-    if (profile.subUrl.length > 0 && groups.find(group => group.id === expectedGroupId) === undefined) {
-      const subscription = new ProfileGroup();
-      subscription.id = expectedGroupId;
-      subscription.name = profile.subUrl;
-      subscription.subscriptionUrl = profile.subUrl;
-      subscription.sortOrder = groups.length;
-      subscription.createdAt = now;
-      subscription.updatedAt = now;
-      groups.push(subscription);
-      changed = true;
-    }
-  }
-
-  groups.sort((left, right) => left.sortOrder - right.sortOrder);
-  if (changed) {
-    await pref.put(KEY_GROUPS, JSON.stringify(groups));
-    await pref.put(KEY_PROFILES, JSON.stringify(profiles));
-    await pref.flush();
-  }
-  return groups;
-}
-
-export async function saveGroups(groups: Array<ProfileGroup>): Promise<void> {
-  const pref = await requirePref();
-  await pref.put(KEY_GROUPS, JSON.stringify(groups));
   await pref.flush();
 }
 
