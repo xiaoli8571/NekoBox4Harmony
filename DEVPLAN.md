@@ -1,6 +1,6 @@
 # NekoBox for Harmony 开发计划(F 阶段,目标版本 1.5.8)
 
-> 当前基线:1.5.7(versionCode 1001711,2026-09-03)。**F1 深色主题/主题即时生效已完成(勿重做)**;本阶段开发 F2~F6,目标版本 1.5.8。
+> 当前基线:1.5.7(versionCode 1001714,2026-09-03)。**F1~F4 已完成(F2~F4 待构建机真机验证,勿重做)**;本阶段开发 F5~F7,目标版本 1.5.8。建议顺序:F5 → F6 → F7(UI 适配放最后,功能全部落地后一次收尾)。
 > 详细项目架构见仓库根 `AGENTS.md`,上一轮实现说明见 `CHANGES.md`,先读这两个文件。
 
 ## 铁律(违反即返工)
@@ -61,6 +61,15 @@
 - 全量抽取硬编码中文进 `resources/base/element/string.json`(base=中文),新建 `resources/en_US/element/string.json` 英文对照,代码改用 `$r('app.string.xxx')`;覆盖 Index、ProfileEdit、SettingsPage、SubDetailPage、RouteRulesPage、弹窗/按钮/Toast
 - 验收:系统切英文后主要页面全英文,无漏翻(允许极个别动态拼接处注明)
 
+## F7 UI 适配鸿蒙(纯应用层)—— 状态:待开发
+
+- 目标:整体观感对齐 HarmonyOS NEXT 系统原生应用(以系统"设置"应用的卡片/列表/控件为基准),消除移植感。只动 `entry/src/main/ets/` 页面与 `resources/`,不动内核与 module.json5
+- F7a 布局与间距统一:全页面统一页面左右边距 16vp、卡片圆角 16vp、卡片内边距 12~16vp、元素纵向间距 8/12/16 档位、列表行高 ≥44vp;圆角/边距/间距常量集中定义(如 common/UiSpec.ets 或资源 dimen),避免各页散落魔法数;覆盖 Index、ProfileEdit、SettingsPage、ConnectionsPage、RouteRulesPage、SubDetailPage
+- F7b 控件对齐系统风格:主操作按钮用 ButtonType.Capsule、高度 40vp,破坏性操作用 error 色区分;列表/卡片按压反馈统一 `.hoverEffect()` + `.scale(0.98)` + animateTo(踩坑 1:Row/Column 无 stateEffect);弹窗统一系统 AlertDialog 风格(确认按钮在右);Toggle/TextInput/Select 等保持系统默认形态,不自绘
+- F7c 颜色收敛鸿蒙化:全仓 grep 十六进制色值清零(含 Index.ets latencyColor 的 #2E7D32/#F9A825 等),全部替换为 `$r('app.color.xxx')` 语义令牌并保证 base/dark 双份(延迟良好/中等/超时等状态色保留语义命名,深色下核对对比度);EntryAbility 里 setWindowSystemBarProperties 让状态栏前景色跟随深浅色;页面内容正确避让安全区,不滥用 expandSafeArea
+- F7d 大屏/横屏适配(真机为 MatePad mini):单列表页在宽屏下限制最大内容宽度(如 600vp 居中),横屏不得溢出、截断、遮挡;**日志页固定终端配色是刻意设计,本项不得改动**
+- 验收:真机与系统设置应用并排对比,圆角/间距/按钮/列表观感一致;深浅色切换即时生效;横竖屏无破版;F7 范围内无新增硬编码色值
+
 ## 后续阶段(本轮不做,仅预告)
 
 - G1 节点置顶/收藏/手动排序;G2 分组测速汇总(组卡片显示最低延迟);G3 节点分享 URI/二维码生成;G4 远程规则集订阅(sing-box 1.11 rule_set,配置层接入);G5 连接统计(速率/流量/连接列表,计划经 clash_api 查询,真机验证可行性)
@@ -68,6 +77,6 @@
 ## 完成标准与交付
 
 1. 全部完成后自查:引用/导入完整、与现有 model/pages 接口一致、无硬编码色值残留(F1 范围内)、对照 Index.ets 风格
-2. `CHANGES.md` 逐项追加:F1~F6 各节(状态:完成/部分完成+原因、改动文件、限制)
+2. `CHANGES.md` 逐项追加:F1~F7 各节(状态:完成/部分完成+原因、改动文件、限制)
 3. 最后输出总结:各功能完成情况、改动文件分组清单、标注的风险点(尤其是 F3/F4 真机才能验证的部分)
 4. 不构建、不 commit;等构建机编译反馈,有错误按反馈修复
