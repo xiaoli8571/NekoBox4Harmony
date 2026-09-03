@@ -313,32 +313,34 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   const dnsRule: Record<string, Object> = {};
   dnsRule['protocol'] = 'dns';
   dnsRule['action'] = 'hijack-dns';
-  // 私网网段直连(等价新版 ip_is_private)
-  const privateRule: Record<string, Object> = {};
-  privateRule['ip_cidr'] = [
-    '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8',
-    '169.254.0.0/16', '100.64.0.0/10', '224.0.0.0/4', '255.255.255.255/32',
-    '::1/128', 'fe80::/10', 'fc00::/7', 'ff00::/8'
-  ];
-  privateRule['outbound'] = 'direct';
-  const routeRules: Array<Object> = [dnsRule, privateRule];
+  const routeRules: Array<Object> = [dnsRule];
+  const ruleSetDefinitions: Array<Object> = [];
 
-  // 自定义路由规则:插在私网直连规则之后、geosite 规则之前(私网优先),顺序即优先级
-  for (const r of customRules) {
-    if (!r.enabled) {
-      continue;
-    }
-    const rule = buildCustomRule(r);
-    if (rule !== null) {
-      routeRules.push(rule);
-    }
-  }
-
-  // 模式:direct(全部直连)/ rule(规则:私网+自定义直连+CN分流,其余走代理)/ global(全部走代理)
+  // 模式:direct(全部直连)/ rule(规则分流)/ global(除 DNS 劫持外全部走代理)
   let finalOutbound = 'proxy';
   if (s.mode === 'direct') {
     finalOutbound = 'direct';
   } else if (s.mode === 'rule') {
+    // 私网、自定义、Geo 与远程规则只允许在规则模式参与分流。
+    const privateRule: Record<string, Object> = {};
+    privateRule['ip_cidr'] = [
+      '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8',
+      '169.254.0.0/16', '100.64.0.0/10', '224.0.0.0/4', '255.255.255.255/32',
+      '::1/128', 'fe80::/10', 'fc00::/7', 'ff00::/8'
+    ];
+    privateRule['outbound'] = 'direct';
+    routeRules.push(privateRule);
+
+    for (const r of customRules) {
+      if (!r.enabled) {
+        continue;
+      }
+      const rule = buildCustomRule(r);
+      if (rule !== null) {
+        routeRules.push(rule);
+      }
+    }
+
     const customDomains = splitCsv(s.directDomains);
     if (customDomains.length > 0) {
       const domainRule: Record<string, Object> = {};
@@ -353,7 +355,6 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
       cidrRule['outbound'] = 'direct';
       routeRules.push(cidrRule);
     }
-    // GeoIP/GeoSite 分流(数据文件就绪时启用)
     if (geositePath.length > 0) {
       const geositeRule: Record<string, Object> = {};
       geositeRule['geosite'] = ['cn'];
@@ -366,25 +367,25 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
       geoipRule['outbound'] = 'direct';
       routeRules.push(geoipRule);
     }
-  }
-  const ruleSetDefinitions: Array<Object> = [];
-  for (const item of remoteRuleSets) {
-    if (!item.enabled || item.id.length === 0 || item.url.length === 0) {
-      continue;
-    }
-    const definition: Record<string, Object> = {};
-    definition['tag'] = `remote_${item.id}`;
-    definition['type'] = 'remote';
-    definition['format'] = 'binary';
-    definition['url'] = item.url;
-    definition['download_detour'] = 'direct';
-    definition['update_interval'] = '24h';
-    ruleSetDefinitions.push(definition);
 
-    const reference: Record<string, Object> = {};
-    reference['rule_set'] = [`remote_${item.id}`];
-    reference['outbound'] = item.outbound;
-    routeRules.push(reference);
+    for (const item of remoteRuleSets) {
+      if (!item.enabled || item.id.length === 0 || item.url.length === 0) {
+        continue;
+      }
+      const definition: Record<string, Object> = {};
+      definition['tag'] = `remote_${item.id}`;
+      definition['type'] = 'remote';
+      definition['format'] = 'binary';
+      definition['url'] = item.url;
+      definition['download_detour'] = 'direct';
+      definition['update_interval'] = '24h';
+      ruleSetDefinitions.push(definition);
+
+      const reference: Record<string, Object> = {};
+      reference['rule_set'] = [`remote_${item.id}`];
+      reference['outbound'] = item.outbound;
+      routeRules.push(reference);
+    }
   }
 
   const route: Record<string, Object> = {};

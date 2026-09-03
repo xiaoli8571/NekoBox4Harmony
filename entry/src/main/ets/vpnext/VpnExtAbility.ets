@@ -53,6 +53,9 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   private latencySubscribed: boolean = false;
   private teardownPromise: Promise<void> | null = null;
   private lifecycleGeneration: number = 0;
+  private restartRequested: boolean = false;
+  private latestRequestedProfileId: string = '';
+  private forceRestartRequested: boolean = false;
 
   onCreate(want: Want): void {
     this.hookLifecycle('onCreate', want);
@@ -74,7 +77,11 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       const params = want.parameters as Record<string, Object>;
       const wantProfileId = params['profileId'];
       if (wantProfileId !== undefined && `${wantProfileId}`.length > 0) {
-        setPendingProfileId(`${wantProfileId}`);
+        this.latestRequestedProfileId = `${wantProfileId}`;
+        setPendingProfileId(this.latestRequestedProfileId);
+      }
+      if (`${params['forceRestart']}` === 'true') {
+        this.forceRestartRequested = true;
       }
     }
     LogStore.setPublisher((line: string) => {
@@ -167,24 +174,32 @@ export default class VpnExtAbility extends VpnExtensionAbility {
 
   private async tryStart(): Promise<void> {
     if (this.starting) {
-      LogStore.addLog('[vpn] 正在启动中,忽略重复触发');
+      this.restartRequested = true;
+      LogStore.addLog('[vpn] 正在启动中,记录最新请求并在当前操作结束后处理');
       return;
     }
     // 防重入标记必须在任何一个 await 之前同步置位:
     // onCreate/onRequest 会在同一瞬间连发,否则会出现双重启动互拆
     this.starting = true;
+    this.restartRequested = false;
     const generation = ++this.lifecycleGeneration;
     try {
       const context: common.Context = this.context;
       await initStore(context);
-      const pendingId = await getPendingProfileId();
+      const pendingId = this.latestRequestedProfileId.length > 0
+        ? this.latestRequestedProfileId : await getPendingProfileId();
       if (this.started) {
-        if (pendingId.length === 0 || pendingId === this.currentRunId) {
+        if (pendingId.length === 0) {
+          LogStore.addLog('[vpn] 已在运行且没有新的启动目标,忽略重复触发');
+          return;
+        }
+        if (pendingId === this.currentRunId && !this.forceRestartRequested) {
           LogStore.addLog('[vpn] 已在运行且节点未变化,忽略重复触发');
           return;
         }
-        // 运行中收到不同节点:原地重启(免断开切换)
-        LogStore.addLog('[vpn] 检测到节点切换,重启内核…');
+        const restartReason: string = pendingId === this.currentRunId ? '模式变更' : '节点切换';
+        this.forceRestartRequested = false;
+        LogStore.addLog(`[vpn] 检测到${restartReason},串行重启内核…`);
         publishVpnStatus('switching', true, pendingId);
         await this.teardown(true);
         this.starting = true;
@@ -200,6 +215,11 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       publishVpnStatus(`connect_failed:${msg}`, false);
     } finally {
       this.starting = false;
+      if (this.restartRequested) {
+        this.restartRequested = false;
+        LogStore.addLog('[vpn] 继续处理启动期间收到的最新请求');
+        this.tryStart();
+      }
     }
   }
 
