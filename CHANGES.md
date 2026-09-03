@@ -257,3 +257,11 @@ Existing notification files reviewed:
 - 设置页出站模式/外观/分应用三组并排按钮改 layoutWeight(1) 等分铺满,剪贴板备份两按钮等分并统一 40vp 高,机制上杜绝按钮行溢出。
 - 按真机用户反馈移除 600vp 内容限宽(F7d 调整为全宽 + 16vp 页边距)。
 - 改动文件:六个 pages、ets/common/UiSpec.ets、AppScope/app.json5
+
+
+## 2026-09-03 release 1.5.8(F 阶段收官)
+
+- versionName 1.5.8 / versionCode 1001800(基于 1001719 真机验收通过版本,仅版本号差异)。
+- F1~F7 全部交付:深色主题、通知栏延迟+断开按钮、订阅后台更新、per-app 图形选择器、备份文件化、中英双语(264 键)、HarmonyOS 原生观感(全宽 + 16vp 页边距、色值令牌清零、深浅色自适应状态栏)。
+- 产物 dist/NekoBox4Harmony-1.5.8-unsigned.hap,签名由用户在 DevEco 完成。
+- F2~F6 功能项仍建议按 CHANGES.md 清单在真机逐项复核。
