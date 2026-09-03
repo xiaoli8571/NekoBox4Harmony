@@ -141,3 +141,24 @@ Existing notification files reviewed:
 - Pre-existing untracked `.zcode/`, crash dumps, and `nul` were not modified.
 - Build/type verification remains outstanding because the request explicitly prohibited building.
 - Full localization, immediate global theme application, installed-app enumeration, exact terminated-state subscription scheduling, file-picker backup/restore, live notification latency/toggle actions, and the desktop card remain limited by current APIs or protected configuration constraints.
+
+## 2026-09-03 F2 通知栏增强：已完成，待构建机编译与真机验证
+
+- 新增 UI 进程到 VPN 扩展进程的测速 CommonEvent，仅在当前运行节点测速完成后发送节点名称与延迟。
+- VPN 常驻通知现在显示“当前节点 · 延迟”，尚未测速或测速失败时显示 `--`。
+- 常驻通知新增“断开”按钮，通过 WantAgent 拉起 EntryAbility 并携带 `action=disconnect`。
+- EntryAbility 在 `onCreate()` 与 `onNewWant()` 中处理通知动作，调用现有 `VpnService.disconnect()`，覆盖应用未运行及已运行场景。
+
+改动文件：
+- `entry/src/main/ets/core/VpnIpc.ets`
+- `entry/src/main/ets/pages/Index.ets`
+- `entry/src/main/ets/vpnext/VpnExtAbility.ets`
+- `entry/src/main/ets/entryability/EntryAbility.ets`
+- `DEVPLAN.md`
+- `CHANGES.md`
+
+静态检查与限制：
+- `git diff --check` 已通过，无空白错误。
+- 已核对测速事件发布、扩展进程订阅、通知按钮及 `onNewWant()` 处理链路。
+- 按约束未执行构建、打包或任何 Git 写操作。
+- Notification ActionButton、WantAgent 拉起行为及跨进程 CommonEvent 仍需构建机编译和真机验证。

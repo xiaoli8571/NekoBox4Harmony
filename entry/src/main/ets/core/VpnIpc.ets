@@ -8,6 +8,7 @@ import BusinessError from '@ohos.base';
 
 export const VPN_EVENT_LOG: string = 'com.nekobox.app.VPN_LOG';
 export const VPN_EVENT_STATUS: string = 'com.nekobox.app.VPN_STATUS';
+export const VPN_EVENT_LATENCY: string = 'com.nekobox.app.VPN_LATENCY';
 
 const APP_BUNDLE = 'com.nekobox.app';
 
@@ -37,6 +38,26 @@ export function publishVpnStatus(status: string, running: boolean, profileId: st
     };
     commonEventManager.publish(VPN_EVENT_STATUS, opts, (err: BusinessError) => {
       // ignore
+    });
+  } catch (e) {
+    // ignore
+  }
+}
+
+/** UI 进程调用:把测速结果发给 VPN 扩展进程更新常驻通知 */
+export function publishVpnLatency(profileId: string, nodeName: string, latencyMs: number): void {
+  try {
+    const payload: Record<string, string> = {
+      'profileId': profileId,
+      'nodeName': nodeName,
+      'latencyMs': `${latencyMs}`
+    };
+    const opts: commonEventManager.CommonEventPublishData = {
+      bundleName: APP_BUNDLE,
+      data: JSON.stringify(payload)
+    };
+    commonEventManager.publish(VPN_EVENT_LATENCY, opts, (err: BusinessError) => {
+      // 测速通知失败不影响测速和 VPN 流程
     });
   } catch (e) {
     // ignore

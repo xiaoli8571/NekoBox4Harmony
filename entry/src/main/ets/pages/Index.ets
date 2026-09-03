@@ -12,6 +12,7 @@ import { upsertSub, needAutoUpdate, updateSubscription, setAppContext, subNameOf
 import { fetchTrafficTotals, formatSpeed, formatBytes } from '../utils/TrafficStats';
 import { fetchCurrentProxyDelay } from '../utils/ClashApi';
 import { exportProfileLink } from '../utils/LinkExporter';
+import { publishVpnLatency } from '../core/VpnIpc';
 
 @Entry
 @Component
@@ -158,6 +159,10 @@ struct Index {
       if (profile !== undefined) {
         profile.latencyMs = ms;
         profile.latencyTestedAt = Date.now();
+        const runningProfileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
+        if (this.isRunning && runningProfileId === id) {
+          publishVpnLatency(id, profile.name, ms);
+        }
       }
     });
     await saveProfiles(this.profiles);
