@@ -1053,6 +1053,18 @@
       "value": "连接失败: %1$s"
     },
     {
+      "name": "notification_vpn_connected",
+      "value": "VPN 已连接"
+    },
+    {
+      "name": "notification_node_latency",
+      "value": "%1$s · %2$s"
+    },
+    {
+      "name": "notification_disconnect",
+      "value": "断开"
+    },
+    {
       "name": "parse_failed_reason",
       "value": "解析失败: %1$s"
     }

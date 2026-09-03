@@ -377,12 +377,14 @@ export default class VpnExtAbility extends VpnExtensionAbility {
         requestCode: 1002,
         actionFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
       });
+      // 本机 SDK(API 24)通知字段为 string 类型,不接受 Resource:构建时现取本地化字符串
+      const res = this.context.resourceManager;
       const content: notificationManager.NotificationContent = {
         contentType: notification.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
         normal: {
-          title: 'VPN 已连接',
-          text: `${nodeName} · ${latencyText}`,
-          additionalText: 'NekoBox'
+          title: res.getStringSync($r('app.string.notification_vpn_connected')),
+          text: res.getStringSync($r('app.string.notification_node_latency', nodeName, latencyText)),
+          additionalText: res.getStringSync($r('app.string.app_name'))
         }
       };
       const request: notificationManager.NotificationRequest = {
@@ -390,7 +392,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
         isOngoing: true,
         content: content,
         actionButtons: [{
-          title: '断开',
+          title: res.getStringSync($r('app.string.notification_disconnect')),
           wantAgent: disconnectAgent
         }]
       };

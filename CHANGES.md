@@ -265,3 +265,13 @@ Existing notification files reviewed:
 - F1~F7 全部交付:深色主题、通知栏延迟+断开按钮、订阅后台更新、per-app 图形选择器、备份文件化、中英双语(264 键)、HarmonyOS 原生观感(全宽 + 16vp 页边距、色值令牌清零、深浅色自适应状态栏)。
 - 产物 dist/NekoBox4Harmony-1.5.8-unsigned.hap,签名由用户在 DevEco 完成。
 - F2~F6 功能项仍建议按 CHANGES.md 清单在真机逐项复核。
+
+## 2026-09-03 G6 通知栏文案资源化（已完成，待构建验证）
+
+- 将 `VpnExtAbility.ets` 常驻 VPN 通知的标题、节点与延迟组合文本、应用名及“断开”操作按钮改为字符串资源引用，通知布局和按钮行为保持不变。
+- 在 base 与 en_US 资源中同步新增通知文案；英文系统下显示 “VPN connected” 和 “Disconnect”。
+- CommonEvent 与 `vpnStatus` 状态协议未改动，继续使用机器键。
+- 改动文件：`entry/src/main/ets/vpnext/VpnExtAbility.ets`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
+- 未构建、未打包、未执行 Git 写操作；等待构建机验证。
+
+> 构建机注(2026-09-03,G6 轮):本机 SDK(API 24)的 notificationManager 通知字段(title/text/additionalText/actionButtons[].title)为 string 类型,不接受 Resource(编译报 Type 'Resource' is not assignable to type 'string' ×4);构建机改为 this.context.resourceManager.getStringSync($r(...), args) 构建时现取本地化字符串(resourceManager 跟随系统语言,en_US 下自动生效)。后续涉及系统 API 文案时优先确认 d.ts 字段类型。
