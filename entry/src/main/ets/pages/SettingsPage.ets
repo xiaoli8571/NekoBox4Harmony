@@ -3,6 +3,7 @@ import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import pasteboard from '@ohos.pasteboard';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
+import bundle from '@ohos.bundle';
 import { AppSettings } from '../model/Profile';
 import { initStore, loadSettings, saveSettings, LogStore } from '../model/Store';
 import { SubInfo, listSubs, updateSubscription, removeSub, markSubSuccess, markSubFailure } from '../core/Subscriptions';
@@ -18,6 +19,16 @@ const STACKS: Array<string> = ['system'];
 const MODES: Array<string> = ['rule', 'global', 'direct'];
 const MODE_LABELS: Array<string> = ['规则', '全局', '直连'];
 
+class InstalledAppItem {
+  bundleName: string = '';
+  label: string = '';
+
+  constructor(bundleName: string, label: string) {
+    this.bundleName = bundleName;
+    this.label = label;
+  }
+}
+
 @Entry
 @Component
 struct SettingsPage {
@@ -28,6 +39,10 @@ struct SettingsPage {
   @State geoLoading: boolean = false;
   @State loading: boolean = true;
   @State loadError: string = '';
+  @State installedApps: Array<InstalledAppItem> = [];
+  @State appSearch: string = '';
+  @State appListLoading: boolean = false;
+  @State appListError: string = '';
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear(): void {
@@ -89,6 +104,72 @@ struct SettingsPage {
       }
     } catch (e) {
       promptAction.showToast({ message: `保存失败: ${e}` });
+    }
+  }
+
+  private selectedAppSet(): Set<string> {
+    const result = new Set<string>();
+    const parts = this.s.perAppList.split(',');
+    for (const part of parts) {
+      const bundleName = part.trim();
+      if (bundleName.length > 0) {
+        result.add(bundleName);
+      }
+    }
+    return result;
+  }
+
+  private isAppSelected(bundleName: string): boolean {
+    return this.selectedAppSet().has(bundleName);
+  }
+
+  private toggleInstalledApp(bundleName: string, selected: boolean): void {
+    const chosen = this.selectedAppSet();
+    if (selected) {
+      chosen.add(bundleName);
+    } else {
+      chosen.delete(bundleName);
+    }
+    this.s.perAppList = Array.from(chosen).sort().join(',');
+    this.save(true);
+  }
+
+  private filteredInstalledApps(): Array<InstalledAppItem> {
+    const query = this.appSearch.trim().toLowerCase();
+    if (query.length === 0) {
+      return this.installedApps;
+    }
+    return this.installedApps.filter((item: InstalledAppItem) =>
+      item.label.toLowerCase().includes(query) || item.bundleName.toLowerCase().includes(query));
+  }
+
+  async loadInstalledApps(): Promise<void> {
+    if (this.appListLoading) {
+      return;
+    }
+    this.appListLoading = true;
+    this.appListError = '';
+    try {
+      const infos = await bundle.getAllBundleInfo(bundle.BundleFlag.GET_BUNDLE_DEFAULT);
+      const apps: Array<InstalledAppItem> = [];
+      for (const info of infos) {
+        const bundleName: string = info.name;
+        const label: string = info.appInfo === undefined || info.appInfo.label.length === 0
+          ? bundleName : info.appInfo.label;
+        apps.push(new InstalledAppItem(bundleName, label));
+      }
+      apps.sort((a: InstalledAppItem, b: InstalledAppItem) => a.label.localeCompare(b.label));
+      this.installedApps = apps;
+      if (apps.length === 0) {
+        this.appListError = '未读取到已安装应用，请使用下方包名输入框。';
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : `${e}`;
+      this.installedApps = [];
+      this.appListError = `无法读取应用列表：${message}。请使用下方包名输入框。`;
+      LogStore.addLog(`[ui] 枚举已安装应用失败，降级为手动输入: ${message}`);
+    } finally {
+      this.appListLoading = false;
     }
   }
 
@@ -355,6 +436,40 @@ struct SettingsPage {
               }, (m: string) => m)
             }.width('100%')
             if (this.s.perAppMode !== 'off') {
+              Row({ space: 8 }) {
+                TextInput({ text: this.appSearch, placeholder: '搜索应用名称或包名' })
+                  .layoutWeight(1).height(40)
+                  .onChange((value: string) => { this.appSearch = value; })
+                Button(this.appListLoading ? '读取中…' : '读取应用')
+                  .enabled(!this.appListLoading)
+                  .onClick(() => this.loadInstalledApps())
+              }.width('100%')
+
+              if (this.appListError.length > 0) {
+                Text(this.appListError)
+                  .fontSize(11).fontColor($r('app.color.error')).width('100%')
+              }
+
+              if (this.installedApps.length > 0) {
+                List({ space: 4 }) {
+                  ForEach(this.filteredInstalledApps(), (item: InstalledAppItem) => {
+                    ListItem() {
+                      Row({ space: 8 }) {
+                        Column({ space: 2 }) {
+                          Text(item.label).fontSize(14).width('100%')
+                          Text(item.bundleName)
+                            .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+                        }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+                        Toggle({ type: ToggleType.Checkbox, isOn: this.isAppSelected(item.bundleName) })
+                          .onChange((selected: boolean) => {
+                            this.toggleInstalledApp(item.bundleName, selected);
+                          })
+                      }.width('100%').padding({ top: 6, bottom: 6 })
+                    }
+                  }, (item: InstalledAppItem) => item.bundleName)
+                }.width('100%').height(240)
+              }
+
               TextInput({
                 text: this.s.perAppList,
                 placeholder: this.s.perAppMode === 'exclude'
@@ -362,8 +477,8 @@ struct SettingsPage {
                   : '仅走 VPN 的应用包名,逗号分隔'
               })
                 .width('100%').height(40)
-                .onChange((v: string) => { this.s.perAppList = v; })
-              Text('示例: com.huawei.hmos.browser。包名可在应用详情/日志中查看,重连生效。')
+                .onChange((value: string) => { this.s.perAppList = value; })
+              Text('应用列表读取失败时仍可手动输入包名，多个包名用逗号分隔，重连后生效。')
                 .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
             }
           }.alignItems(HorizontalAlign.Start).width('100%')
