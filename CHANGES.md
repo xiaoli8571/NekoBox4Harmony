@@ -162,3 +162,22 @@ Existing notification files reviewed:
 - 已核对测速事件发布、扩展进程订阅、通知按钮及 `onNewWant()` 处理链路。
 - 按约束未执行构建、打包或任何 Git 写操作。
 - Notification ActionButton、WantAgent 拉起行为及跨进程 CommonEvent 仍需构建机编译和真机验证。
+
+## 2026-09-03 F3 订阅后台定时更新：已完成，待构建机编译与真机验证
+
+- EntryAbility 在应用启动、回前台及退后台时检查已到期订阅，并通过重入保护避免并发重复更新。
+- 检测到到期订阅后申请 `dataTransfer` 连续任务，依次执行订阅更新，并在最短必要时间内释放后台任务。
+- 自动更新继续沿用现有连续失败计数机制：成功时清零，失败时递增，连续失败达到阈值后跳过自动更新。
+- `module.json5` 仅新增 EntryAbility 的 `"backgroundModes": ["dataTransfer"]`；`ohos.permission.KEEP_BACKGROUND_RUNNING` 已存在于新基线，未重复修改。
+
+改动文件：
+- `entry/src/main/ets/entryability/EntryAbility.ets`
+- `entry/src/main/module.json5`
+- `DEVPLAN.md`
+- `CHANGES.md`
+
+静态检查与限制：
+- `git diff --check` 已通过，无空白错误。
+- 已核对只读 `git status` 和差异，未修改冻结内核、版本号、签名配置、构建输出或�其他受限文件。
+- 按约束未执行构建、打包或任何 Git 写操作。
+- `backgroundTaskManager.startBackgroundRunning()`、熄屏期间执行能力及系统连续任务限制仍需构建机编译和真机验证；若真机拒绝连续任务，再按计划降级为 transientTask。
