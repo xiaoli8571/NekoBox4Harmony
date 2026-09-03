@@ -1053,6 +1053,18 @@
       "value": "Connection failed: %1$s"
     },
     {
+      "name": "notification_vpn_connected",
+      "value": "VPN connected"
+    },
+    {
+      "name": "notification_node_latency",
+      "value": "%1$s · %2$s"
+    },
+    {
+      "name": "notification_disconnect",
+      "value": "Disconnect"
+    },
+    {
       "name": "parse_failed_reason",
       "value": "Parse failed: %1$s"
     }
