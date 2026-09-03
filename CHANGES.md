@@ -363,3 +363,17 @@ Existing notification files reviewed:
 - G1~G7 全部交付:G1 节点手动排序+排序模式、G2 分组测速汇总徽标、G3 分享二维码(降级纯文本)、G4 远程规则集订阅(route.rule_set)、G5 连接统计(clash_api)、G6 通知文案资源化、G7 切换可靠性与模式语义(forceRestart 串行重启;global=全走代理)。
 - 真机验证:通知两态显示、VPN 启动、cache_file 修复均已通过;G4(SRS 下载)与 G5(clash_api)运行时行为为已知风险点,详见 release notes。
 - 产物 dist/NekoBox4Harmony-1.6.0-unsigned.hap,签名由用户在 DevEco 完成。
+
+## 2026-09-03 U1 首页重构：已完成开发，待构建机验证
+
+- 按方案 A「鸿蒙原生卡片流」重构首页视觉层级，连接状态继续只读 `AppStorage('vpnStatus')` 并通过 `Index.statusDisplay()` 显示映射，未改变既有机器键语义。
+- 新增并接入 `BigPowerButton`、`MiniStatCard`、`ToggleRow` 组件：主连接按钮直径 118vp，支持断开、连接中、已连接三态及 200ms 按压缩放；实时速率、流量和节点数量采用 2×2 小卡布局并使用等宽数字。
+- 首页快捷开关复用既有 `AppSettings` 与 `saveSettings()`，未新建状态层或 AppStorage 业务键。
+- 保留既有节点选择、VPN 启停、订阅导入、节点新增与编辑、测速、分组测速、分组折叠、手动排序、置顶、分享、per-app 设置入口，以及连接、日志、设置页面入口。
+- 扩展既有 `UiSpec` 与 base/dark 颜色资源，新增按钮 ring、glow 和图标颜色 token；新增中英文文案各 3 键，两侧资源键集合一致。
+- 改动文件：`entry/src/main/ets/common/UiSpec.ets`、`entry/src/main/ets/common/components/BigPowerButton.ets`、`entry/src/main/ets/common/components/MiniStatCard.ets`、`entry/src/main/ets/common/components/ToggleRow.ets`、`entry/src/main/ets/pages/Index.ets`、`entry/src/main/resources/base/element/color.json`、`entry/src/main/resources/dark/element/color.json`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
+- 已执行 JSON 语法校验、base/en_US 文案键一致性核对与 `git diff --check`；按约束未启动构建、打包或任何 Git 写操作。
+- 已知限制：构建状态为“待构建机验证”；连接时按钮当前以省略号表达 loading，旋转 loading 动效与呼吸状态点留待 U4 统一校核；首页仍保持现有单页节点管理结构，底部导航与完整页面拆分将在后续 U 阶段按既定顺序处理。
+
+
+> 构建机注(2026-09-03,UI 重构 + 订阅分组的):打包前检查确认无订阅分组功能,构建机已实现 —— SubInfo 新增 group 字段(Preferences JSON 与备份 schema 天然向后兼容,旧数据默认未分组);设置页订阅区按分组分节渲染(未分组在最前,组头显示数量),每条订阅新增"分组"操作(SubGroupDialog 弹窗改组);新增 4 组中英文案。另修复 Codex 重构组件在本机 SDK 的两个编译错误:MiniStatCard 移除 fontVariant(FontVariant 本机不存在)、ToggleRow 成员 enabled 为保留名改 controlEnabled。订阅分组实现:ets/core/Subscriptions.ets、ets/pages/SettingsPage.ets、resources 双份 string.json。versionCode 1001901。

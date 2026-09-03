@@ -2,8 +2,11 @@ import common from '@ohos.app.ability.common';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
+import { BigPowerButton } from '../common/components/BigPowerButton';
+import { MiniStatCard } from '../common/components/MiniStatCard';
+import { ToggleRow } from '../common/components/ToggleRow';
 import { Profile, ProfileGroup, AppSettings, profileTypeLabel } from '../model/Profile';
-import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, loadSettings, LogStore } from '../model/Store';
+import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, loadSettings, saveSettings, LogStore } from '../model/Store';
 import { VpnService } from '../core/VpnService';
 import { parseShareText } from '../utils/LinkParser';
 import { getClipboardText, setClipboardText } from '../utils/ClipboardHelper';
@@ -667,9 +670,9 @@ struct Index {
       .width('100%')
       .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 12, bottom: 8 })
 
-      // 连接状态卡片
-      Column({ space: 6 }) {
-        Row({ space: 8 }) {
+      // 鸿蒙原生 Hero 卡片：状态、主连接按钮与实时统计共用现有 VPN 状态链路
+      Column({ space: UiSpec.GAP_LG }) {
+        Row({ space: UiSpec.GAP_SM }) {
           Text(this.isRunning ? '●' : '○')
             .fontSize(16)
             .fontColor(this.isRunning ? $r('app.color.success') : $r('app.color.text_disabled'))
@@ -687,17 +690,96 @@ struct Index {
         }
         .width('100%')
 
-        if (this.isRunning) {
-          Text($r('app.string.traffic_speed_total', formatSpeed(this.upSpeed), formatSpeed(this.downSpeed), formatBytes(this.totalUp), formatBytes(this.totalDown)))
-            .fontSize(11)
-            .fontColor($r('app.color.text_secondary'))
-            .width('100%')
+        BigPowerButton({
+          running: this.isRunning,
+          connecting: this.statusText === 'connecting' || this.statusText === 'switching',
+          onToggle: () => {
+            if (this.isRunning) {
+              this.disconnect();
+              return;
+            }
+            const target = this.profiles.find((profile: Profile) => profile.id === this.selectedId);
+            if (target === undefined) {
+              promptAction.showToast({ message: $r('app.string.select_or_create_profile') });
+              return;
+            }
+            this.connectTo(target);
+          }
+        })
+
+        Row({ space: 10 }) {
+          MiniStatCard({
+            label: $r('app.string.upload'),
+            value: this.isRunning ? formatSpeed(this.upSpeed) : '—'
+          })
+            .layoutWeight(1)
+          MiniStatCard({
+            label: $r('app.string.download'),
+            value: this.isRunning ? formatSpeed(this.downSpeed) : '—'
+          })
+            .layoutWeight(1)
         }
+        .width('100%')
+
+        Row({ space: 10 }) {
+          MiniStatCard({
+            label: $r('app.string.traffic'),
+            value: this.isRunning ? formatBytes(this.totalUp + this.totalDown) : '—'
+          })
+            .layoutWeight(1)
+          MiniStatCard({
+            label: $r('app.string.proxy'),
+            value: `${this.profiles.length}`
+          })
+            .layoutWeight(1)
+        }
+        .width('100%')
       }
       .width('calc(100% - 32vp)')
       .margin({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, bottom: 10 })
-      .padding(12)
-      .borderRadius(UiSpec.CARD_RADIUS)
+      .padding(20)
+      .borderRadius(24)
+      .backgroundColor($r('app.color.surface'))
+      .shadow({ radius: 16, color: $r('app.color.shadow_color'), offsetX: 0, offsetY: 6 })
+
+      // 现有设置状态的快捷开关，不引入新的业务状态或改变既有键语义
+      Column() {
+        ToggleRow({
+          title: $r('app.string.settings_auto_update_subs'),
+          description: $r('app.string.settings_auto_update_subs'),
+          checked: this.settings.autoUpdateSubs,
+          onChange: (checked: boolean) => {
+            this.settings.autoUpdateSubs = checked;
+            this.settings = this.settings;
+            saveSettings(this.settings);
+          }
+        })
+        Divider().color($r('app.color.divider'))
+        ToggleRow({
+          title: $r('app.string.settings_enable_ipv6'),
+          description: $r('app.string.settings_enable_ipv6'),
+          checked: this.settings.ipv6,
+          onChange: (checked: boolean) => {
+            this.settings.ipv6 = checked;
+            this.settings = this.settings;
+            saveSettings(this.settings);
+          }
+        })
+        Divider().color($r('app.color.divider'))
+        ToggleRow({
+          title: $r('app.string.haptic_feedback'),
+          description: $r('app.string.haptic_feedback'),
+          checked: this.settings.hapticFeedback,
+          onChange: (checked: boolean) => {
+            this.settings.hapticFeedback = checked;
+            this.settings = this.settings;
+            saveSettings(this.settings);
+          }
+        })
+      }
+      .width('calc(100% - 32vp)')
+      .margin({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, bottom: 10 })
+      .borderRadius(20)
       .backgroundColor($r('app.color.surface'))
 
       // 按分组展示节点，分组头在折叠状态下仍显示测速汇总与操作

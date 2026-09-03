@@ -10,7 +10,7 @@ import util from '@ohos.util';
 import bundle from '@ohos.bundle';
 import { AppSettings } from '../model/Profile';
 import { initStore, loadSettings, saveSettings, LogStore } from '../model/Store';
-import { SubInfo, listSubs, updateSubscription, removeSub, markSubSuccess, markSubFailure } from '../core/Subscriptions';
+import { SubInfo, listSubs, saveSubs, updateSubscription, removeSub, markSubSuccess, markSubFailure } from '../core/Subscriptions';
 import { formatBytes } from '../utils/TrafficStats';
 import { exportBackup, importBackup } from '../core/Backup';
 import { getClipboardText } from '../utils/ClipboardHelper';
@@ -35,6 +35,16 @@ class InstalledAppItem {
   }
 }
 
+class SubGroupBucket {
+  name: string;
+  items: Array<SubInfo>;
+
+  constructor(name: string) {
+    this.name = name;
+    this.items = [];
+  }
+}
+
 @Entry
 @Component
 struct SettingsPage {
@@ -50,6 +60,12 @@ struct SettingsPage {
   @State appListLoading: boolean = false;
   @State appListError: ResourceStr = '';
   @State backupFileBusy: boolean = false;
+  @State subGroupDraft: string = '';
+  private subGroupEditUrl: string = '';
+  private subGroupDialog: CustomDialogController = new CustomDialogController({
+    builder: SubGroupDialog({ draft: $subGroupDraft, onSaved: (t: string) => this.saveSubGroup(t) }),
+    autoCancel: true
+  });
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear(): void {
@@ -199,6 +215,48 @@ struct SettingsPage {
     } finally {
       this.appListLoading = false;
     }
+  }
+
+  saveSubGroup(name: string): void {
+    const idx = this.subs.findIndex(x => x.url === this.subGroupEditUrl);
+    if (idx < 0) {
+      return;
+    }
+    const updated = this.subs.slice();
+    updated[idx].group = name.trim();
+    this.subGroupEditUrl = '';
+    this.subs = updated;
+    saveSubs(updated);
+  }
+
+  openSubGroupDialog(sub: SubInfo): void {
+    this.subGroupEditUrl = sub.url;
+    this.subGroupDraft = sub.group;
+    this.subGroupDialog.open();
+  }
+
+  subGroups(): Array<SubGroupBucket> {
+    const buckets: Array<SubGroupBucket> = [];
+    const indexOf: Map<string, number> = new Map();
+    for (const sub of this.subs) {
+      const name = sub.group.trim();
+      if (!indexOf.has(name)) {
+        indexOf.set(name, buckets.length);
+        buckets.push(new SubGroupBucket(name));
+      }
+      const at = indexOf.get(name) as number;
+      buckets[at].items.push(sub);
+    }
+    buckets.sort((a: SubGroupBucket, b: SubGroupBucket) => {
+      if (a.name === '') {
+        return -1;
+      }
+      if (b.name === '') {
+        return 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
+    return buckets;
   }
 
   private backupErrorText(msg: string): ResourceStr {
@@ -442,10 +500,17 @@ struct SettingsPage {
               Text($r('app.string.settings_subs_empty'))
                 .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
             }
-            ForEach(this.subs, (sub: SubInfo) => {
+            ForEach(this.subGroups(), (bucket: SubGroupBucket) => {
+              Column({ space: 8 }) {
+                Text(bucket.name === '' ? $r('app.string.sub_group_none') : `${bucket.name} · ${bucket.items.length}`)
+                  .fontSize(12).fontColor($r('app.color.primary')).width('100%')
+                ForEach(bucket.items, (sub: SubInfo) => {
               Row() {
                 Column() {
                   Text(sub.name).fontSize(14).maxLines(1)
+                  if (sub.group !== '') {
+                    Text(sub.group).fontSize(10).fontColor($r('app.color.primary'))
+                  }
                   Text(sub.lastUpdate === 0 ? $r('app.string.settings_sub_never_updated')
                     : $r('app.string.settings_sub_updated_at', new Date(sub.lastUpdate).toLocaleString()))
                     .fontSize(11).fontColor($r('app.color.text_secondary'))
@@ -469,8 +534,12 @@ struct SettingsPage {
                     removeSub(sub.url);
                     this.subs = this.subs.filter(x => x.url !== sub.url);
                   })
+                Text($r('app.string.sub_group_edit')).fontSize(13).fontColor($r('app.color.primary')).padding(6)
+                  .onClick(() => this.openSubGroupDialog(sub))
               }.width('100%')
-            }, (sub: SubInfo) => sub.url)
+                }, (sub: SubInfo) => sub.url)
+              }.width('100%')
+            }, (bucket: SubGroupBucket) => bucket.name === '' ? '__none__' : bucket.name)
 
             Row() {
               Text($r('app.string.settings_auto_update_subs')).fontSize(14).layoutWeight(1)
@@ -771,5 +840,38 @@ struct SettingsPage {
     .alignItems(HorizontalAlign.Center)
     .backgroundColor($r('app.color.app_background'))
     .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
+  }
+}
+
+@CustomDialog
+struct SubGroupDialog {
+  controller?: CustomDialogController;
+  @Link draft: string;
+  onSaved: (t: string) => void = (t: string) => {
+  };
+
+  build() {
+    Column({ space: 12 }) {
+      Text($r('app.string.sub_group_dialog_title')).fontSize(16).fontWeight(FontWeight.Medium).width('100%')
+      TextInput({ text: this.draft, placeholder: $r('app.string.sub_group_hint') })
+        .height(40).width('100%')
+        .onChange((v: string) => { this.draft = v; })
+      Row({ space: 8 }) {
+        Button($r('app.string.cancel'))
+          .layoutWeight(1).height(UiSpec.BTN_HEIGHT)
+          .backgroundColor($r('app.color.surface')).fontColor($r('app.color.text_primary'))
+          .onClick(() => this.controller?.close())
+        Button($r('app.string.save'))
+          .layoutWeight(1).height(UiSpec.BTN_HEIGHT)
+          .backgroundColor($r('app.color.primary')).fontColor($r('app.color.surface'))
+          .onClick(() => {
+            this.onSaved(this.draft);
+            this.controller?.close();
+          })
+      }.width('100%')
+    }
+    .padding(UiSpec.PAGE_PADDING)
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(UiSpec.CARD_RADIUS)
   }
 }

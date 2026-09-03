@@ -12,6 +12,7 @@ const AUTO_UPDATE_INTERVAL = 12 * 3600 * 1000; // 12h
 export class SubInfo {
   url: string = '';
   name: string = '';
+  group: string = '';
   lastUpdate: number = 0;
   upload: number = 0;
   download: number = 0;
@@ -40,6 +41,7 @@ export async function listSubs(): Promise<Array<SubInfo>> {
       const item = new SubInfo();
       item.url = source.url ?? '';
       item.name = source.name ?? subNameOf(item.url);
+      item.group = source.group ?? '';
       item.lastUpdate = Number(source.lastUpdate) || 0;
       item.upload = Number(source.upload) || 0;
       item.download = Number(source.download) || 0;

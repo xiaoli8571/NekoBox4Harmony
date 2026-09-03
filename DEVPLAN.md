@@ -94,3 +94,10 @@
 4. 不构建、不 commit;等构建机编译反馈,有错误按反馈修复
 
 > 通知栏占位符修复（2026-09-03）：本机 SDK 的 `resourceManager.getStringSync` 未展开带参数资源，真机原样显示 `%1$s.%2$s`。通知副标题现改为代码直接拼接 `${nodeName} · ${latencyText}`，避免占位符泄漏；待构建与真机验证。
+
+## U1 首页重构 —— 状态：已完成开发，待构建机验证
+
+- 已完成方案 A 鸿蒙原生卡片流首页改造，新增 `BigPowerButton`、`MiniStatCard`、`ToggleRow`，并复用既有 `AppStorage('vpnStatus')`、`Index.statusDisplay()`、`AppSettings` 与 `saveSettings()` 状态链路。
+- 保留节点选择、VPN 启停、导入、新增与编辑、测速、分组测速、折叠、手动排序、置顶、分享、per-app 入口，以及连接、日志和设置入口。
+- 已完成 JSON 语法、base/en_US 文案键一致性及 `git diff --check` 静态检查；未构建、未打包、未执行 Git 写操作。
+- 连接中旋转 loading、状态点呼吸动效及后续导航结构统一留待 U4 与后续里程碑校核。

@@ -83,6 +83,18 @@
     {
       "name": "shadow_color",
       "value": "#40000000"
+    },
+    {
+      "name": "power_icon",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "btn_ring",
+      "value": "#240A59F7"
+    },
+    {
+      "name": "btn_glow",
+      "value": "#660A59F7"
     }
   ]
 }
