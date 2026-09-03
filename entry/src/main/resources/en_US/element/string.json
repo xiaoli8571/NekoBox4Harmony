@@ -1211,6 +1211,34 @@
     {
       "name": "parse_failed_reason",
       "value": "Parse failed: %1$s"
+    },
+    {
+      "name": "upload",
+      "value": "Upload"
+    },
+    {
+      "name": "download",
+      "value": "Download"
+    },
+    {
+      "name": "traffic",
+      "value": "Traffic"
+    },
+    {
+      "name": "sub_group_none",
+      "value": "Ungrouped"
+    },
+    {
+      "name": "sub_group_edit",
+      "value": "Group"
+    },
+    {
+      "name": "sub_group_dialog_title",
+      "value": "Subscription group"
+    },
+    {
+      "name": "sub_group_hint",
+      "value": "Group name; leave empty for ungrouped"
     }
   ]
 }

@@ -1211,6 +1211,34 @@
     {
       "name": "parse_failed_reason",
       "value": "解析失败: %1$s"
+    },
+    {
+      "name": "upload",
+      "value": "上传"
+    },
+    {
+      "name": "download",
+      "value": "下载"
+    },
+    {
+      "name": "traffic",
+      "value": "流量"
+    },
+    {
+      "name": "sub_group_none",
+      "value": "未分组"
+    },
+    {
+      "name": "sub_group_edit",
+      "value": "分组"
+    },
+    {
+      "name": "sub_group_dialog_title",
+      "value": "设置订阅分组"
+    },
+    {
+      "name": "sub_group_hint",
+      "value": "输入分组名称,留空为未分组"
     }
   ]
 }
