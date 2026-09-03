@@ -6,20 +6,21 @@
 
 ## 下载
 
-前往 [Releases](https://github.com/xiaoli8571/NekoBox4Harmony/releases) 下载未签名 HAP(如 `NekoBox4Harmony-1.5.7-unsigned.hap`),在 DevEco Studio 中签名后安装(签名由用户自理)。
+前往 [Releases](https://github.com/xiaoli8571/NekoBox4Harmony/releases) 下载未签名 HAP(如 `NekoBox4Harmony-1.5.8-unsigned.hap`),在 DevEco Studio 中签名后安装(签名由用户自理)。
 
-## 功能特性(v1.5.7)
+## 功能特性(v1.5.8)
 
 - **协议**:ss / vmess / vless / trojan / **hysteria2** / **tuic v5**;分享链接导入、HTTP(S) 订阅、Clash YAML 订阅兼容
 - **节点**:分组管理与首页分组显示、批量延迟测试(结果保存并按延迟着色)、编辑页实时校验(服务器/端口/UUID/凭据/REALITY)
-- **分流**:规则 / 全局 / 直连模式;自定义域名 / IP CIDR / GeoIP / GeoSite 规则;per-app 包含 / 排除(手输包名)
-- **订阅**:更新间隔与到期元数据、应用启动时自动更新到期订阅、流量配额与到期时间展示
-- **备份**:schema v3(设置、节点、分组、订阅、分流规则),剪贴板导入导出
+- **分流**:规则 / 全局 / 直连模式;自定义域名 / IP CIDR / GeoIP / GeoSite 规则;per-app 包含 / 排除(图形化应用选择器 + 手输包名兜底)
+- **订阅**:更新间隔与到期元数据、启动时 + 退后台自动更新到期订阅、流量配额与到期时间展示
+- **通知与体验**:常驻通知显示当前节点延迟、通知栏一键断开;中英双语(跟随系统语言);HarmonyOS 原生观感(统一圆角/边距/分段控件、深浅色自适应状态栏)
+- **备份**:schema v3(设置、节点、分组、订阅、分流规则),文件导出/导入(DocumentViewPicker)+ 剪贴板快捷方式
 - **外观**:跟随系统 / 浅色 / 深色(深色主题资源全量接入、切换即时生效)、触感反馈、液态玻璃偏好
 - **日志**:独立日志页,固定终端配色(深底浅字 + ERROR/WARN 高亮),内核日志实时可见
 - **DNS / 路由安全**:DNS 劫持防泄漏、防路由回环排除路由(见技术要点)
 
-路线图见 `DEVPLAN.md`(F2~F6:通知栏延迟与断开按钮、订阅后台定时更新、per-app 图形选择器、备份文件化、中英双语)。
+F 阶段(F1~F7)已全部交付;后续规划(G 阶段:节点置顶/分组测速汇总/分享二维码/远程规则集/连接统计)见 `DEVPLAN.md`。
 
 ## 从源码构建
 

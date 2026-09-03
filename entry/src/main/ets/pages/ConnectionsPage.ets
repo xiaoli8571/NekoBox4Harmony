@@ -205,7 +205,8 @@ struct ConnectionsPage {
       .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
       .scrollBar(BarState.On)
     }
-    .constraintSize({ maxWidth: UiSpec.CONTENT_MAX_WIDTH })
+    .width('100%')
+    .height('100%')
     }
     .width('100%')
     .height('100%')

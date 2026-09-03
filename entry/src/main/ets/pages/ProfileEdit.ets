@@ -244,7 +244,8 @@ struct ProfileEdit {
       .layoutWeight(1)
       .align(Alignment.Top)
     }
-    .constraintSize({ maxWidth: UiSpec.CONTENT_MAX_WIDTH })
+    .width('100%')
+    .height('100%')
     }
     .width('100%')
     .height('100%')

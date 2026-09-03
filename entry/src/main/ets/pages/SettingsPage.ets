@@ -364,6 +364,7 @@ struct SettingsPage {
             Row({ space: 8 }) {
               ForEach(MODES, (m: string, idx: number) => {
                 Button(MODE_LABELS[idx])
+                  .layoutWeight(1)
                   .backgroundColor(this.s.mode === m ? $r('app.color.primary') : $r('app.color.surface'))
                   .fontColor(this.s.mode === m ? $r('app.color.surface') : $r('app.color.text_primary'))
                   .onClick(() => {
@@ -440,6 +441,7 @@ struct SettingsPage {
 
                 Button($r('app.string.update_action'))
                   .height(30)
+                  .constraintSize({ minWidth: 52 })
                   .backgroundColor(this.updatingUrl === sub.url ? $r('app.color.control_disabled') : $r('app.color.primary'))
                   .onClick(() => this.updateOne(sub))
                 Text($r('app.string.delete')).fontSize(13).fontColor($r('app.color.error')).padding(6)
@@ -510,6 +512,7 @@ struct SettingsPage {
             Row({ space: 8 }) {
               ForEach(['system', 'light', 'dark'], (mode: string) => {
                 Button(mode === 'system' ? $r('app.string.appearance_follow_system') : (mode === 'light' ? $r('app.string.appearance_light') : $r('app.string.appearance_dark')))
+                  .layoutWeight(1)
                   .backgroundColor(this.s.appearance === mode ? $r('app.color.primary') : $r('app.color.surface'))
                   .fontColor(this.s.appearance === mode ? $r('app.color.surface') : $r('app.color.text_primary'))
                   .onClick(() => {
@@ -547,6 +550,7 @@ struct SettingsPage {
             Row({ space: 8 }) {
               ForEach(APP_MODES, (m: string, idx: number) => {
                 Button(APP_MODE_LABELS[idx])
+                  .layoutWeight(1)
                   .backgroundColor(this.s.perAppMode === m ? $r('app.color.primary') : $r('app.color.surface'))
                   .fontColor(this.s.perAppMode === m ? $r('app.color.surface') : $r('app.color.text_primary'))
                   .onClick(() => {
@@ -626,6 +630,8 @@ struct SettingsPage {
             }.width('100%')
             Row({ space: 8 }) {
               Button($r('app.string.backup_to_clipboard'))
+                .layoutWeight(1)
+                .height(UiSpec.BTN_HEIGHT)
                 .backgroundColor($r('app.color.surface'))
                 .fontColor($r('app.color.text_primary'))
                 .onClick(async () => {
@@ -639,6 +645,8 @@ struct SettingsPage {
                   }
                 })
               Button($r('app.string.restore_from_clipboard'))
+                .layoutWeight(1)
+                .height(UiSpec.BTN_HEIGHT)
                 .backgroundColor($r('app.color.surface'))
                 .fontColor($r('app.color.text_primary'))
                 .onClick(async () => {
@@ -680,7 +688,8 @@ struct SettingsPage {
       .layoutWeight(1)
       .align(Alignment.Top)
     }
-    .constraintSize({ maxWidth: UiSpec.CONTENT_MAX_WIDTH })
+    .width('100%')
+    .height('100%')
     }
     .width('100%')
     .height('100%')
