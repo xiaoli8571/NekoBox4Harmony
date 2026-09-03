@@ -350,3 +350,8 @@ Existing notification files reviewed:
 
 
 > 构建机注(2026-09-03,G7 轮):一次编译通过(versionCode 1001804)。铁律核查:module.json5/内核/AppScope 零改动,${$r( 模板混用 0;restartReason 仅入 LogStore,机器键协议未破坏。真机验证点以 Codex 建议为准:连续切换节点、断开换节点启动、运行中切换模式、全局模式国内地址走 proxy。
+
+> 通知栏修复（2026-09-03）：真机通知副标题原样显示 `%1$s.%2$s`，确认当前 SDK 的 `getStringSync` 调用未展开参数化字符串。`VpnExtAbility.ets` 已改为直接拼接节点名与延迟：`${nodeName} · ${latencyText}`。未构建、未提交或推送，待构建机验证。
+
+
+> 构建机注(2026-09-03,通知显示修复轮):真机实证本机 SDK 的 resourceManager.getStringSync(resource, args) 不展开 %1$s 占位符(原样输出);通知副标题改为纯字符串模板拼接(`${nodeName} · ${latencyText}`,未测速为 `节点名 · --`)。规则更新:系统 API 动态文案 = getStringSync 取静态资源 + 代码拼接动态值;占位符资源仅在 ArkUI 组件 $r() 内使用。versionCode 1001805。

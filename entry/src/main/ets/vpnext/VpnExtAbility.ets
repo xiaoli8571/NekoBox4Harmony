@@ -415,7 +415,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
         contentType: notification.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
         normal: {
           title: res.getStringSync($r('app.string.notification_vpn_connected')),
-          text: res.getStringSync($r('app.string.notification_node_latency', nodeName, latencyText)),
+          text: `${nodeName} · ${latencyText}`,
           additionalText: res.getStringSync($r('app.string.app_name'))
         }
       };

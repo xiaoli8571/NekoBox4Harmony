@@ -92,3 +92,5 @@
 2. `CHANGES.md` 逐项追加;`DEVPLAN.md` 状态行同步;G3/G5 的降级路径必须有记录
 3. 全部完成后构建机升 versionName 1.6.0、打 GitHub release;G4/G5 真机风险点写入 release notes
 4. 不构建、不 commit;等构建机编译反馈,有错误按反馈修复
+
+> 通知栏占位符修复（2026-09-03）：本机 SDK 的 `resourceManager.getStringSync` 未展开带参数资源，真机原样显示 `%1$s.%2$s`。通知副标题现改为代码直接拼接 `${nodeName} · ${latencyText}`，避免占位符泄漏；待构建与真机验证。
