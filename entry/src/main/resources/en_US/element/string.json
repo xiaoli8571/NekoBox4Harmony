@@ -10,1051 +10,1051 @@
     },
     {
       "name": "cancel",
-      "value": "取消"
+      "value": "Cancel"
     },
     {
       "name": "delete",
-      "value": "删除"
+      "value": "Delete"
     },
     {
       "name": "save",
-      "value": "保存"
+      "value": "Save"
     },
     {
       "name": "back",
-      "value": "返回"
+      "value": "Back"
     },
     {
       "name": "reload",
-      "value": "重新加载"
+      "value": "Reload"
     },
     {
       "name": "import_action",
-      "value": "导入"
+      "value": "Import"
     },
     {
       "name": "read_from_clipboard",
-      "value": "从剪贴板读取"
+      "value": "Read from clipboard"
     },
     {
       "name": "mode_rule",
-      "value": "规则"
+      "value": "Rule"
     },
     {
       "name": "mode_global",
-      "value": "全局"
+      "value": "Global"
     },
     {
       "name": "mode_direct",
-      "value": "直连"
+      "value": "Direct"
     },
     {
       "name": "status_disconnected",
-      "value": "未连接"
+      "value": "Disconnected"
     },
     {
       "name": "settings_title",
-      "value": "设置"
+      "value": "Settings"
     },
     {
       "name": "profile_new_title",
-      "value": "新建节点"
+      "value": "New profile"
     },
     {
       "name": "profile_edit_title",
-      "value": "编辑节点"
+      "value": "Edit profile"
     },
     {
       "name": "subscription_detail_title",
-      "value": "订阅详情"
+      "value": "Subscription details"
     },
     {
       "name": "route_rules_title",
-      "value": "自定义路由规则"
+      "value": "Custom route rules"
     },
     {
       "name": "loading_settings",
-      "value": "正在加载设置…"
+      "value": "Loading settings…"
     },
     {
       "name": "settings_load_failed",
-      "value": "设置加载失败"
+      "value": "Failed to load settings"
     },
     {
       "name": "outbound_mode",
-      "value": "出站模式"
+      "value": "Outbound mode"
     },
     {
       "name": "route_rules_description",
-      "value": "按域名、IP、端口指定代理、直连或拒绝"
+      "value": "Route by domain, IP, or port through proxy, direct, or reject"
     },
     {
       "name": "enter",
-      "value": "进入 ›"
+      "value": "Open ›"
     },
     {
       "name": "subscriptions",
-      "value": "订阅"
+      "value": "Subscriptions"
     },
     {
       "name": "appearance_and_interaction",
-      "value": "外观与交互"
+      "value": "Appearance and interaction"
     },
     {
       "name": "follow_system",
-      "value": "跟随系统"
+      "value": "Follow system"
     },
     {
       "name": "light_mode",
-      "value": "浅色"
+      "value": "Light"
     },
     {
       "name": "dark_mode",
-      "value": "深色"
+      "value": "Dark"
     },
     {
       "name": "haptic_feedback",
-      "value": "触感反馈"
+      "value": "Haptic feedback"
     },
     {
       "name": "liquid_glass",
-      "value": "液态玻璃效果"
+      "value": "Liquid glass effect"
     },
     {
       "name": "per_app_proxy",
-      "value": "分应用代理"
+      "value": "Per-app proxy"
     },
     {
       "name": "per_app_off",
-      "value": "关闭"
+      "value": "Off"
     },
     {
       "name": "per_app_exclude",
-      "value": "排除模式"
+      "value": "Exclude mode"
     },
     {
       "name": "per_app_include",
-      "value": "仅这些走代理"
+      "value": "Proxy selected apps only"
     },
     {
       "name": "search_apps",
-      "value": "搜索应用名称或包名"
+      "value": "Search app name or package"
     },
     {
       "name": "read_apps",
-      "value": "读取应用"
+      "value": "Load apps"
     },
     {
       "name": "reading_apps",
-      "value": "读取中…"
+      "value": "Loading…"
     },
     {
       "name": "backup_restore",
-      "value": "备份与恢复"
+      "value": "Backup and restore"
     },
     {
       "name": "processing",
-      "value": "处理中…"
+      "value": "Processing…"
     },
     {
       "name": "export_backup_file",
-      "value": "导出备份文件"
+      "value": "Export backup file"
     },
     {
       "name": "restore_from_file",
-      "value": "从文件恢复"
+      "value": "Restore from file"
     },
     {
       "name": "backup_to_clipboard",
-      "value": "备份到剪贴板"
+      "value": "Copy backup to clipboard"
     },
     {
       "name": "restore_from_clipboard",
-      "value": "从剪贴板恢复"
+      "value": "Restore from clipboard"
     },
     {
       "name": "clipboard_empty",
-      "value": "剪贴板为空"
+      "value": "Clipboard is empty"
     },
     {
       "name": "loading_subscription",
-      "value": "正在加载订阅…"
+      "value": "Loading subscription…"
     },
     {
       "name": "subscription_load_failed",
-      "value": "订阅加载失败"
+      "value": "Failed to load subscription"
     },
     {
       "name": "subscription_not_found",
-      "value": "订阅不存在"
+      "value": "Subscription not found"
     },
     {
       "name": "unnamed_subscription",
-      "value": "未命名订阅"
+      "value": "Unnamed subscription"
     },
     {
       "name": "updating",
-      "value": "正在更新…"
+      "value": "Updating…"
     },
     {
       "name": "update_now",
-      "value": "立即更新"
+      "value": "Update now"
     },
     {
       "name": "delete_subscription_profiles",
-      "value": "删除订阅及节点"
+      "value": "Delete subscription and profiles"
     },
     {
       "name": "add",
-      "value": "添加"
+      "value": "Add"
     },
     {
       "name": "loading_route_rules",
-      "value": "正在加载路由规则…"
+      "value": "Loading route rules…"
     },
     {
       "name": "route_rules_load_failed",
-      "value": "路由规则加载失败"
+      "value": "Failed to load route rules"
     },
     {
       "name": "no_route_rules",
-      "value": "暂无自定义路由规则"
+      "value": "No custom route rules"
     },
     {
       "name": "route_rule_remark",
-      "value": "规则备注"
+      "value": "Rule remark"
     },
     {
       "name": "domain",
-      "value": "完整域名"
+      "value": "Exact domain"
     },
     {
       "name": "domain_suffix",
-      "value": "域名后缀"
+      "value": "Domain suffix"
     },
     {
       "name": "domain_keyword",
-      "value": "域名关键字"
+      "value": "Domain keyword"
     },
     {
       "name": "port",
-      "value": "端口"
+      "value": "Port"
     },
     {
       "name": "proxy",
-      "value": "代理"
+      "value": "Proxy"
     },
     {
       "name": "reject",
-      "value": "拒绝"
+      "value": "Reject"
     },
     {
       "name": "delete_rule",
-      "value": "删除规则"
+      "value": "Delete rule"
     },
     {
       "name": "profile_name",
-      "value": "名称"
+      "value": "Name"
     },
     {
       "name": "profile_name_placeholder",
-      "value": "节点名称"
+      "value": "Profile name"
     },
     {
       "name": "server_address",
-      "value": "服务器地址"
+      "value": "Server address"
     },
     {
       "name": "password",
-      "value": "密码"
+      "value": "Password"
     },
     {
       "name": "protocol_type",
-      "value": "协议类型"
+      "value": "Protocol type"
     },
     {
       "name": "transport",
-      "value": "传输层"
+      "value": "Transport"
     },
     {
       "name": "enable_tls",
-      "value": "启用 TLS"
+      "value": "Enable TLS"
     },
     {
       "name": "allow_insecure_tls",
-      "value": "允许不安全 TLS (insecure)"
+      "value": "Allow insecure TLS"
     },
     {
       "name": "multiplex",
-      "value": "多路复用 (mux)"
+      "value": "Multiplex"
     },
     {
       "name": "parse_and_fill",
-      "value": "解析并填入"
+      "value": "Parse and fill"
     },
     {
       "name": "speed_test",
-      "value": "测速"
+      "value": "Speed test"
     },
     {
       "name": "speed_testing",
-      "value": "测速中"
+      "value": "Testing…"
     },
     {
       "name": "connect",
-      "value": "连接"
+      "value": "Connect"
     },
     {
       "name": "disconnect",
-      "value": "断开连接"
+      "value": "Disconnect"
     },
     {
       "name": "start_vpn",
-      "value": "启动 VPN"
+      "value": "Start VPN"
     },
     {
       "name": "logs",
-      "value": "日志"
+      "value": "Logs"
     },
     {
       "name": "import_link",
-      "value": "导入链接"
+      "value": "Import link"
     },
     {
       "name": "import_link_subscription",
-      "value": "导入链接 / 订阅"
+      "value": "Import link / subscription"
     },
     {
       "name": "confirm_delete_route_rule",
-      "value": "删除这条路由规则?"
+      "value": "Delete this route rule?"
     },
     {
       "name": "route_rule_empty_hint",
-      "value": "点击右上角“添加”创建第一条规则。"
+      "value": "Tap Add in the upper-right corner to create the first rule."
     },
     {
       "name": "comma_separated_values",
-      "value": "多个值使用英文逗号分隔"
+      "value": "Separate multiple values with commas"
     },
     {
       "name": "route_rule_order_hint",
-      "value": "规则按列表顺序匹配，修改后重新连接 VPN 生效。"
+      "value": "Rules are matched in list order. Reconnect the VPN after changes."
     },
     {
       "name": "subscription_update_complete",
-      "value": "订阅更新完成"
+      "value": "Subscription updated"
     },
     {
       "name": "added",
-      "value": "新增"
+      "value": "Added"
     },
     {
       "name": "removed",
-      "value": "移除"
+      "value": "Removed"
     },
     {
       "name": "update_failed",
-      "value": "更新失败"
+      "value": "Update failed"
     },
     {
       "name": "confirm_delete_subscription",
-      "value": "删除订阅及其节点"
+      "value": "Delete subscription and its profiles"
     },
     {
       "name": "subscription_missing_hint",
-      "value": "该订阅可能已被删除，请返回订阅列表。"
+      "value": "This subscription may have been deleted. Return to the subscription list."
     },
     {
       "name": "profile_count",
-      "value": "节点数量"
+      "value": "Profile count"
     },
     {
       "name": "used_traffic",
-      "value": "已用流量"
+      "value": "Used traffic"
     },
     {
       "name": "total_traffic",
-      "value": "总流量"
+      "value": "Total traffic"
     },
     {
       "name": "unknown",
-      "value": "未知"
+      "value": "Unknown"
     },
     {
       "name": "consecutive_failures",
-      "value": "连续失败"
+      "value": "Consecutive failures"
     },
     {
       "name": "no_recognizable_profiles",
-      "value": "未解析到可识别的节点"
+      "value": "No recognizable profiles found."
     },
     {
       "name": "select_or_create_profile",
-      "value": "请先选择或创建一个节点"
+      "value": "Select or create a profile first."
     },
     {
       "name": "testing_profiles",
-      "value": "正在测试节点，共"
+      "value": "Testing profiles, total"
     },
     {
       "name": "speed_test_complete",
-      "value": "测速完成，结果已保存"
+      "value": "Speed test complete. Results saved."
     },
     {
       "name": "timeout",
-      "value": "超时"
+      "value": "Timeout"
     },
     {
       "name": "disconnect_first",
-      "value": "请先断开当前连接"
+      "value": "Disconnect the current connection first."
     },
     {
       "name": "switching_wait",
-      "value": "正在切换，请稍候"
+      "value": "Switching. Please wait."
     },
     {
       "name": "switching_to",
-      "value": "正在切换到"
+      "value": "Switching to"
     },
     {
       "name": "clipboard_empty_paste_manually",
-      "value": "剪贴板为空，请手动粘贴到输入框"
+      "value": "Clipboard is empty. Paste into the input field manually."
     },
     {
       "name": "paste_subscription_or_profile_link",
-      "value": "请先粘贴订阅链接或节点链接"
+      "value": "Paste a subscription or profile link first."
     },
     {
       "name": "fetching_subscription",
-      "value": "正在获取订阅…"
+      "value": "Fetching subscription…"
     },
     {
       "name": "clash_no_importable_profiles",
-      "value": "订阅返回 Clash 格式，但没有可导入的节点。跳过的不支持协议数"
+      "value": "The subscription returned Clash format but no importable profiles. Unsupported profiles skipped"
     },
     {
       "name": "imported_profiles",
-      "value": "已导入节点数"
+      "value": "Profiles imported"
     },
     {
       "name": "import_failed",
-      "value": "导入失败"
+      "value": "Import failed"
     },
     {
       "name": "ungrouped",
-      "value": "未分组"
+      "value": "Ungrouped"
     },
     {
       "name": "local_profile",
-      "value": "本地节点"
+      "value": "Local profile"
     },
     {
       "name": "subscription_profile",
-      "value": "订阅节点"
+      "value": "Subscription profile"
     },
     {
       "name": "protocol_export_unsupported",
-      "value": "该协议暂不支持导出"
+      "value": "Export is not supported for this protocol."
     },
     {
       "name": "profile_link_copied",
-      "value": "节点链接已复制"
+      "value": "Profile link copied."
     },
     {
       "name": "url_test_requires_connection",
-      "value": "URL Test 需要先连接该节点"
+      "value": "Connect this profile before running URL Test."
     },
     {
       "name": "url_test_current_profile_only",
-      "value": "URL Test 仅支持当前连接节点"
+      "value": "URL Test only supports the currently connected profile."
     },
     {
       "name": "confirm_delete_profile",
-      "value": "删除节点"
+      "value": "Delete profile"
     },
     {
       "name": "unpin",
-      "value": "取消置顶"
+      "value": "Unpin"
     },
     {
       "name": "pin",
-      "value": "置顶"
+      "value": "Pin"
     },
     {
       "name": "copy_share_link",
-      "value": "复制分享链接"
+      "value": "Copy share link"
     },
     {
       "name": "view_subscription",
-      "value": "查看订阅"
+      "value": "View subscription"
     },
     {
       "name": "irreversible",
-      "value": "不可撤销"
+      "value": "Cannot be undone"
     },
     {
       "name": "total",
-      "value": "总计"
+      "value": "Total"
     },
     {
       "name": "import_content_placeholder",
-      "value": "粘贴订阅链接(http…)、节点链接(vless:// 等)或 base64 订阅内容"
+      "value": "Paste a subscription URL, profile link, or base64 subscription content"
     },
     {
       "name": "saved",
-      "value": "已保存"
+      "value": "Saved."
     },
     {
       "name": "save_failed",
-      "value": "保存失败"
+      "value": "Save failed"
     },
     {
       "name": "paste_link_first",
-      "value": "请先粘贴链接内容"
+      "value": "Paste link content first."
     },
     {
       "name": "error_server_required",
-      "value": "服务器地址不能为空"
+      "value": "Server address is required."
     },
     {
       "name": "error_port_range",
-      "value": "端口必须是 1 到 65535 之间的整数"
+      "value": "Port must be an integer from 1 to 65535."
     },
     {
       "name": "error_invalid_uuid",
-      "value": "请输入有效的 UUID"
+      "value": "Enter a valid UUID."
     },
     {
       "name": "error_ss_method_required",
-      "value": "Shadowsocks 加密方式不能为空"
+      "value": "Shadowsocks encryption method is required."
     },
     {
       "name": "error_ss_password_required",
-      "value": "Shadowsocks 密码不能为空"
+      "value": "Shadowsocks password is required."
     },
     {
       "name": "error_auth_password_required",
-      "value": "认证密码不能为空"
+      "value": "Authentication password is required."
     },
     {
       "name": "error_tuic_password_required",
-      "value": "TUIC 密码不能为空"
+      "value": "TUIC password is required."
     },
     {
       "name": "error_reality_public_key",
-      "value": "REALITY 公钥格式不正确"
+      "value": "The REALITY public key format is invalid."
     },
     {
       "name": "error_reality_short_id",
-      "value": "REALITY short_id 必须是 2 到 16 位十六进制字符"
+      "value": "REALITY short_id must contain 2 to 16 hexadecimal characters."
     },
     {
       "name": "error_extra_json",
-      "value": "附加 JSON 格式不正确"
+      "value": "The extra JSON format is invalid."
     },
     {
       "name": "subscription_link_use_home",
-      "value": "这是订阅链接，请回主页使用“导入链接”"
+      "value": "This is a subscription link. Use Import link on the home page."
     },
     {
       "name": "unrecognized_profile_link",
-      "value": "无法识别节点链接，请检查内容"
+      "value": "The profile link was not recognized. Check its contents."
     },
     {
       "name": "parsed_review_save",
-      "value": "已解析，请核对后保存"
+      "value": "Parsed. Review the fields, then save."
     },
     {
       "name": "parse_failed",
-      "value": "解析失败"
+      "value": "Parse failed"
     },
     {
       "name": "clipboard_empty_paste_manually_short",
-      "value": "剪贴板为空，请手动粘贴"
+      "value": "Clipboard is empty. Paste manually."
     },
     {
       "name": "profile_link_placeholder",
-      "value": "粘贴 vless://、vmess://、ss://、trojan:// 等节点链接（支持多条，取第一条）"
+      "value": "Paste a vless://, vmess://, ss://, trojan://, or similar profile link. The first link is used."
     },
     {
       "name": "password_trojan",
-      "value": "密码 (Trojan)"
+      "value": "Password (Trojan)"
     },
     {
       "name": "encryption_method",
-      "value": "加密方式"
+      "value": "Encryption method"
     },
     {
       "name": "encryption_security",
-      "value": "加密 (security)"
+      "value": "Encryption (security)"
     },
     {
       "name": "empty_or_xtls_vision",
-      "value": "留空 / xtls-rprx-vision"
+      "value": "Empty / xtls-rprx-vision"
     },
     {
       "name": "auth_string",
-      "value": "认证字符串 (auth_str)"
+      "value": "Authentication string (auth_str)"
     },
     {
       "name": "upload_mbps",
-      "value": "上行 Mbps"
+      "value": "Upload Mbps"
     },
     {
       "name": "download_mbps",
-      "value": "下行 Mbps"
+      "value": "Download Mbps"
     },
     {
       "name": "empty_or_password",
-      "value": "留空 / 密码"
+      "value": "Empty / password"
     },
     {
       "name": "password_hysteria2",
-      "value": "密码 (Hysteria2)"
+      "value": "Password (Hysteria2)"
     },
     {
       "name": "upload_mbps_optional",
-      "value": "上行 Mbps (可空)"
+      "value": "Upload Mbps (optional)"
     },
     {
       "name": "download_mbps_optional",
-      "value": "下行 Mbps (可空)"
+      "value": "Download Mbps (optional)"
     },
     {
       "name": "obfs_password_optional",
-      "value": "obfs 混淆密码 (可空)"
+      "value": "obfs password (optional)"
     },
     {
       "name": "salamander_password",
-      "value": "salamander 密码"
+      "value": "Salamander password"
     },
     {
       "name": "password_optional_placeholder",
-      "value": "password (可空)"
+      "value": "password (optional)"
     },
     {
       "name": "congestion_control",
-      "value": "拥塞控制"
+      "value": "Congestion control"
     },
     {
       "name": "udp_relay_mode",
-      "value": "UDP 中继模式"
+      "value": "UDP relay mode"
     },
     {
       "name": "local_address_cidr",
-      "value": "本地地址 (CIDR)"
+      "value": "Local address (CIDR)"
     },
     {
       "name": "private_key",
-      "value": "本机私钥 (private_key)"
+      "value": "Private key (private_key)"
     },
     {
       "name": "peer_public_key",
-      "value": "对端公钥 (peer public_key)"
+      "value": "Peer public key"
     },
     {
       "name": "pre_shared_key_optional",
-      "value": "预共享密钥 (可选)"
+      "value": "Pre-shared key (optional)"
     },
     {
       "name": "username_optional",
-      "value": "用户名 (可选)"
+      "value": "Username (optional)"
     },
     {
       "name": "password_optional",
-      "value": "密码 (可选)"
+      "value": "Password (optional)"
     },
     {
       "name": "tcp_none",
-      "value": "TCP (无)"
+      "value": "TCP (none)"
     },
     {
       "name": "domain_placeholder",
-      "value": "域名"
+      "value": "Domain"
     },
     {
       "name": "sni_placeholder",
-      "value": "留空则使用服务器地址"
+      "value": "Empty uses server address"
     },
     {
       "name": "alpn_comma_separated",
-      "value": "ALPN (逗号分隔)"
+      "value": "ALPN (comma-separated)"
     },
     {
       "name": "alpn_placeholder",
-      "value": "h2,http/1.1 或 h3"
+      "value": "h2,http/1.1 or h3"
     },
     {
       "name": "utls_fingerprint",
-      "value": "uTLS 指纹 (fp, 留空默认)"
+      "value": "uTLS fingerprint (fp, empty for default)"
     },
     {
       "name": "reality_public_key_optional",
-      "value": "REALITY 公钥 (pbk, 可选)"
+      "value": "REALITY public key (pbk, optional)"
     },
     {
       "name": "reality_short_id_optional",
-      "value": "REALITY short_id (可选)"
+      "value": "REALITY short_id (optional)"
     },
     {
       "name": "extra_json_advanced",
-      "value": "附加 JSON (高级, 与出站对象合并)"
+      "value": "Extra JSON (advanced, merged into outbound object)"
     },
     {
       "name": "profile_edit_footer_hint",
-      "value": "长按主页节点可删除；支持从剪贴板导入节点链接与 base64 订阅"
+      "value": "Long-press a home profile to delete it. Clipboard import supports profile links and base64 subscriptions."
     },
     {
       "name": "geo_downloading",
-      "value": "正在下载 Geo 数据（约 1 MB，多源尝试）…"
+      "value": "Downloading Geo data (about 1 MB, trying multiple sources)…"
     },
     {
       "name": "geo_download_complete",
-      "value": "Geo 数据下载完成，重新连接后启用 cn 直连分流"
+      "value": "Geo data downloaded. Reconnect to enable direct routing for cn."
     },
     {
       "name": "download_failed",
-      "value": "下载失败"
+      "value": "Download failed"
     },
     {
       "name": "saved_reconnect_vpn",
-      "value": "已保存，重新连接 VPN 后生效"
+      "value": "Saved. Reconnect the VPN to apply changes."
     },
     {
       "name": "no_installed_apps_manual",
-      "value": "未读取到已安装应用，请使用下方包名输入框。"
+      "value": "No installed apps were found. Use the package-name field below."
     },
     {
       "name": "app_list_failed_manual",
-      "value": "无法读取应用列表，请使用下方包名输入框"
+      "value": "Unable to read the app list. Use the package-name field below"
     },
     {
       "name": "backup_file_empty",
-      "value": "备份文件为空"
+      "value": "The backup file is empty."
     },
     {
       "name": "backup_file_too_large",
-      "value": "备份文件超过 20 MiB"
+      "value": "The backup file exceeds 20 MiB."
     },
     {
       "name": "backup_file_incomplete",
-      "value": "备份文件未完整读取"
+      "value": "The backup file was not read completely."
     },
     {
       "name": "backup_export_cancelled",
-      "value": "已取消导出备份"
+      "value": "Backup export cancelled."
     },
     {
       "name": "backup_file_exported",
-      "value": "备份文件已导出"
+      "value": "Backup file exported."
     },
     {
       "name": "export_failed",
-      "value": "导出失败: %1$s"
+      "value": "Export failed: %1$s"
     },
     {
       "name": "backup_import_cancelled",
-      "value": "已取消导入备份"
+      "value": "Backup import cancelled."
     },
     {
       "name": "restore_failed",
-      "value": "恢复失败: %1$s"
+      "value": "Restore failed: %1$s"
     },
     {
       "name": "updating_subscription",
-      "value": "正在更新订阅…"
+      "value": "Updating subscription…"
     },
     {
       "name": "index_testing_count",
-      "value": "正在测速 %1$d 个节点…"
+      "value": "Testing %1$d profiles…"
     },
     {
       "name": "switching_to_name",
-      "value": "切换到 %1$s…"
+      "value": "Switching to %1$s…"
     },
     {
       "name": "clash_skipped_count",
-      "value": "无可导入节点,跳过 %1$d 条"
+      "value": "No importable profiles, %1$d skipped"
     },
     {
       "name": "imported_from_sub",
-      "value": "已导入 %1$d 个节点,来自订阅 %2$s"
+      "value": "Imported %1$d profiles from subscription %2$s"
     },
     {
       "name": "imported_count",
-      "value": "已导入 %1$d 个节点"
+      "value": "Imported %1$d profiles"
     },
     {
       "name": "import_failed_reason",
-      "value": "导入失败: %1$s"
+      "value": "Import failed: %1$s"
     },
     {
       "name": "confirm_delete_profile_name",
-      "value": "确认删除节点 “%1$s”?"
+      "value": "Delete profile “%1$s”?"
     },
     {
       "name": "traffic_speed_total",
-      "value": "↑ %1$s  ↓ %2$s   ·   总 ↑ %3$s  ↓ %4$s"
+      "value": "↑ %1$s  ↓ %2$s   ·   Total ↑ %3$s  ↓ %4$s"
     },
     {
       "name": "settings_mode_switched_rule",
-      "value": "已切换为规则模式,重连后生效"
+      "value": "Switched to Rule mode. Takes effect after reconnect."
     },
     {
       "name": "settings_mode_switched_global",
-      "value": "已切换为全局模式,重连后生效"
+      "value": "Switched to Global mode. Takes effect after reconnect."
     },
     {
       "name": "settings_mode_switched_direct",
-      "value": "已切换为直连模式,重连后生效"
+      "value": "Switched to Direct mode. Takes effect after reconnect."
     },
     {
       "name": "settings_mode_desc_direct",
-      "value": "所有流量直连(不走代理)"
+      "value": "All traffic goes direct (no proxy)"
     },
     {
       "name": "settings_mode_desc_global",
-      "value": "所有流量走代理"
+      "value": "All traffic goes through the proxy"
     },
     {
       "name": "settings_mode_desc_rule",
-      "value": "私网与自定义列表直连,其余走代理"
+      "value": "Private network and custom list go direct; the rest goes through the proxy"
     },
     {
       "name": "settings_custom_routes_title",
-      "value": "自定义路由规则"
+      "value": "Custom route rules"
     },
     {
       "name": "settings_direct_domain_suffix",
-      "value": "直连域名后缀(逗号分隔)"
+      "value": "Direct domain suffixes (comma-separated)"
     },
     {
       "name": "settings_direct_cidr",
-      "value": "直连 IP 段(逗号分隔 CIDR)"
+      "value": "Direct IP ranges (comma-separated CIDR)"
     },
     {
       "name": "settings_geo_ready",
-      "value": "✓ Geo 数据已就绪(cn 直连分流已启用)"
+      "value": "✓ Geo data ready (cn split-routing enabled)"
     },
     {
       "name": "settings_geo_missing",
-      "value": "未下载 Geo 数据(cn 分流不可用)"
+      "value": "Geo data not downloaded (cn split-routing unavailable)"
     },
     {
       "name": "settings_geo_downloading",
-      "value": "下载中…"
+      "value": "Downloading…"
     },
     {
       "name": "settings_geo_redownload",
-      "value": "重新下载"
+      "value": "Redownload"
     },
     {
       "name": "settings_geo_download",
-      "value": "下载数据"
+      "value": "Download data"
     },
     {
       "name": "settings_subs_empty",
-      "value": "暂无订阅。在主页「导入链接」粘贴订阅地址后会自动记录到这里。"
+      "value": "No subscriptions yet. Paste a subscription URL via “Import link” on the home page; it will be tracked here automatically."
     },
     {
       "name": "settings_sub_never_updated",
-      "value": "从未更新"
+      "value": "Never updated"
     },
     {
       "name": "settings_sub_updated_at",
-      "value": "更新于 %1$s"
+      "value": "Updated at %1$s"
     },
     {
       "name": "settings_sub_traffic",
-      "value": "已用 %1$s / %2$s"
+      "value": "Used %1$s of %2$s"
     },
     {
       "name": "settings_sub_expire",
-      "value": "到期: %1$s"
+      "value": "Expires: %1$s"
     },
     {
       "name": "update_action",
-      "value": "更新"
+      "value": "Update"
     },
     {
       "name": "settings_auto_update_subs",
-      "value": "启动时自动更新订阅"
+      "value": "Auto-update subscriptions on launch"
     },
     {
       "name": "settings_tun_stack",
-      "value": "TUN 协议栈"
+      "value": "TUN stack"
     },
     {
       "name": "settings_remote_dns",
-      "value": "远程 DNS (经代理, 防泄漏)"
+      "value": "Remote DNS (via proxy, prevents leaks)"
     },
     {
       "name": "settings_remote_dns_hint",
-      "value": "远程 DNS 的主机部分必须是 IP(如 https://8.8.8.8/dns-query),避免启动时引导解析"
+      "value": "The host of the remote DNS must be an IP (e.g. https://8.8.8.8/dns-query) to avoid bootstrap resolution"
     },
     {
       "name": "settings_direct_dns",
-      "value": "直连 DNS (用于解析代理服务器域名)"
+      "value": "Direct DNS (resolves proxy server domains)"
     },
     {
       "name": "settings_enable_ipv6",
-      "value": "启用 IPv6"
+      "value": "Enable IPv6"
     },
     {
       "name": "appearance_follow_system",
-      "value": "跟随系统"
+      "value": "Follow system"
     },
     {
       "name": "appearance_light",
-      "value": "浅色"
+      "value": "Light"
     },
     {
       "name": "appearance_dark",
-      "value": "深色"
+      "value": "Dark"
     },
     {
       "name": "settings_theme_note",
-      "value": "主题选项会保存为应用偏好；受当前 SDK 能力限制，部分页面需重新进入后刷新。"
+      "value": "Theme options are saved as app preferences; due to SDK limitations, some pages refresh after re-entering."
     },
     {
       "name": "settings_per_app_hint_exclude",
-      "value": "不走 VPN 的应用包名,逗号分隔"
+      "value": "App package names excluded from VPN, comma-separated"
     },
     {
       "name": "settings_per_app_hint_include",
-      "value": "仅走 VPN 的应用包名,逗号分隔"
+      "value": "App package names included in VPN, comma-separated"
     },
     {
       "name": "settings_per_app_manual_note",
-      "value": "应用列表读取失败时仍可手动输入包名，多个包名用逗号分隔，重连后生效。"
+      "value": "If the app list fails to load, enter package names manually, comma-separated; takes effect after reconnect."
     },
     {
       "name": "settings_clipboard_backup_done",
-      "value": "备份已复制到剪贴板"
+      "value": "Backup copied to clipboard"
     },
     {
       "name": "settings_clipboard_backup_failed",
-      "value": "备份失败: %1$s"
+      "value": "Backup failed: %1$s"
     },
     {
       "name": "settings_clipboard_empty",
-      "value": "剪贴板为空"
+      "value": "Clipboard is empty"
     },
     {
       "name": "settings_backup_desc",
-      "value": "备份包含节点、分组、设置、订阅和自定义路由规则，以带版本的 JSON 存于剪贴板。"
+      "value": "Backup includes nodes, groups, settings, subscriptions and custom route rules, stored on the clipboard as versioned JSON."
     },
     {
       "name": "settings_insecure_tls",
-      "value": "全局放行不安全 TLS"
+      "value": "Allow insecure TLS globally"
     },
     {
       "name": "settings_insecure_tls_desc",
-      "value": "调试自签证书节点时使用"
+      "value": "For debugging nodes with self-signed certificates"
     },
     {
       "name": "settings_reconnect_note",
-      "value": "注意:修改设置后需重新连接 VPN 才会生效。"
+      "value": "Note: settings take effect after reconnecting the VPN."
     },
     {
       "name": "download_failed_reason",
-      "value": "下载失败: %1$s"
+      "value": "Download failed: %1$s"
     },
     {
       "name": "save_failed_reason",
-      "value": "保存失败: %1$s"
+      "value": "Save failed: %1$s"
     },
     {
       "name": "app_list_failed_reason",
-      "value": "无法读取应用列表: %1$s"
+      "value": "Failed to list apps: %1$s"
     },
     {
       "name": "sub_update_result",
-      "value": "订阅更新完成: 新增 %1$d, 移除 %2$d"
+      "value": "Subscription updated: %1$d added, %2$d removed"
     },
     {
       "name": "update_failed_reason",
-      "value": "更新失败: %1$s"
+      "value": "Update failed: %1$s"
     },
     {
       "name": "backup_invalid_json",
-      "value": "备份文件不是有效的 JSON"
+      "value": "Backup file is not valid JSON"
     },
     {
       "name": "backup_bad_format",
-      "value": "备份内容格式不正确"
+      "value": "Backup content format is invalid"
     },
     {
       "name": "backup_unsupported_version",
-      "value": "不支持的备份版本: %1$d"
+      "value": "Unsupported backup schema version: %1$d"
     },
     {
       "name": "backup_restore_summary",
-      "value": "已恢复 %1$d 个节点、%2$d 个分组、全部设置、%3$d 个订阅和 %4$d 条路由规则"
+      "value": "Restored %1$d nodes, %2$d groups, all settings, %3$d subscriptions and %4$d route rules"
     },
     {
       "name": "backup_op_failed",
-      "value": "操作失败: %1$s"
+      "value": "Operation failed: %1$s"
     },
     {
       "name": "confirm_delete_sub_name",
-      "value": "确认删除订阅 “%1$s”(共 %2$d 个节点)?"
+      "value": "Delete subscription “%1$s” (%2$d profiles)?"
     },
     {
       "name": "profile_count_value",
-      "value": "节点数: %1$d"
+      "value": "Profiles: %1$d"
     },
     {
       "name": "used_traffic_value",
-      "value": "已用流量: %1$s"
+      "value": "Used traffic: %1$s"
     },
     {
       "name": "total_traffic_value",
-      "value": "总流量: %1$s"
+      "value": "Total traffic: %1$s"
     },
     {
       "name": "total_traffic_unknown",
-      "value": "总流量: 未知"
+      "value": "Total traffic: unknown"
     },
     {
       "name": "consecutive_failures_value",
-      "value": "连续失败: %1$d 次"
+      "value": "Consecutive failures: %1$d"
     },
     {
       "name": "status_connecting",
-      "value": "正在建立 VPN…"
+      "value": "Establishing VPN…"
     },
     {
       "name": "status_disconnecting",
-      "value": "正在断开…"
+      "value": "Disconnecting…"
     },
     {
       "name": "status_switching",
-      "value": "正在切换节点…"
+      "value": "Switching node…"
     },
     {
       "name": "status_start_timeout",
-      "value": "建立 VPN 超时:扩展没有完成启动,请到「日志」页查看卡在哪一步"
+      "value": "VPN setup timed out: the extension did not finish starting. Check the Logs page to see where it stopped."
     },
     {
       "name": "status_awaiting_auth",
-      "value": "等待 VPN 授权…"
+      "value": "Waiting for VPN authorization…"
     },
     {
       "name": "status_connected_node",
-      "value": "已连接: %1$s"
+      "value": "Connected: %1$s"
     },
     {
       "name": "status_start_failed",
-      "value": "启动 VPN 服务失败: %1$s"
+      "value": "Failed to start VPN service: %1$s"
     },
     {
       "name": "status_connect_failed",
-      "value": "连接失败: %1$s"
+      "value": "Connection failed: %1$s"
     },
     {
       "name": "parse_failed_reason",
-      "value": "解析失败: %1$s"
+      "value": "Parse failed: %1$s"
     }
   ]
 }

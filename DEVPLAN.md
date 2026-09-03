@@ -1,6 +1,6 @@
 # NekoBox for Harmony 开发计划(F 阶段,目标版本 1.5.8)
 
-> 当前基线:1.5.7(versionCode 1001714,2026-09-03)。**F1~F4 已完成(F2~F4 待构建机真机验证,勿重做)**;本阶段开发 F5~F7,目标版本 1.5.8。建议顺序:F5 → F6 → F7(UI 适配放最后,功能全部落地后一次收尾)。
+> 当前基线:1.5.7(versionCode 1001714,2026-09-03)。**F1~F6 已完成(F2~F6 待真机验证,勿重做)**;剩余 F7(UI 适配鸿蒙),目标版本 1.5.8。
 > 详细项目架构见仓库根 `AGENTS.md`,上一轮实现说明见 `CHANGES.md`,先读这两个文件。
 
 ## 铁律(违反即返工)
@@ -56,7 +56,9 @@
 - 改动:`core/Backup.ets`、`pages/SettingsPage.ets`
 - 验收:能导出备份文件、能从文件恢复,错误(坏文件/版本不兼容)有提示
 
-## F6 中英多语言收尾(纯应用层)—— 状态:待开发
+## F6 中英多语言收尾(纯应用层)—— 状态:已完成,待真机验证
+
+- 构建机补完(2026-09-03):SettingsPage 剩余 35 处文案与 Backup.ets 4 处(错误/摘要)资源化;全仓清除 43 处 `${$r(...)}` 模板串混用(运行时会渲染为 [object Object]),整句迁移为 string.json 占位符(%1$s/%1$d),相关函数返回类型改 ResourceStr;Backup 改抛机器错误键、UI 侧 backupErrorText 映射;LogStore 调试日志行保留中文(非 UI 文案,惯例一致)
 
 - 全量抽取硬编码中文进 `resources/base/element/string.json`(base=中文),新建 `resources/en_US/element/string.json` 英文对照,代码改用 `$r('app.string.xxx')`;覆盖 Index、ProfileEdit、SettingsPage、SubDetailPage、RouteRulesPage、弹窗/按钮/Toast
 - 验收:系统切英文后主要页面全英文,无漏翻(允许极个别动态拼接处注明)

@@ -16,11 +16,12 @@ import { getClipboardText } from '../utils/ClipboardHelper';
 import { geoReady, downloadGeoAssets } from '../utils/GeoAssets';
 
 const APP_MODES: Array<string> = ['off', 'exclude', 'include'];
-const APP_MODE_LABELS: Array<string> = ['关闭', '排除模式', '仅这些走代理'];
+const APP_MODE_LABELS: Array<Resource> = [$r('app.string.per_app_off'), $r('app.string.per_app_exclude'), $r('app.string.per_app_include')];
 
 const STACKS: Array<string> = ['system'];
 const MODES: Array<string> = ['rule', 'global', 'direct'];
-const MODE_LABELS: Array<string> = ['规则', '全局', '直连'];
+const MODE_LABELS: Array<Resource> = [$r('app.string.mode_rule'), $r('app.string.mode_global'), $r('app.string.mode_direct')];
+const MODE_SWITCH_TOASTS: Array<Resource> = [$r('app.string.settings_mode_switched_rule'), $r('app.string.settings_mode_switched_global'), $r('app.string.settings_mode_switched_direct')];
 
 class InstalledAppItem {
   bundleName: string = '';
@@ -45,7 +46,7 @@ struct SettingsPage {
   @State installedApps: Array<InstalledAppItem> = [];
   @State appSearch: string = '';
   @State appListLoading: boolean = false;
-  @State appListError: string = '';
+  @State appListError: ResourceStr = '';
   @State backupFileBusy: boolean = false;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
@@ -73,14 +74,14 @@ struct SettingsPage {
       return;
     }
     this.geoLoading = true;
-    promptAction.showToast({ message: '正在下载 Geo 数据(约 1MB,多源尝试)…' });
+    promptAction.showToast({ message: $r('app.string.geo_downloading') });
     try {
       await downloadGeoAssets(this.context);
       this.geoOk = geoReady(this.context);
-      promptAction.showToast({ message: 'Geo 数据下载完成,重连后启用 cn 直连分流' });
+      promptAction.showToast({ message: $r('app.string.geo_download_complete') });
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
-      promptAction.showToast({ message: `下载失败: ${msg}` });
+      promptAction.showToast({ message: $r('app.string.download_failed_reason', msg) });
     } finally {
       this.geoLoading = false;
     }
@@ -104,10 +105,10 @@ struct SettingsPage {
     try {
       await saveSettings(this.s);
       if (!quiet) {
-        promptAction.showToast({ message: '已保存,重连 VPN 后生效' });
+        promptAction.showToast({ message: $r('app.string.saved_reconnect_vpn') });
       }
     } catch (e) {
-      promptAction.showToast({ message: `保存失败: ${e}` });
+      promptAction.showToast({ message: $r('app.string.save_failed_reason', e instanceof Error ? e.message : `${e}`) });
     }
   }
 
@@ -165,16 +166,38 @@ struct SettingsPage {
       apps.sort((a: InstalledAppItem, b: InstalledAppItem) => a.label.localeCompare(b.label));
       this.installedApps = apps;
       if (apps.length === 0) {
-        this.appListError = '未读取到已安装应用，请使用下方包名输入框。';
+        this.appListError = $r('app.string.no_installed_apps_manual');
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : `${e}`;
       this.installedApps = [];
-      this.appListError = `无法读取应用列表：${message}。请使用下方包名输入框。`;
+      this.appListError = $r('app.string.app_list_failed_reason', message);
       LogStore.addLog(`[ui] 枚举已安装应用失败，降级为手动输入: ${message}`);
     } finally {
       this.appListLoading = false;
     }
+  }
+
+  private backupErrorText(msg: string): ResourceStr {
+    if (msg === 'backup_invalid_json') {
+      return $r('app.string.backup_invalid_json');
+    }
+    if (msg === 'backup_bad_format') {
+      return $r('app.string.backup_bad_format');
+    }
+    if (msg.startsWith('backup_unsupported_version:')) {
+      return $r('app.string.backup_unsupported_version', Number(msg.substring('backup_unsupported_version:'.length)) || 0);
+    }
+    if (msg === 'backup_file_empty') {
+      return $r('app.string.backup_file_empty');
+    }
+    if (msg === 'backup_file_too_large') {
+      return $r('app.string.backup_file_too_large');
+    }
+    if (msg === 'backup_file_incomplete') {
+      return $r('app.string.backup_file_incomplete');
+    }
+    return $r('app.string.backup_op_failed', msg);
   }
 
   private backupFileName(): string {
@@ -197,15 +220,15 @@ struct SettingsPage {
     try {
       const fileSize = fs.statSync(file.fd).size;
       if (fileSize <= 0) {
-        throw new Error('备份文件为空');
+        throw new Error('backup_file_empty');
       }
       if (fileSize > 20 * 1024 * 1024) {
-        throw new Error('备份文件超过 20 MiB');
+        throw new Error('backup_file_too_large');
       }
       const buffer = new ArrayBuffer(fileSize);
       const bytesRead = fs.readSync(file.fd, buffer, { length: fileSize });
       if (bytesRead !== fileSize) {
-        throw new Error('备份文件未完整读取');
+        throw new Error('backup_file_incomplete');
       }
       const decoder = util.TextDecoder.create('utf-8');
       return decoder.decodeToString(new Uint8Array(buffer, 0, bytesRead));
@@ -227,14 +250,14 @@ struct SettingsPage {
         fileSuffixChoices: ['JSON|.json']
       });
       if (uris.length === 0) {
-        promptAction.showToast({ message: '已取消导出备份' });
+        promptAction.showToast({ message: $r('app.string.backup_export_cancelled') });
         return;
       }
       this.writeTextFileUri(uris[0], text);
-      promptAction.showToast({ message: '备份文件已导出' });
+      promptAction.showToast({ message: $r('app.string.backup_file_exported') });
     } catch (e) {
       const message = e instanceof Error ? e.message : `${e}`;
-      promptAction.showToast({ message: `导出失败: ${message}` });
+      promptAction.showToast({ message: $r('app.string.export_failed', message) });
     } finally {
       this.backupFileBusy = false;
     }
@@ -252,7 +275,7 @@ struct SettingsPage {
         fileSuffixFilters: ['JSON|.json']
       });
       if (uris.length === 0) {
-        promptAction.showToast({ message: '已取消导入备份' });
+        promptAction.showToast({ message: $r('app.string.backup_import_cancelled') });
         return;
       }
       const text = this.readTextFileUri(uris[0]).trim();
@@ -262,7 +285,7 @@ struct SettingsPage {
       promptAction.showToast({ message: message });
     } catch (e) {
       const message = e instanceof Error ? e.message : `${e}`;
-      promptAction.showToast({ message: `恢复失败: ${message}` });
+      promptAction.showToast({ message: $r('app.string.restore_failed', message) });
     } finally {
       this.backupFileBusy = false;
     }
@@ -273,17 +296,17 @@ struct SettingsPage {
       return;
     }
     this.updatingUrl = sub.url;
-    promptAction.showToast({ message: '正在更新订阅…' });
+    promptAction.showToast({ message: $r('app.string.updating_subscription') });
     try {
       const r = await updateSubscription(sub.url);
       await markSubSuccess(sub.url);
-      promptAction.showToast({ message: `订阅已更新:新增 ${r.added},移除 ${r.removed}` });
+      promptAction.showToast({ message: $r('app.string.sub_update_result', r.added, r.removed) });
       this.subs = await listSubs();
     } catch (e) {
       await markSubFailure(sub.url);
       this.subs = await listSubs();
       const msg = e instanceof Error ? e.message : `${e}`;
-      promptAction.showToast({ message: `更新失败: ${msg}` });
+      promptAction.showToast({ message: $r('app.string.update_failed_reason', msg) });
     } finally {
       this.updatingUrl = '';
     }
@@ -296,8 +319,8 @@ struct SettingsPage {
           this.save(true);
           router.back();
         }).padding(8)
-        Text('设置').fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
-        Button('保存').height(34).onClick(() => this.save())
+        Text($r('app.string.settings_title')).fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
+        Button($r('app.string.save')).height(34).onClick(() => this.save())
       }
       .width('100%').padding(12)
 
@@ -307,7 +330,7 @@ struct SettingsPage {
             .width(32)
             .height(32)
             .color($r('app.color.primary'))
-          Text('正在加载设置…')
+          Text($r('app.string.loading_settings'))
             .fontSize(13)
             .fontColor($r('app.color.text_secondary'))
         }
@@ -315,14 +338,14 @@ struct SettingsPage {
         .padding({ top: 36, bottom: 20 })
       } else if (this.loadError.length > 0) {
         Column({ space: 8 }) {
-          Text('设置加载失败')
+          Text($r('app.string.settings_load_failed'))
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.text_primary'))
           Text(this.loadError)
             .fontSize(13)
             .fontColor($r('app.color.error'))
-          Button('重新加载')
+          Button($r('app.string.reload'))
             .height(36)
             .backgroundColor($r('app.color.primary'))
             .onClick(() => this.load())
@@ -335,7 +358,7 @@ struct SettingsPage {
         Column({ space: 14 }) {
           // 出站模式
           Column() {
-            Text('出站模式').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+            Text($r('app.string.outbound_mode')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
             Row({ space: 8 }) {
               ForEach(MODES, (m: string, idx: number) => {
                 Button(MODE_LABELS[idx])
@@ -344,21 +367,21 @@ struct SettingsPage {
                   .onClick(() => {
                     this.s.mode = m;
                     this.save(true);
-                    promptAction.showToast({ message: `已切换为${MODE_LABELS[idx]}模式,重连后生效` });
+                    promptAction.showToast({ message: MODE_SWITCH_TOASTS[idx] });
                   })
               }, (m: string) => m)
             }.width('100%')
-            Text(this.s.mode === 'direct' ? '所有流量直连(不走代理)'
-              : this.s.mode === 'global' ? '所有流量走代理' : '私网与自定义列表直连,其余走代理')
+            Text(this.s.mode === 'direct' ? $r('app.string.settings_mode_desc_direct')
+              : this.s.mode === 'global' ? $r('app.string.settings_mode_desc_global') : $r('app.string.settings_mode_desc_rule'))
               .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           Row() {
             Column() {
-              Text('自定义路由规则').fontSize(14)
-              Text('按域名、IP、端口指定代理、直连或拒绝').fontSize(11).fontColor($r('app.color.text_secondary'))
+              Text($r('app.string.settings_custom_routes_title')).fontSize(14)
+              Text($r('app.string.route_rules_description')).fontSize(11).fontColor($r('app.color.text_secondary'))
             }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-            Text('进入 ›').fontSize(14).fontColor($r('app.color.primary'))
+            Text($r('app.string.enter')).fontSize(14).fontColor($r('app.color.primary'))
           }
           .width('100%')
           .padding({ top: 8, bottom: 8 })
@@ -366,20 +389,20 @@ struct SettingsPage {
 
           if (this.s.mode === 'rule') {
             Column() {
-              Text('直连域名后缀(逗号分隔)').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              Text($r('app.string.settings_direct_domain_suffix')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
               TextInput({ text: this.s.directDomains, placeholder: 'baidu.com,qq.com,163.com' })
                 .width('100%').height(40)
                 .onChange((v: string) => { this.s.directDomains = v; })
-              Text('直连 IP 段(逗号分隔 CIDR)').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              Text($r('app.string.settings_direct_cidr')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
                 .margin({ top: 6 })
               TextInput({ text: this.s.directIpCidrs, placeholder: '114.114.114.114/32' })
                 .width('100%').height(40)
                 .onChange((v: string) => { this.s.directIpCidrs = v; })
               Row({ space: 8 }) {
-                Text(this.geoOk ? '✓ Geo 数据已就绪(cn 直连分流已启用)'
-                  : '未下载 Geo 数据(cn 分流不可用)')
+                Text(this.geoOk ? $r('app.string.settings_geo_ready')
+                  : $r('app.string.settings_geo_missing'))
                   .fontSize(12).fontColor(this.geoOk ? '#2E7D32' : $r('app.color.text_secondary')).layoutWeight(1)
-                Button(this.geoLoading ? '下载中…' : (this.geoOk ? '重新下载' : '下载数据'))
+                Button(this.geoLoading ? $r('app.string.settings_geo_downloading') : (this.geoOk ? $r('app.string.settings_geo_redownload') : $r('app.string.settings_geo_download')))
                   .height(30)
                   .backgroundColor(this.geoLoading ? '#BBBBBB' : $r('app.color.primary'))
                   .onClick(() => this.downloadGeo())
@@ -391,33 +414,33 @@ struct SettingsPage {
 
           // 订阅
           Column({ space: 8 }) {
-            Text('订阅').fontSize(14).fontWeight(FontWeight.Medium).width('100%')
+            Text($r('app.string.subscriptions')).fontSize(14).fontWeight(FontWeight.Medium).width('100%')
             if (this.subs.length === 0) {
-              Text('暂无订阅。在主页「导入链接」粘贴订阅地址后会自动记录到这里。')
+              Text($r('app.string.settings_subs_empty'))
                 .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
             }
             ForEach(this.subs, (sub: SubInfo) => {
               Row() {
                 Column() {
                   Text(sub.name).fontSize(14).maxLines(1)
-                  Text(sub.lastUpdate === 0 ? '从未更新'
-                    : `更新于 ${new Date(sub.lastUpdate).toLocaleString()}`)
+                  Text(sub.lastUpdate === 0 ? $r('app.string.settings_sub_never_updated')
+                    : $r('app.string.settings_sub_updated_at', new Date(sub.lastUpdate).toLocaleString()))
                     .fontSize(11).fontColor($r('app.color.text_secondary'))
                   if (sub.total > 0) {
-                    Text(`已用 ${formatBytes(sub.upload + sub.download)} / ${formatBytes(sub.total)}`)
+                    Text($r('app.string.settings_sub_traffic', formatBytes(sub.upload + sub.download), formatBytes(sub.total)))
                       .fontSize(11).fontColor(sub.upload + sub.download > sub.total ? $r('app.color.error') : '#2E7D32')
                   }
                   if (sub.expire > 0) {
-                    Text(`到期: ${new Date(sub.expire * 1000).toLocaleDateString()}`)
+                    Text($r('app.string.settings_sub_expire', new Date(sub.expire * 1000).toLocaleDateString()))
                       .fontSize(11).fontColor($r('app.color.text_secondary'))
                   }
                 }.alignItems(HorizontalAlign.Start).layoutWeight(1)
 
-                Button('更新')
+                Button($r('app.string.update_action'))
                   .height(30)
                   .backgroundColor(this.updatingUrl === sub.url ? '#BBBBBB' : $r('app.color.primary'))
                   .onClick(() => this.updateOne(sub))
-                Text('删除').fontSize(13).fontColor($r('app.color.error')).padding(6)
+                Text($r('app.string.delete')).fontSize(13).fontColor($r('app.color.error')).padding(6)
                   .onClick(() => {
                     removeSub(sub.url);
                     this.subs = this.subs.filter(x => x.url !== sub.url);
@@ -426,7 +449,7 @@ struct SettingsPage {
             }, (sub: SubInfo) => sub.url)
 
             Row() {
-              Text('启动时自动更新订阅').fontSize(14).layoutWeight(1)
+              Text($r('app.string.settings_auto_update_subs')).fontSize(14).layoutWeight(1)
               Toggle({ type: ToggleType.Switch, isOn: this.s.autoUpdateSubs })
                 .onChange((v: boolean) => {
                   this.s.autoUpdateSubs = v;
@@ -448,7 +471,7 @@ struct SettingsPage {
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           Column() {
-            Text('TUN 协议栈').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+            Text($r('app.string.settings_tun_stack')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
             Select(STACKS.map((t: string) => ({ value: t } as SelectOption)))
               .selected(STACKS.indexOf(this.s.stack) < 0 ? 0 : STACKS.indexOf(this.s.stack))
               .value(this.s.stack)
@@ -456,23 +479,23 @@ struct SettingsPage {
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           Column() {
-            Text('远程 DNS (经代理, 防泄漏)').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+            Text($r('app.string.settings_remote_dns')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
             TextInput({ text: this.s.remoteDns })
               .width('100%').height(40)
               .onChange((v: string) => { this.s.remoteDns = v; })
-            Text('远程 DNS 的主机部分必须是 IP(如 https://8.8.8.8/dns-query),避免启动时引导解析')
+            Text($r('app.string.settings_remote_dns_hint'))
               .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           Column() {
-            Text('直连 DNS (用于解析代理服务器域名)').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+            Text($r('app.string.settings_direct_dns')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
             TextInput({ text: this.s.directDns })
               .width('100%').height(40)
               .onChange((v: string) => { this.s.directDns = v; })
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           Row() {
-            Text('启用 IPv6').fontSize(14).layoutWeight(1)
+            Text($r('app.string.settings_enable_ipv6')).fontSize(14).layoutWeight(1)
             Toggle({ type: ToggleType.Switch, isOn: this.s.ipv6 })
               .onChange((v: boolean) => { this.s.ipv6 = v; })
           }.width('100%')
@@ -481,10 +504,10 @@ struct SettingsPage {
 
           // 外观与交互
           Column({ space: 8 }) {
-            Text('外观与交互').fontSize(14).fontWeight(FontWeight.Medium).width('100%')
+            Text($r('app.string.appearance_and_interaction')).fontSize(14).fontWeight(FontWeight.Medium).width('100%')
             Row({ space: 8 }) {
               ForEach(['system', 'light', 'dark'], (mode: string) => {
-                Button(mode === 'system' ? '跟随系统' : (mode === 'light' ? '浅色' : '深色'))
+                Button(mode === 'system' ? $r('app.string.appearance_follow_system') : (mode === 'light' ? $r('app.string.appearance_light') : $r('app.string.appearance_dark')))
                   .backgroundColor(this.s.appearance === mode ? $r('app.color.primary') : $r('app.color.surface'))
                   .fontColor(this.s.appearance === mode ? $r('app.color.surface') : $r('app.color.text_primary'))
                   .onClick(() => {
@@ -495,7 +518,7 @@ struct SettingsPage {
               }, (mode: string) => mode)
             }.width('100%')
             Row() {
-              Text('触感反馈').fontSize(14).layoutWeight(1)
+              Text($r('app.string.haptic_feedback')).fontSize(14).layoutWeight(1)
               Toggle({ type: ToggleType.Switch, isOn: this.s.hapticFeedback })
                 .onChange((v: boolean) => {
                   this.s.hapticFeedback = v;
@@ -503,14 +526,14 @@ struct SettingsPage {
                 })
             }.width('100%')
             Row() {
-              Text('液态玻璃效果').fontSize(14).layoutWeight(1)
+              Text($r('app.string.liquid_glass')).fontSize(14).layoutWeight(1)
               Toggle({ type: ToggleType.Switch, isOn: this.s.liquidGlass })
                 .onChange((v: boolean) => {
                   this.s.liquidGlass = v;
                   this.save(true);
                 })
             }.width('100%')
-            Text('主题选项会保存为应用偏好；受当前 SDK 能力限制，部分页面需重新进入后刷新。')
+            Text($r('app.string.settings_theme_note'))
               .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
 
@@ -518,7 +541,7 @@ struct SettingsPage {
 
           // 分应用代理
           Column({ space: 8 }) {
-            Text('分应用代理').fontSize(14).fontWeight(FontWeight.Medium).width('100%')
+            Text($r('app.string.per_app_proxy')).fontSize(14).fontWeight(FontWeight.Medium).width('100%')
             Row({ space: 8 }) {
               ForEach(APP_MODES, (m: string, idx: number) => {
                 Button(APP_MODE_LABELS[idx])
@@ -532,15 +555,15 @@ struct SettingsPage {
             }.width('100%')
             if (this.s.perAppMode !== 'off') {
               Row({ space: 8 }) {
-                TextInput({ text: this.appSearch, placeholder: '搜索应用名称或包名' })
+                TextInput({ text: this.appSearch, placeholder: $r('app.string.search_apps') })
                   .layoutWeight(1).height(40)
                   .onChange((value: string) => { this.appSearch = value; })
-                Button(this.appListLoading ? '读取中…' : '读取应用')
+                Button(this.appListLoading ? $r('app.string.reading_apps') : $r('app.string.read_apps'))
                   .enabled(!this.appListLoading)
                   .onClick(() => this.loadInstalledApps())
               }.width('100%')
 
-              if (this.appListError.length > 0) {
+              if (this.appListError !== '') {
                 Text(this.appListError)
                   .fontSize(11).fontColor($r('app.color.error')).width('100%')
               }
@@ -568,12 +591,12 @@ struct SettingsPage {
               TextInput({
                 text: this.s.perAppList,
                 placeholder: this.s.perAppMode === 'exclude'
-                  ? '不走 VPN 的应用包名,逗号分隔'
-                  : '仅走 VPN 的应用包名,逗号分隔'
+                  ? $r('app.string.settings_per_app_hint_exclude')
+                  : $r('app.string.settings_per_app_hint_include')
               })
                 .width('100%').height(40)
                 .onChange((value: string) => { this.s.perAppList = value; })
-              Text('应用列表读取失败时仍可手动输入包名，多个包名用逗号分隔，重连后生效。')
+              Text($r('app.string.settings_per_app_manual_note'))
                 .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
             }
           }.alignItems(HorizontalAlign.Start).width('100%')
@@ -582,15 +605,15 @@ struct SettingsPage {
 
           // 备份与恢复
           Column({ space: 8 }) {
-            Text('备份与恢复').fontSize(14).fontWeight(FontWeight.Medium).width('100%')
+            Text($r('app.string.backup_restore')).fontSize(14).fontWeight(FontWeight.Medium).width('100%')
             Row({ space: 8 }) {
-              Button(this.backupFileBusy ? '处理中…' : '导出备份文件')
+              Button(this.backupFileBusy ? $r('app.string.processing') : $r('app.string.export_backup_file'))
                 .layoutWeight(1)
                 .enabled(!this.backupFileBusy)
                 .backgroundColor($r('app.color.primary'))
                 .fontColor($r('app.color.surface'))
                 .onClick(() => this.exportBackupFile())
-              Button('从文件恢复')
+              Button($r('app.string.restore_from_file'))
                 .layoutWeight(1)
                 .enabled(!this.backupFileBusy)
                 .backgroundColor($r('app.color.surface'))
@@ -598,7 +621,7 @@ struct SettingsPage {
                 .onClick(() => this.importBackupFile())
             }.width('100%')
             Row({ space: 8 }) {
-              Button('备份到剪贴板')
+              Button($r('app.string.backup_to_clipboard'))
                 .backgroundColor($r('app.color.surface'))
                 .fontColor($r('app.color.text_primary'))
                 .onClick(async () => {
@@ -606,31 +629,30 @@ struct SettingsPage {
                     const data = await exportBackup(this.context);
                     const pasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, data);
                     await pasteboard.getSystemPasteboard().setData(pasteData);
-                    promptAction.showToast({ message: '备份已复制到剪贴板' });
+                    promptAction.showToast({ message: $r('app.string.settings_clipboard_backup_done') });
                   } catch (e) {
-                    promptAction.showToast({ message: `备份失败: ${e}` });
+                    promptAction.showToast({ message: $r('app.string.settings_clipboard_backup_failed', e instanceof Error ? e.message : `${e}`) });
                   }
                 })
-              Button('从剪贴板恢复')
+              Button($r('app.string.restore_from_clipboard'))
                 .backgroundColor($r('app.color.surface'))
                 .fontColor($r('app.color.text_primary'))
                 .onClick(async () => {
                   try {
                     const text = await getClipboardText();
                     if (text.trim().length === 0) {
-                      promptAction.showToast({ message: '剪贴板为空' });
+                      promptAction.showToast({ message: $r('app.string.settings_clipboard_empty') });
                       return;
                     }
                     const msg = await importBackup(this.context, text.trim());
                     this.s = await loadSettings();
                     promptAction.showToast({ message: msg });
                   } catch (e) {
-                    const msg = e instanceof Error ? e.message : `${e}`;
-                    promptAction.showToast({ message: `恢复失败: ${msg}` });
+                    promptAction.showToast({ message: this.backupErrorText(e instanceof Error ? e.message : `${e}`) });
                   }
                 })
             }.width('100%')
-            Text('备份包含节点、分组、设置、订阅和自定义路由规则，以带版本的 JSON 存于剪贴板。')
+            Text($r('app.string.settings_backup_desc'))
               .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
 
@@ -638,14 +660,14 @@ struct SettingsPage {
 
           Row() {
             Column() {
-              Text('全局放行不安全 TLS').fontSize(14)
-              Text('调试自签证书节点时使用').fontSize(11).fontColor($r('app.color.text_secondary'))
+              Text($r('app.string.settings_insecure_tls')).fontSize(14)
+              Text($r('app.string.settings_insecure_tls_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
             }.alignItems(HorizontalAlign.Start).layoutWeight(1)
             Toggle({ type: ToggleType.Switch, isOn: this.s.allowInsecureAll })
               .onChange((v: boolean) => { this.s.allowInsecureAll = v; })
           }.width('100%')
 
-          Text('注意:修改设置后需重新连接 VPN 才会生效。')
+          Text($r('app.string.settings_reconnect_note'))
             .fontSize(12).fontColor($r('app.color.error')).width('100%')
         }
         .width('100%')

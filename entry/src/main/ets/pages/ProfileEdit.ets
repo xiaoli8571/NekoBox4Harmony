@@ -37,46 +37,46 @@ struct ProfileEdit {
     });
   }
 
-  validationError(): string {
+  validationError(): ResourceStr {
     if (this.p.server.trim().length === 0) {
-      return '服务器地址不能为空';
+      return $r('app.string.error_server_required');
     }
     if (!Number.isInteger(this.p.serverPort) || this.p.serverPort < 1 || this.p.serverPort > 65535) {
-      return '端口必须是 1 到 65535 之间的整数';
+      return $r('app.string.error_port_range');
     }
     const uuidRequired = this.p.type === ProfileType.VMESS || this.p.type === ProfileType.VLESS
       || this.p.type === ProfileType.TUIC;
     if (uuidRequired && !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(this.p.uuid.trim())) {
-      return '请输入有效的 UUID';
+      return $r('app.string.error_invalid_uuid');
     }
     if (this.p.type === ProfileType.SHADOWSOCKS) {
       if (this.p.method.trim().length === 0) {
-        return 'Shadowsocks 加密方式不能为空';
+        return $r('app.string.error_ss_method_required');
       }
       if (this.p.password.length === 0) {
-        return 'Shadowsocks 密码不能为空';
+        return $r('app.string.error_ss_password_required');
       }
     }
     if ((this.p.type === ProfileType.TROJAN || this.p.type === ProfileType.HYSTERIA
       || this.p.type === ProfileType.HYSTERIA2) && this.p.password.length === 0) {
-      return '认证密码不能为空';
+      return $r('app.string.error_auth_password_required');
     }
     if (this.p.type === ProfileType.TUIC && this.p.password.length === 0) {
-      return 'TUIC 密码不能为空';
+      return $r('app.string.error_tuic_password_required');
     }
     if (this.p.realityPublicKey.length > 0
       && !/^[A-Za-z0-9_-]{32,64}$/.test(this.p.realityPublicKey.trim())) {
-      return 'REALITY 公钥格式不正确';
+      return $r('app.string.error_reality_public_key');
     }
     if (this.p.realityShortId.length > 0
       && !/^[0-9a-fA-F]{2,16}$/.test(this.p.realityShortId.trim())) {
-      return 'REALITY short_id 必须是 2 到 16 位十六进制字符';
+      return $r('app.string.error_reality_short_id');
     }
     if (this.p.extra.trim().length > 0) {
       try {
         JSON.parse(this.p.extra);
       } catch (e) {
-        return '附加 JSON 格式不正确';
+        return $r('app.string.error_extra_json');
       }
     }
     return '';
@@ -84,7 +84,7 @@ struct ProfileEdit {
 
   async save(): Promise<void> {
     const validationError = this.validationError();
-    if (validationError.length > 0) {
+    if (validationError !== '') {
       promptAction.showToast({ message: validationError });
       return;
     }
@@ -103,10 +103,10 @@ struct ProfileEdit {
         profiles.push(this.p);
       }
       await saveProfiles(profiles);
-      promptAction.showToast({ message: '已保存' });
+      promptAction.showToast({ message: $r('app.string.saved') });
       router.back();
     } catch (e) {
-      promptAction.showToast({ message: `保存失败: ${e}` });
+      promptAction.showToast({ message: $r('app.string.save_failed_reason', e instanceof Error ? e.message : `${e}`) });
     }
   }
 
@@ -114,12 +114,12 @@ struct ProfileEdit {
   applyPasted(): void {
     const t = this.pasteText.trim();
     if (t.length === 0) {
-      promptAction.showToast({ message: '请先粘贴链接内容' });
+      promptAction.showToast({ message: $r('app.string.paste_link_first') });
       return;
     }
     const firstLine = t.split(/[\r\n]+/)[0].trim();
     if (firstLine.startsWith('http://') || firstLine.startsWith('https://')) {
-      promptAction.showToast({ message: '这是订阅链接,请回主页用「导入链接」' });
+      promptAction.showToast({ message: $r('app.string.subscription_link_use_home') });
       return;
     }
     try {
@@ -131,22 +131,22 @@ struct ProfileEdit {
         }
       }
       if (p === null) {
-        promptAction.showToast({ message: '无法识别的节点链接,请检查内容' });
+        promptAction.showToast({ message: $r('app.string.unrecognized_profile_link') });
         return;
       }
       p.id = this.p.id;
       this.p = p;
-      promptAction.showToast({ message: '已解析,请核对后保存' });
+      promptAction.showToast({ message: $r('app.string.parsed_review_save') });
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
-      promptAction.showToast({ message: `解析失败: ${msg}` });
+      promptAction.showToast({ message: $r('app.string.parse_failed_reason', msg) });
     }
   }
 
   async readClipboardIntoBox(): Promise<void> {
     const t = await getClipboardText();
     if (t.trim().length === 0) {
-      promptAction.showToast({ message: '剪贴板为空,请手动粘贴' });
+      promptAction.showToast({ message: $r('app.string.clipboard_empty_paste_manually_short') });
       return;
     }
     this.pasteText = t;
@@ -156,9 +156,9 @@ struct ProfileEdit {
     Column() {
       Row() {
         Text('←').fontSize(22).onClick(() => router.back()).padding(8)
-        Text(this.isNew ? '新建节点' : '编辑节点')
+        Text(this.isNew ? $r('app.string.profile_new_title') : $r('app.string.profile_edit_title'))
           .fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
-        Button('保存').height(34).onClick(() => this.save())
+        Button($r('app.string.save')).height(34).onClick(() => this.save())
       }
       .width('100%').padding(12)
 
@@ -168,19 +168,19 @@ struct ProfileEdit {
           Column({ space: 6 }) {
             TextArea({
               text: this.pasteText,
-              placeholder: '粘贴 vless:// vmess:// ss:// trojan:// 等节点链接(支持多条,取第一条)'
+              placeholder: $r('app.string.profile_link_placeholder')
             })
               .height(88)
               .onChange((v: string) => {
                 this.pasteText = v;
               })
             Row({ space: 8 }) {
-              Button('从剪贴板读取')
+              Button($r('app.string.read_from_clipboard'))
                 .backgroundColor($r('app.color.surface'))
                 .fontColor($r('app.color.text_primary'))
                 .onClick(() => this.readClipboardIntoBox())
               Blank()
-              Button('解析并填入')
+              Button($r('app.string.parse_and_fill'))
                 .backgroundColor('#1565C0')
                 .onClick(() => this.applyPasted())
             }
@@ -191,7 +191,7 @@ struct ProfileEdit {
 
           // 协议类型
           Column() {
-            Text('协议类型').fontSize(13).fontColor($r('app.color.text_secondary'))
+            Text($r('app.string.protocol_type')).fontSize(13).fontColor($r('app.color.text_secondary'))
             Select(ALL_TYPES.map((t: string) => ({ value: profileTypeLabel(t) } as SelectOption)))
               .selected(ALL_TYPES.indexOf(this.p.type))
               .value(profileTypeLabel(this.p.type))
@@ -211,7 +211,7 @@ struct ProfileEdit {
             this.VlessFields()
           }
           if (this.p.type === ProfileType.TROJAN) {
-            this.PasswordFields('密码 (Trojan)')
+            this.PasswordFields($r('app.string.password_trojan'))
           }
           if (this.p.type === ProfileType.HYSTERIA) {
             this.HysteriaFields()
@@ -246,7 +246,7 @@ struct ProfileEdit {
   }
 
   @Builder
-  Field(label: string, placeholder: string, val: string, onChange: (v: string) => void, inputType: InputType = InputType.Normal) {
+  Field(label: ResourceStr, placeholder: ResourceStr, val: string, onChange: (v: string) => void, inputType: InputType = InputType.Normal) {
     Column() {
       Text(label).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
       TextInput({ text: val, placeholder: placeholder })
@@ -260,9 +260,9 @@ struct ProfileEdit {
   @Builder
   CommonFields() {
     Column({ space: 10 }) {
-      this.Field('名称', '节点名称', this.p.name, (v: string) => { this.p.name = v; })
-      this.Field('服务器地址', 'domain or IP', this.p.server, (v: string) => { this.p.server = v; })
-      this.Field('端口', '443', `${this.p.serverPort === 0 ? '' : this.p.serverPort}`,
+      this.Field($r('app.string.profile_name'), $r('app.string.profile_name_placeholder'), this.p.name, (v: string) => { this.p.name = v; })
+      this.Field($r('app.string.server_address'), 'domain or IP', this.p.server, (v: string) => { this.p.server = v; })
+      this.Field($r('app.string.port'), '443', `${this.p.serverPort === 0 ? '' : this.p.serverPort}`,
         (v: string) => { this.p.serverPort = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
     }
   }
@@ -270,9 +270,9 @@ struct ProfileEdit {
   @Builder
   SsFields() {
     Column({ space: 10 }) {
-      this.Field('加密方式', 'aes-128-gcm / chacha20-ietf-poly1305 / 2022-*', this.p.method,
+      this.Field($r('app.string.encryption_method'), 'aes-128-gcm / chacha20-ietf-poly1305 / 2022-*', this.p.method,
         (v: string) => { this.p.method = v; })
-      this.Field('密码', 'password', this.p.password, (v: string) => { this.p.password = v; })
+      this.Field($r('app.string.password'), 'password', this.p.password, (v: string) => { this.p.password = v; })
     }
   }
 
@@ -282,7 +282,7 @@ struct ProfileEdit {
       this.Field('UUID', 'uuid', this.p.uuid, (v: string) => { this.p.uuid = v; })
       this.Field('alterId', '0', `${this.p.alterId}`, (v: string) => { this.p.alterId = parseInt(v.length > 0 ? v : '0'); },
         InputType.Number)
-      this.Field('加密 (security)', 'auto', this.p.security, (v: string) => { this.p.security = v; })
+      this.Field($r('app.string.encryption_security'), 'auto', this.p.security, (v: string) => { this.p.security = v; })
     }
   }
 
@@ -290,34 +290,34 @@ struct ProfileEdit {
   VlessFields() {
     Column({ space: 10 }) {
       this.Field('UUID', 'uuid', this.p.uuid, (v: string) => { this.p.uuid = v; })
-      this.Field('Flow', '留空 / xtls-rprx-vision', this.p.flow, (v: string) => { this.p.flow = v; })
+      this.Field('Flow', $r('app.string.empty_or_xtls_vision'), this.p.flow, (v: string) => { this.p.flow = v; })
     }
   }
 
   @Builder
-  PasswordFields(label: string) {
+  PasswordFields(label: ResourceStr) {
     this.Field(label, 'password', this.p.password, (v: string) => { this.p.password = v; })
   }
 
   @Builder
   HysteriaFields() {
     Column({ space: 10 }) {
-      this.Field('认证字符串 (auth_str)', 'auth', this.p.password, (v: string) => { this.p.password = v; })
-      this.Field('上行 Mbps', '100', `${this.p.upMbps}`, (v: string) => { this.p.upMbps = parseInt(v.length > 0 ? v : '0'); },
+      this.Field($r('app.string.auth_string'), 'auth', this.p.password, (v: string) => { this.p.password = v; })
+      this.Field($r('app.string.upload_mbps'), '100', `${this.p.upMbps}`, (v: string) => { this.p.upMbps = parseInt(v.length > 0 ? v : '0'); },
         InputType.Number)
-      this.Field('下行 Mbps', '100', `${this.p.downMbps}`, (v: string) => { this.p.downMbps = parseInt(v.length > 0 ? v : '0'); },
+      this.Field($r('app.string.download_mbps'), '100', `${this.p.downMbps}`, (v: string) => { this.p.downMbps = parseInt(v.length > 0 ? v : '0'); },
         InputType.Number)
-      this.Field('obfs (Salamander)', '留空 / 密码', this.p.obfs, (v: string) => { this.p.obfs = v; })
+      this.Field('obfs (Salamander)', $r('app.string.empty_or_password'), this.p.obfs, (v: string) => { this.p.obfs = v; })
     }
   }
 
   @Builder
   Hysteria2Fields() {
     Column({ space: 10 }) {
-      this.PasswordFields('密码 (Hysteria2)')
-      this.Field('上行 Mbps (可空)', '100', ``, (v: string) => { this.p.upMbps = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
-      this.Field('下行 Mbps (可空)', '100', ``, (v: string) => { this.p.downMbps = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
-      this.Field('obfs 混淆密码 (可空)', 'salamander 密码', this.p.obfs, (v: string) => { this.p.obfs = v; })
+      this.PasswordFields($r('app.string.password_hysteria2'))
+      this.Field($r('app.string.upload_mbps_optional'), '100', ``, (v: string) => { this.p.upMbps = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+      this.Field($r('app.string.download_mbps_optional'), '100', ``, (v: string) => { this.p.downMbps = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+      this.Field($r('app.string.obfs_password_optional'), $r('app.string.salamander_password'), this.p.obfs, (v: string) => { this.p.obfs = v; })
     }
   }
 
@@ -325,41 +325,41 @@ struct ProfileEdit {
   TuicFields() {
     Column({ space: 10 }) {
       this.Field('UUID', 'uuid', this.p.uuid, (v: string) => { this.p.uuid = v; })
-      this.Field('密码', 'password (可空)', this.p.password, (v: string) => { this.p.password = v; })
-      this.Field('拥塞控制', 'bbr / cubic / new_reno', this.p.congestionControl, (v: string) => { this.p.congestionControl = v; })
-      this.Field('UDP 中继模式', 'native / quic', this.p.udpRelayMode, (v: string) => { this.p.udpRelayMode = v; })
+      this.Field($r('app.string.password'), $r('app.string.password_optional_placeholder'), this.p.password, (v: string) => { this.p.password = v; })
+      this.Field($r('app.string.congestion_control'), 'bbr / cubic / new_reno', this.p.congestionControl, (v: string) => { this.p.congestionControl = v; })
+      this.Field($r('app.string.udp_relay_mode'), 'native / quic', this.p.udpRelayMode, (v: string) => { this.p.udpRelayMode = v; })
     }
   }
 
   @Builder
   WireguardFields() {
     Column({ space: 10 }) {
-      this.Field('本地地址 (CIDR)', '172.16.0.2/32', this.p.localAddress, (v: string) => { this.p.localAddress = v; })
-      this.Field('本机私钥 (private_key)', '', this.p.privateKey, (v: string) => { this.p.privateKey = v; })
-      this.Field('对端公钥 (peer public_key)', '', this.p.peerPublicKey, (v: string) => { this.p.peerPublicKey = v; })
-      this.Field('预共享密钥 (可选)', '', this.p.preSharedKey, (v: string) => { this.p.preSharedKey = v; })
+      this.Field($r('app.string.local_address_cidr'), '172.16.0.2/32', this.p.localAddress, (v: string) => { this.p.localAddress = v; })
+      this.Field($r('app.string.private_key'), '', this.p.privateKey, (v: string) => { this.p.privateKey = v; })
+      this.Field($r('app.string.peer_public_key'), '', this.p.peerPublicKey, (v: string) => { this.p.peerPublicKey = v; })
+      this.Field($r('app.string.pre_shared_key_optional'), '', this.p.preSharedKey, (v: string) => { this.p.preSharedKey = v; })
     }
   }
 
   @Builder
   UserPassFields() {
     Column({ space: 10 }) {
-      this.Field('用户名 (可选)', 'username', this.p.username, (v: string) => { this.p.username = v; })
-      this.Field('密码 (可选)', 'password', this.p.password, (v: string) => { this.p.password = v; })
+      this.Field($r('app.string.username_optional'), 'username', this.p.username, (v: string) => { this.p.username = v; })
+      this.Field($r('app.string.password_optional'), 'password', this.p.password, (v: string) => { this.p.password = v; })
     }
   }
 
   @Builder
   TransportFields() {
     Column() {
-      Text('传输层').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-      Select(TRANSPORTS.map((t: string) => ({ value: t === '' ? 'TCP (无)' : t } as SelectOption)))
+      Text($r('app.string.transport')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+      Select(TRANSPORTS.map((t: string) => ({ value: t === '' ? $r('app.string.tcp_none') : t } as SelectOption)))
         .selected(TRANSPORTS.indexOf(this.p.transport) < 0 ? 0 : TRANSPORTS.indexOf(this.p.transport))
-        .value(this.p.transport === '' ? 'TCP (无)' : this.p.transport)
+        .value(this.p.transport === '' ? $r('app.string.tcp_none') : this.p.transport)
         .onSelect((index: number) => { this.p.transport = TRANSPORTS[index]; })
       if (this.p.transport === 'ws' || this.p.transport === 'http' || this.p.transport === 'httpupgrade') {
         this.Field('Path', '/', this.p.path, (v: string) => { this.p.path = v; })
-        this.Field('Host', '域名', this.p.host, (v: string) => { this.p.host = v; })
+        this.Field('Host', $r('app.string.domain_placeholder'), this.p.host, (v: string) => { this.p.host = v; })
       }
       if (this.p.transport === 'grpc') {
         this.Field('serviceName', '', this.p.serviceName, (v: string) => { this.p.serviceName = v; })
@@ -371,25 +371,25 @@ struct ProfileEdit {
   TlsFields() {
     Column({ space: 10 }) {
       Row() {
-        Text('启用 TLS').fontSize(14).layoutWeight(1)
+        Text($r('app.string.enable_tls')).fontSize(14).layoutWeight(1)
         Toggle({ type: ToggleType.Switch, isOn: this.p.tls })
           .onChange((v: boolean) => { this.p.tls = v; })
       }.width('100%')
 
-      this.Field('SNI', '留空则使用服务器地址', this.p.sni, (v: string) => { this.p.sni = v; })
-      this.Field('ALPN (逗号分隔)', 'h2,http/1.1 或 h3', this.p.alpn, (v: string) => { this.p.alpn = v; })
-      this.Field('uTLS 指纹 (fp, 留空默认)', 'chrome / firefox / safari / ios…', this.p.fingerprint, (v: string) => { this.p.fingerprint = v; })
-      this.Field('REALITY 公钥 (pbk, 可选)', '', this.p.realityPublicKey, (v: string) => { this.p.realityPublicKey = v; })
-      this.Field('REALITY short_id (可选)', '', this.p.realityShortId, (v: string) => { this.p.realityShortId = v; })
+      this.Field('SNI', $r('app.string.sni_placeholder'), this.p.sni, (v: string) => { this.p.sni = v; })
+      this.Field($r('app.string.alpn_comma_separated'), $r('app.string.alpn_placeholder'), this.p.alpn, (v: string) => { this.p.alpn = v; })
+      this.Field($r('app.string.utls_fingerprint'), 'chrome / firefox / safari / ios…', this.p.fingerprint, (v: string) => { this.p.fingerprint = v; })
+      this.Field($r('app.string.reality_public_key_optional'), '', this.p.realityPublicKey, (v: string) => { this.p.realityPublicKey = v; })
+      this.Field($r('app.string.reality_short_id_optional'), '', this.p.realityShortId, (v: string) => { this.p.realityShortId = v; })
 
       Row() {
-        Text('允许不安全 TLS (insecure)').fontSize(14).layoutWeight(1)
+        Text($r('app.string.allow_insecure_tls')).fontSize(14).layoutWeight(1)
         Toggle({ type: ToggleType.Switch, isOn: this.p.allowInsecure })
           .onChange((v: boolean) => { this.p.allowInsecure = v; })
       }.width('100%')
 
       Row() {
-        Text('多路复用 (mux)').fontSize(14).layoutWeight(1)
+        Text($r('app.string.multiplex')).fontSize(14).layoutWeight(1)
         Toggle({ type: ToggleType.Switch, isOn: this.p.mux })
           .onChange((v: boolean) => { this.p.mux = v; })
       }.width('100%')
@@ -399,9 +399,9 @@ struct ProfileEdit {
   @Builder
   AdvancedFields() {
     Column({ space: 10 }) {
-      this.Field('附加 JSON (高级, 与出站对象合并)', '{"dialer":{}}', this.p.extra,
+      this.Field($r('app.string.extra_json_advanced'), '{"dialer":{}}', this.p.extra,
         (v: string) => { this.p.extra = v; })
-      Text('长按主页节点可删除;支持从剪贴板导入 ss/vmess/vless/trojan/hysteria/tuic 链接与 base64 订阅')
+      Text($r('app.string.profile_edit_footer_hint'))
         .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
     }
   }

@@ -34,25 +34,26 @@ export async function exportBackup(context: common.Context): Promise<string> {
   return JSON.stringify(payload);
 }
 
-export async function importBackup(context: common.Context, text: string): Promise<string> {
+export async function importBackup(context: common.Context, text: string): Promise<ResourceStr> {
   await initStore(context);
   let obj: BackupPayload;
   try {
     obj = JSON.parse(text) as BackupPayload;
   } catch (e) {
-    throw new Error('备份文件不是有效的 JSON');
+    throw new Error('backup_invalid_json');
   }
   if (obj === null || obj.profiles === undefined || obj.settings === undefined) {
-    throw new Error('备份内容格式不正确');
+    throw new Error('backup_bad_format');
   }
   const schemaVersion = obj.schemaVersion ?? obj.version ?? 1;
   if (schemaVersion > CURRENT_SCHEMA_VERSION) {
-    throw new Error(`不支持的备份版本: ${schemaVersion}`);
+    throw new Error(`backup_unsupported_version:${schemaVersion}`);
   }
   await saveSettings(obj.settings);
   await saveProfiles(obj.profiles);
   await saveGroups(obj.groups ?? []);
   await saveSubs(obj.subscriptions ?? []);
   await saveRouteRules(obj.routeRules ?? []);
-  return `已恢复 ${obj.profiles.length} 个节点、${obj.groups?.length ?? 0} 个分组、全部设置、${obj.subscriptions?.length ?? 0} 个订阅和 ${obj.routeRules?.length ?? 0} 条路由规则`;
+  return $r('app.string.backup_restore_summary', obj.profiles.length, obj.groups?.length ?? 0,
+    obj.subscriptions?.length ?? 0, obj.routeRules?.length ?? 0);
 }

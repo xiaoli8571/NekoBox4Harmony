@@ -161,7 +161,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.started = false;
     this.starting = false;
     if (!silent) {
-      publishVpnStatus('已断开', false);
+      publishVpnStatus('disconnected', false);
     }
   }
 
@@ -185,7 +185,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
         }
         // 运行中收到不同节点:原地重启(免断开切换)
         LogStore.addLog('[vpn] 检测到节点切换,重启内核…');
-        publishVpnStatus('正在切换节点…', true, pendingId);
+        publishVpnStatus('switching', true, pendingId);
         await this.teardown(true);
         this.starting = true;
         await this.startVpn(context, pendingId, generation);
@@ -197,7 +197,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       LogStore.addLog(`[vpn] 启动失败: ${msg}`);
       await clearPendingProfileId();
       await this.teardown(true);
-      publishVpnStatus(`连接失败: ${msg}`, false);
+      publishVpnStatus(`connect_failed:${msg}`, false);
     } finally {
       this.starting = false;
     }
@@ -319,7 +319,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       // 正常情况:没有残留
     }
     LogStore.addLog('[vpn] 正在创建 VPN 隧道(如弹出授权框请点「允许」)…');
-    publishVpnStatus('等待 VPN 授权…', false);
+    publishVpnStatus('awaiting_auth', false);
     const tunFd: number = await withTimeout(this.vpnConnection.create(config), 60000,
       '创建 TUN 超时:未收到系统 VPN 授权,或系统 VPN 服务无响应');
     LogStore.addLog(`[vpn] TUN fd = ${tunFd}`);
@@ -359,7 +359,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.currentNodeName = node.name;
     await setRunningProfileId(pendingId);
     this.showConnectedNotification(node.name, -1);
-    publishVpnStatus(`已连接: ${node.name}`, true, pendingId);
+    publishVpnStatus(`connected:${node.name}`, true, pendingId);
     await clearPendingProfileId();
   }
 
