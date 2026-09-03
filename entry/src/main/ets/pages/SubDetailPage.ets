@@ -5,6 +5,7 @@ import { UiSpec } from '../common/UiSpec';
 import { initStore, loadProfiles, saveProfiles } from '../model/Store';
 import { SubInfo, listSubs, removeSub, updateSubscription, markSubSuccess, markSubFailure } from '../core/Subscriptions';
 import { formatBytes } from '../utils/TrafficStats';
+import { setClipboardText } from '../utils/ClipboardHelper';
 
 @Entry
 @Component
@@ -15,7 +16,26 @@ struct SubDetailPage {
   @State loading: boolean = true;
   @State loadError: string = '';
   @State notFound: boolean = false;
+  @State shareText: string = '';
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+  private shareDialog: CustomDialogController = new CustomDialogController({
+    builder: SubscriptionShareDialog({
+      text: $shareText,
+      onCopy: async (text: string) => {
+        await setClipboardText(text);
+        promptAction.showToast({ message: $r('app.string.share_link_copied') });
+      }
+    }),
+    autoCancel: true
+  });
+
+  openSubscriptionShare(): void {
+    if (this.sub.url.length === 0) {
+      return;
+    }
+    this.shareText = this.sub.url;
+    this.shareDialog.open();
+  }
 
   aboutToAppear(): void {
     this.load();
@@ -153,6 +173,8 @@ struct SubDetailPage {
               .fontColor(Number(this.sub.failCount) >= 3 ? $r('app.color.error') : $r('app.color.text_secondary')).width('100%')
             Button(this.updating ? $r('app.string.updating') : $r('app.string.update_now'))
               .width('100%').height(UiSpec.BTN_HEIGHT).enabled(!this.updating).onClick(() => this.updateNow())
+            Button($r('app.string.share_subscription'))
+              .width('100%').height(UiSpec.BTN_HEIGHT).onClick(() => this.openSubscriptionShare())
             Button($r('app.string.delete_subscription_profiles'))
               .width('100%').height(UiSpec.BTN_HEIGHT).backgroundColor($r('app.color.error')).onClick(() => this.confirmDelete())
           }.width('100%').padding(16).alignItems(HorizontalAlign.Start)
@@ -166,5 +188,45 @@ struct SubDetailPage {
     .height('100%')
     .alignItems(HorizontalAlign.Center)
     .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
+  }
+}
+
+/** 订阅分享降级弹窗：SDK 未提供 generateBarcode 时展示链接并支持复制。 */
+@CustomDialog
+struct SubscriptionShareDialog {
+  controller?: CustomDialogController;
+  @Link text: string;
+  onCopy: (text: string) => void = (text: string) => {};
+
+  build() {
+    Column({ space: 12 }) {
+      Text($r('app.string.share_subscription_title'))
+        .fontSize(16)
+        .fontWeight(FontWeight.Bold)
+        .width('100%')
+      Text(this.text)
+        .fontSize(12)
+        .fontColor($r('app.color.text_secondary'))
+        .copyOption(CopyOptions.LocalDevice)
+        .width('100%')
+      Row({ space: 8 }) {
+        Button($r('app.string.cancel'))
+          .layoutWeight(1)
+          .backgroundColor($r('app.color.surface'))
+          .fontColor($r('app.color.text_primary'))
+          .onClick(() => {
+            if (this.controller !== undefined) {
+              this.controller.close();
+            }
+          })
+        Button($r('app.string.copy_share_link'))
+          .layoutWeight(1)
+          .backgroundColor($r('app.color.primary'))
+          .onClick(() => this.onCopy(this.text))
+      }
+      .width('100%')
+    }
+    .padding(16)
+    .width('100%')
   }
 }

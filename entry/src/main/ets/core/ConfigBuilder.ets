@@ -1,6 +1,6 @@
 import { Profile, AppSettings, ProfileType, supportsTransport, needsTlsByDefault } from '../model/Profile';
 import { CLASH_API_PORT } from '../utils/TrafficStats';
-import { RouteRule, ruleValueList } from '../model/RouteRule';
+import { RouteRule, RemoteRuleSet, ruleValueList } from '../model/RouteRule';
 
 /**
  * sing-box 1.4 配置生成器。
@@ -251,7 +251,7 @@ export function buildCustomRule(r: RouteRule): Record<string, Object> | null {
 
 export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: string,
   logPath: string = '', geositePath: string = '', geoIpPath: string = '',
-  customRules: Array<RouteRule> = []): string {
+  customRules: Array<RouteRule> = [], remoteRuleSets: Array<RemoteRuleSet> = []): string {
   if (p.server.length === 0) {
     throw new Error('服务器地址为空');
   }
@@ -366,8 +366,31 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
       routeRules.push(geoipRule);
     }
   }
+  const ruleSetDefinitions: Array<Object> = [];
+  for (const item of remoteRuleSets) {
+    if (!item.enabled || item.id.length === 0 || item.url.length === 0) {
+      continue;
+    }
+    const definition: Record<string, Object> = {};
+    definition['tag'] = `remote_${item.id}`;
+    definition['type'] = 'remote';
+    definition['format'] = 'binary';
+    definition['url'] = item.url;
+    definition['download_detour'] = 'direct';
+    definition['update_interval'] = '24h';
+    ruleSetDefinitions.push(definition);
+
+    const reference: Record<string, Object> = {};
+    reference['rule_set'] = [`remote_${item.id}`];
+    reference['outbound'] = item.outbound;
+    routeRules.push(reference);
+  }
+
   const route: Record<string, Object> = {};
   route['rules'] = routeRules;
+  if (ruleSetDefinitions.length > 0) {
+    route['rule_set'] = ruleSetDefinitions;
+  }
   route['final'] = finalOutbound;
   route['auto_detect_interface'] = false;
   if (physicalIfname.length > 0) {
@@ -384,11 +407,17 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     route['geoip'] = geoipOpt;
   }
 
-  // ---- experimental: clash API(实时速率/流量统计) ----
-  const clashApi: Record<string, Object> = {};
-  clashApi['external_controller'] = `127.0.0.1:${CLASH_API_PORT}`;
+  // ---- experimental: clash API(实时速率/流量统计) + cache file ----
   const experimental: Record<string, Object> = {};
-  experimental['clash_api'] = clashApi;
+  if (s.clashApiEnabled) {
+    const clashApi: Record<string, Object> = {};
+    clashApi['external_controller'] = `127.0.0.1:${s.clashApiPort}`;
+    clashApi['secret'] = s.clashApiSecret;
+    experimental['clash_api'] = clashApi;
+  }
+  const cacheFile: Record<string, Object> = {};
+  cacheFile['enabled'] = true;
+  experimental['cache_file'] = cacheFile;
 
   // ---- log ----
   const log: Record<string, Object> = {};

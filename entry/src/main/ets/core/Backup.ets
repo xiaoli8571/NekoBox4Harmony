@@ -1,12 +1,12 @@
 import common from '@ohos.app.ability.common';
 import { Profile, ProfileGroup, AppSettings } from '../model/Profile';
-import { RouteRule, loadRouteRules, saveRouteRules } from '../model/RouteRule';
+import { RouteRule, RemoteRuleSet, loadRouteRules, saveRouteRules, loadRemoteRuleSets, saveRemoteRuleSets } from '../model/RouteRule';
 import { SubInfo, listSubs, saveSubs } from './Subscriptions';
 import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, loadSettings, saveSettings } from '../model/Store';
 
 /** NekoBox 配置备份/恢复，包含节点、设置、订阅和自定义路由规则。 */
 
-const CURRENT_SCHEMA_VERSION: number = 3;
+const CURRENT_SCHEMA_VERSION: number = 4;
 
 interface BackupPayload {
   schemaVersion?: number;
@@ -17,6 +17,7 @@ interface BackupPayload {
   groups?: Array<ProfileGroup>;
   subscriptions?: Array<SubInfo>;
   routeRules?: Array<RouteRule>;
+  remoteRuleSets?: Array<RemoteRuleSet>;
 }
 
 export async function exportBackup(context: common.Context): Promise<string> {
@@ -29,7 +30,8 @@ export async function exportBackup(context: common.Context): Promise<string> {
     profiles: await loadProfiles(),
     groups: await loadGroups(),
     subscriptions: await listSubs(),
-    routeRules: await loadRouteRules()
+    routeRules: await loadRouteRules(),
+    remoteRuleSets: await loadRemoteRuleSets()
   };
   return JSON.stringify(payload);
 }
@@ -54,6 +56,7 @@ export async function importBackup(context: common.Context, text: string): Promi
   await saveGroups(obj.groups ?? []);
   await saveSubs(obj.subscriptions ?? []);
   await saveRouteRules(obj.routeRules ?? []);
+  await saveRemoteRuleSets(obj.remoteRuleSets ?? []);
   return $r('app.string.backup_restore_summary', obj.profiles.length, obj.groups?.length ?? 0,
     obj.subscriptions?.length ?? 0, obj.routeRules?.length ?? 0);
 }

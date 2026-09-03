@@ -81,6 +81,15 @@ export async function loadSettings(): Promise<AppSettings> {
     // keep defaults
   }
   s.mtu = Math.max(1280, Math.min(1500, s.mtu));
+  if (s.profileSortMode !== 'manual' && s.profileSortMode !== 'latency' && s.profileSortMode !== 'name') {
+    s.profileSortMode = 'manual';
+  }
+  s.clashApiPort = Math.max(1024, Math.min(65535, s.clashApiPort));
+  if (s.clashApiSecret.length === 0) {
+    s.clashApiSecret = `${Date.now().toString(36)}${Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36)}`;
+    await pref.put(KEY_SETTINGS, JSON.stringify(s));
+    await pref.flush();
+  }
   // 迁移:旧默认的 DoH 远程 DNS 在全局模式下整体失效,迁到 UDP 经代理
   if (s.remoteDns === 'https://8.8.8.8/dns-query') {
     s.remoteDns = 'udp://8.8.8.8';

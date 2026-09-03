@@ -32,21 +32,21 @@
 - 改动:`vpnext/VpnExtAbility.ets`、`resources/base|en_US/element/string.json`
 - 验收:系统切英文后通知栏(标题/文本/按钮/channel)全英文;中文环境无回归
 
-## G1 节点手动排序(置顶已有,补排序)—— 状态:待开发
+## G1 节点手动排序(置顶已有,补排序)—— 状态:已完成,待统一构建验证
 
 - 现状:`pinned` 置顶已存在;本项补**手动排序**——节点长按菜单加"上移/下移",写回 `Profile.sortOrder`;`sortedProfiles()` 优先级改为 置顶 → 手动顺序 → 现有延迟兜底
 - 排序模式切换(手动 / 按延迟 / 按名称)放设置页"外观与交互"或首页顶栏,偏好入 `AppSettings`(model/Profile.ets + Store.ets,含默认值与备份兼容)
 - 改动:`pages/Index.ets`、`model/Profile.ets`、`model/Store.ets`、`pages/SettingsPage.ets`、`core/Backup.ets`(如涉字段)、`resources`
 - 验收:手动排序重启/重进保持;三种模式切换即时生效;不同分组内排序互不干扰
 
-## G2 分组测速汇总 —— 状态:待开发
+## G2 分组测速汇总 —— 状态:已完成,待统一构建验证
 
 - 分组头显示组内**最低延迟徽标**(如"最低 86ms";全超时显示"超时";有未测节点显示"n 未测")+ "测速本组"按钮(只测组内节点,复用 utils/LatencyTester,防并发与全局测速互斥)
 - 徽标随测速回调实时刷新;折叠状态下组头同样可见
 - 改动:`pages/Index.ets`、`utils/LatencyTester.ets`(按组过滤)、`resources`
 - 验收:测速本组只影响组内节点;徽标数字与节点行一致;折叠/展开均正常显示
 
-## G3 节点分享二维码 —— 状态:待开发
+## G3 节点分享二维码 —— 状态:已完成（纯文本 URI + 复制降级）,待统一构建验证
 
 - 节点长按菜单加"分享二维码":优先用 `@kit.ScanKit` 的 generateBarcode 生成分享 URI(`utils/exportProfileLink` 已有)二维码弹窗展示;**构建机预检本机 SDK d.ts,若不可用则降级为纯文本 URI 弹窗 + 复制按钮**,降级必须在 CHANGES.md 记录
 - 订阅详情页(SubDetailPage)加"分享订阅链接"入口(同方案)
@@ -54,7 +54,7 @@
 - 改动:`pages/Index.ets`(或新 ShareDialog 组件)、`pages/SubDetailPage.ets`、`resources`
 - 验收:弹出的二维码能被系统扫一扫识别出正确 URI;降级路径可用;分享不落盘、关闭即释放
 
-## G4 远程规则集订阅 —— 状态:待开发
+## G4 远程规则集订阅 —— 状态:已完成,待统一构建验证
 
 - 规则页新增"远程规则集"管理区块:名称 + URL(.srs)+ 类型(site/ip)+ 出站(直连/代理)+ 启用开关;数据入 `model/RouteRule.ets` 扩展(或独立 model,保持备份 schema 兼容——版本号递增并兼容读 v3)
 - `core/ConfigBuilder.ets` 输出 sing-box 1.11 `route.rule_set`(remote)定义与 `route.rules[].rule_set` 引用;设置合理下载超时与 `download_detour`;内核拉取失败时跳过该集合并写内核日志,不影响启动
@@ -63,7 +63,7 @@
 - 验收(真机):添加规则集 → 连接后分流按 .srs 生效;断网时连接不因规则集失败而失败;备份/恢复包含规则集
 - 注意:sing-box 1.11 的 rule_set 为 1.8+ 特性,内核支持确认无误;**不得为它改内核**
 
-## G5 连接统计(clash_api,风险项,最后做)—— 状态:待开发
+## G5 连接统计(clash_api,风险项,最后做)—— 状态:已完成,待统一构建验证
 
 - `core/ConfigBuilder.ets` 打开 `experimental.clash_api`(external_controller `127.0.0.1:9090`,随机 secret 存设置)+ `experimental.cache_file`;端口与开关进设置页,默认开启
 - `pages/ConnectionsPage.ets` 改造:VPN 运行时每 1s 轮询 `http://127.0.0.1:9090/connections`(带 Authorization: Bearer secret),展示实时上下行速率、总流量、活跃连接列表(目标域名/规则链/上下行字节数),支持单条连接关闭(DELETE /connections/:id);未运行显示现有空态

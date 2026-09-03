@@ -11,7 +11,20 @@ export class RouteRule {
   remark: string = '';
 }
 
+/** 远程 sing-box SRS 规则集订阅。 */
+export class RemoteRuleSet {
+  id: string = '';
+  name: string = '';
+  url: string = '';
+  type: string = 'site';          // site | ip
+  outbound: string = 'direct';    // direct | proxy
+  enabled: boolean = true;
+  updatedAt: number = 0;
+  lastError: string = '';
+}
+
 const KEY_RULES = 'route_rules';
+const KEY_REMOTE_RULE_SETS = 'remote_rule_sets';
 
 export function parseRuleType(r: RouteRule): string {
   switch (r.type) {
@@ -55,4 +68,31 @@ export async function loadRouteRules(): Promise<Array<RouteRule>> {
 
 export async function saveRouteRules(list: Array<RouteRule>): Promise<void> {
   await writePrefString(KEY_RULES, JSON.stringify(list));
+}
+
+export async function loadRemoteRuleSets(): Promise<Array<RemoteRuleSet>> {
+  try {
+    const raw = await readPrefString(KEY_REMOTE_RULE_SETS, '[]');
+    const parsed = JSON.parse(raw) as Array<RemoteRuleSet>;
+    const result: Array<RemoteRuleSet> = [];
+    for (const value of parsed) {
+      const item = new RemoteRuleSet();
+      item.id = value.id ?? '';
+      item.name = value.name ?? '';
+      item.url = value.url ?? '';
+      item.type = value.type === 'ip' ? 'ip' : 'site';
+      item.outbound = value.outbound === 'proxy' ? 'proxy' : 'direct';
+      item.enabled = value.enabled ?? true;
+      item.updatedAt = value.updatedAt ?? 0;
+      item.lastError = value.lastError ?? '';
+      result.push(item);
+    }
+    return result;
+  } catch (e) {
+    return [];
+  }
+}
+
+export async function saveRemoteRuleSets(list: Array<RemoteRuleSet>): Promise<void> {
+  await writePrefString(KEY_REMOTE_RULE_SETS, JSON.stringify(list));
 }

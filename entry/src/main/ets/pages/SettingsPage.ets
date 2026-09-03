@@ -522,6 +522,19 @@ struct SettingsPage {
                   })
               }, (mode: string) => mode)
             }.width('100%')
+            Text($r('app.string.profile_sort_mode')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+            Row({ space: 8 }) {
+              ForEach(['manual', 'latency', 'name'], (mode: string) => {
+                Button(mode === 'manual' ? $r('app.string.sort_manual') : (mode === 'latency' ? $r('app.string.sort_latency') : $r('app.string.sort_name')))
+                  .layoutWeight(1)
+                  .backgroundColor(this.s.profileSortMode === mode ? $r('app.color.primary') : $r('app.color.surface'))
+                  .fontColor(this.s.profileSortMode === mode ? $r('app.color.surface') : $r('app.color.text_primary'))
+                  .onClick(() => {
+                    this.s.profileSortMode = mode;
+                    this.save(true);
+                  })
+              }, (mode: string) => mode)
+            }.width('100%')
             Row() {
               Text($r('app.string.haptic_feedback')).fontSize(14).layoutWeight(1)
               Toggle({ type: ToggleType.Switch, isOn: this.s.hapticFeedback })
@@ -539,6 +552,48 @@ struct SettingsPage {
                 })
             }.width('100%')
             Text($r('app.string.settings_theme_note'))
+              .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+          }.alignItems(HorizontalAlign.Start).width('100%')
+
+          Blank().height(2)
+
+          // Clash API 连接统计
+          Column({ space: 8 }) {
+            Text($r('app.string.clash_api_settings')).fontSize(14).fontWeight(FontWeight.Medium).width('100%')
+            Row() {
+              Text($r('app.string.clash_api_enabled')).fontSize(14).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.clashApiEnabled })
+                .onChange((value: boolean) => {
+                  this.s.clashApiEnabled = value;
+                  this.save(true);
+                })
+            }.width('100%')
+            Column() {
+              Text($r('app.string.clash_api_port')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              TextInput({ text: `${this.s.clashApiPort}` })
+                .width('100%')
+                .height(40)
+                .type(InputType.Number)
+                .onChange((value: string) => {
+                  const port = parseInt(value);
+                  if (!isNaN(port)) {
+                    this.s.clashApiPort = Math.max(1024, Math.min(65535, port));
+                    this.save(true);
+                  }
+                })
+            }.alignItems(HorizontalAlign.Start).width('100%')
+            Column() {
+              Text($r('app.string.clash_api_secret')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              TextInput({ text: this.s.clashApiSecret })
+                .width('100%')
+                .height(40)
+                .type(InputType.Password)
+                .onChange((value: string) => {
+                  this.s.clashApiSecret = value;
+                  this.save(true);
+                })
+            }.alignItems(HorizontalAlign.Start).width('100%')
+            Text($r('app.string.clash_api_reconnect_hint'))
               .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
 

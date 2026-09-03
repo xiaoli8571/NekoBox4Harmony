@@ -112,6 +112,10 @@ export class AppSettings {
   subscriptionUpdateIntervalHours: number = 12;
   hapticFeedback: boolean = true;
   appearance: string = 'system';       // system / light / dark
+  profileSortMode: string = 'manual';  // manual / latency / name
+  clashApiEnabled: boolean = true;
+  clashApiPort: number = 9090;
+  clashApiSecret: string = '';
   liquidGlass: boolean = true;
   perAppMode: string = 'off';          // off / exclude(排除这些应用) / include(仅这些应用走代理)
   perAppList: string = '';             // 应用包名,逗号分隔(如 com.huawei.hmos.browser)

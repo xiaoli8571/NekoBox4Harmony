@@ -1065,6 +1065,150 @@
       "value": "Disconnect"
     },
     {
+      "name": "profile_sort_mode",
+      "value": "Profile sorting"
+    },
+    {
+      "name": "sort_manual",
+      "value": "Manual"
+    },
+    {
+      "name": "sort_latency",
+      "value": "Latency"
+    },
+    {
+      "name": "sort_name",
+      "value": "Name"
+    },
+    {
+      "name": "move_up",
+      "value": "Move up"
+    },
+    {
+      "name": "move_down",
+      "value": "Move down"
+    },
+    {
+      "name": "test_group",
+      "value": "Test group"
+    },
+    {
+      "name": "group_latency_untested",
+      "value": "%1$d untested"
+    },
+    {
+      "name": "group_latency_minimum",
+      "value": "Min %1$dms"
+    },
+    {
+      "name": "share_profile",
+      "value": "Share profile"
+    },
+    {
+      "name": "share_subscription",
+      "value": "Share subscription link"
+    },
+    {
+      "name": "share_link_title",
+      "value": "Share profile link"
+    },
+    {
+      "name": "share_subscription_title",
+      "value": "Share subscription link"
+    },
+    {
+      "name": "share_link_copied",
+      "value": "Share link copied"
+    },
+    {
+      "name": "remote_rule_sets",
+      "value": "Remote rule sets"
+    },
+    {
+      "name": "add_remote_rule_set",
+      "value": "Add rule set"
+    },
+    {
+      "name": "remote_rule_set_name",
+      "value": "Rule set name"
+    },
+    {
+      "name": "remote_rule_set_url",
+      "value": "Rule set URL (.srs)"
+    },
+    {
+      "name": "rule_set_site",
+      "value": "Domain rules"
+    },
+    {
+      "name": "rule_set_ip",
+      "value": "IP rules"
+    },
+    {
+      "name": "remote_rule_set_updated",
+      "value": "Last updated: %1$s"
+    },
+    {
+      "name": "remote_rule_set_error",
+      "value": "Last error: %1$s"
+    },
+    {
+      "name": "clash_api_settings",
+      "value": "Connection statistics API"
+    },
+    {
+      "name": "clash_api_enabled",
+      "value": "Enable connection statistics"
+    },
+    {
+      "name": "clash_api_port",
+      "value": "Listening port"
+    },
+    {
+      "name": "clash_api_secret",
+      "value": "Access secret"
+    },
+    {
+      "name": "clash_api_reconnect_hint",
+      "value": "Reconnect the VPN for changes to take effect"
+    },
+    {
+      "name": "connections_title_count",
+      "value": "Connections (%1$d)"
+    },
+    {
+      "name": "refresh",
+      "value": "Refresh"
+    },
+    {
+      "name": "connections_api_unavailable",
+      "value": "Connection statistics API is unavailable. Showing total TUN traffic instead."
+    },
+    {
+      "name": "connection_closed",
+      "value": "Connection closed"
+    },
+    {
+      "name": "connection_close_failed",
+      "value": "Failed to close connection: %1$s"
+    },
+    {
+      "name": "connections_loading",
+      "value": "Loading connections…"
+    },
+    {
+      "name": "connections_unavailable",
+      "value": "Connection information is unavailable"
+    },
+    {
+      "name": "connections_empty",
+      "value": "No active connections"
+    },
+    {
+      "name": "connections_empty_hint",
+      "value": "Connections will appear here after you start the VPN and access the network."
+    },
+    {
       "name": "parse_failed_reason",
       "value": "Parse failed: %1$s"
     }

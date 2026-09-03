@@ -144,32 +144,70 @@ struct Index {
     if (this.testing || this.profiles.length === 0) {
       return;
     }
-    this.testing = true;
     this.latencies = {};
     promptAction.showToast({ message: $r('app.string.index_testing_count', this.profiles.length) });
-    const snapshot: Array<Profile> = this.profiles;
-    await testProfiles(snapshot, (id: string, ms: number) => {
-      const next: Record<string, number> = {};
-      const keys = Object.keys(this.latencies);
-      for (const k of keys) {
-        next[k] = this.latencies[k];
-      }
-      next[id] = ms;
-      this.latencies = next;
-      const profile = this.profiles.find((item: Profile) => item.id === id);
-      if (profile !== undefined) {
-        profile.latencyMs = ms;
-        profile.latencyTestedAt = Date.now();
-        const runningProfileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
-        if (this.isRunning && runningProfileId === id) {
-          publishVpnLatency(id, profile.name, ms);
+    await this.runProfilesTest(this.profiles.slice());
+  }
+
+  async runGroupSpeedTest(groupId: string): Promise<void> {
+    const profiles = this.profiles.filter((item: Profile) => item.groupId === groupId);
+    if (this.testing || profiles.length === 0) {
+      return;
+    }
+    promptAction.showToast({ message: $r('app.string.index_testing_count', profiles.length) });
+    await this.runProfilesTest(profiles);
+  }
+
+  private async runProfilesTest(snapshot: Array<Profile>): Promise<void> {
+    this.testing = true;
+    try {
+      await testProfiles(snapshot, (id: string, ms: number) => {
+        const next: Record<string, number> = {};
+        const keys = Object.keys(this.latencies);
+        for (const k of keys) {
+          next[k] = this.latencies[k];
         }
+        next[id] = ms;
+        this.latencies = next;
+        const profile = this.profiles.find((item: Profile) => item.id === id);
+        if (profile !== undefined) {
+          profile.latencyMs = ms;
+          profile.latencyTestedAt = Date.now();
+          const runningProfileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
+          if (this.isRunning && runningProfileId === id) {
+            publishVpnLatency(id, profile.name, ms);
+          }
+        }
+      });
+      await saveProfiles(this.profiles);
+      this.profiles = this.profiles.slice();
+      promptAction.showToast({ message: $r('app.string.speed_test_complete') });
+    } finally {
+      this.testing = false;
+    }
+  }
+
+  groupLatencyText(groupId: string): ResourceStr {
+    const profiles = this.profiles.filter((item: Profile) => item.groupId === groupId);
+    let minimum = Number.MAX_SAFE_INTEGER;
+    let untested = 0;
+    let successful = 0;
+    for (const profile of profiles) {
+      const latency = this.latencies[profile.id];
+      if (latency === undefined) {
+        untested++;
+      } else if (latency >= 0) {
+        successful++;
+        minimum = Math.min(minimum, latency);
       }
-    });
-    await saveProfiles(this.profiles);
-    this.profiles = this.profiles.slice();
-    this.testing = false;
-    promptAction.showToast({ message: $r('app.string.speed_test_complete') });
+    }
+    if (untested > 0) {
+      return $r('app.string.group_latency_untested', untested);
+    }
+    if (successful === 0) {
+      return $r('app.string.timeout');
+    }
+    return $r('app.string.group_latency_minimum', minimum);
   }
 
   statusDisplay(): ResourceStr {
@@ -269,6 +307,29 @@ struct Index {
     }
   }
 
+  // ---- 分享弹窗：当前 SDK 未发现 ScanKit generateBarcode，使用纯文本与复制降级路径 ----
+  @State shareText: string = '';
+  private shareDialog: CustomDialogController = new CustomDialogController({
+    builder: ShareTextDialog({
+      text: $shareText,
+      onCopy: async (text: string) => {
+        await setClipboardText(text);
+        promptAction.showToast({ message: $r('app.string.share_link_copied') });
+      }
+    }),
+    autoCancel: true
+  });
+
+  openProfileShare(p: Profile): void {
+    const link = exportProfileLink(p);
+    if (link.length === 0) {
+      promptAction.showToast({ message: $r('app.string.protocol_export_unsupported') });
+      return;
+    }
+    this.shareText = link;
+    this.shareDialog.open();
+  }
+
   // ---- 导入弹窗(手动粘贴,不依赖剪贴板权限) ----
   @State importText: string = '';
   private importDialog: CustomDialogController = new CustomDialogController({
@@ -366,6 +427,22 @@ struct Index {
       if (a.pinned !== b.pinned) {
         return a.pinned ? -1 : 1;
       }
+      if (a.groupId !== b.groupId) {
+        return 0;
+      }
+      if (this.settings.profileSortMode === 'name') {
+        return a.name.localeCompare(b.name);
+      }
+      if (this.settings.profileSortMode === 'latency') {
+        const aLatency = this.latencies[a.id];
+        const bLatency = this.latencies[b.id];
+        const aValue = aLatency === undefined || aLatency < 0 ? Number.MAX_SAFE_INTEGER : aLatency;
+        const bValue = bLatency === undefined || bLatency < 0 ? Number.MAX_SAFE_INTEGER : bLatency;
+        return aValue - bValue;
+      }
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder;
+      }
       const aLatency = this.latencies[a.id];
       const bLatency = this.latencies[b.id];
       const aValue = aLatency === undefined || aLatency < 0 ? Number.MAX_SAFE_INTEGER : aLatency;
@@ -374,8 +451,48 @@ struct Index {
     });
   }
 
+  async moveProfile(p: Profile, delta: number): Promise<void> {
+    const peers = this.profilesInGroup(p.groupId).filter((item: Profile) => item.pinned === p.pinned);
+    const index = peers.findIndex((item: Profile) => item.id === p.id);
+    const targetIndex = index + delta;
+    if (index < 0 || targetIndex < 0 || targetIndex >= peers.length) {
+      return;
+    }
+    for (let i = 0; i < peers.length; i++) {
+      peers[i].sortOrder = i;
+    }
+    const target = peers[targetIndex];
+    const currentOrder = p.sortOrder;
+    p.sortOrder = target.sortOrder;
+    target.sortOrder = currentOrder;
+    await saveProfiles(this.profiles);
+    this.profiles = this.profiles.slice();
+  }
+
   profilesInGroup(groupId: string): Array<Profile> {
     return this.sortedProfiles().filter((p: Profile) => p.groupId === groupId);
+  }
+
+  sortedGroupIds(): Array<string> {
+    const ids: Array<string> = [];
+    const sortedGroups = this.groups.slice().sort((a: ProfileGroup, b: ProfileGroup) => a.sortOrder - b.sortOrder);
+    for (const group of sortedGroups) {
+      if (this.profiles.some((profile: Profile) => profile.groupId === group.id)) {
+        ids.push(group.id);
+      }
+    }
+    if (this.profiles.some((profile: Profile) => profile.groupId.length === 0)) {
+      ids.push('');
+    }
+    return ids;
+  }
+
+  isGroupCollapsed(groupId: string): boolean {
+    if (groupId.length === 0) {
+      return false;
+    }
+    const group = this.groups.find((item: ProfileGroup) => item.id === groupId);
+    return group !== undefined && group.collapsed;
   }
 
   groupName(groupId: string): ResourceStr {
@@ -475,10 +592,18 @@ struct Index {
     Column() {
       MenuItem({ content: p.pinned ? $r('app.string.unpin') : $r('app.string.pin') })
         .onClick(() => this.togglePinned(p))
+      if (this.settings.profileSortMode === 'manual') {
+        MenuItem({ content: $r('app.string.move_up') })
+          .onClick(() => this.moveProfile(p, -1))
+        MenuItem({ content: $r('app.string.move_down') })
+          .onClick(() => this.moveProfile(p, 1))
+      }
       MenuItem({ content: 'URL Test' })
         .onClick(() => this.runUrlTest(p))
       MenuItem({ content: $r('app.string.copy_share_link') })
         .onClick(() => this.copyProfileLink(p))
+      MenuItem({ content: $r('app.string.share_profile') })
+        .onClick(() => this.openProfileShare(p))
       if (p.subUrl.length > 0) {
         MenuItem({ content: $r('app.string.view_subscription') })
           .onClick(() => router.pushUrl({ url: 'pages/SubDetailPage', params: { url: p.subUrl } }))
@@ -575,60 +700,102 @@ struct Index {
       .borderRadius(UiSpec.CARD_RADIUS)
       .backgroundColor($r('app.color.surface'))
 
-      // 节点列表
+      // 按分组展示节点，分组头在折叠状态下仍显示测速汇总与操作
       List({ space: 8 }) {
-        ForEach(this.sortedProfiles(), (p: Profile) => {
+        ForEach(this.sortedGroupIds(), (groupId: string) => {
           ListItem() {
-            Row() {
-              Radio({ value: p.id, group: 'profiles' })
-                .checked(this.selectedId === p.id)
-                .onChange((checked: boolean) => {
-                  if (checked) {
-                    this.onNodeTap(p);
-                  }
-                })
-              Column() {
-                Text(p.name)
-                  .fontSize(16)
-                  .fontWeight(FontWeight.Medium)
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
-                Text(`${profileTypeLabel(p.type)} · ${p.server}:${p.serverPort}`)
+            Column({ space: 8 }) {
+              Row({ space: 8 }) {
+                Text(this.isGroupCollapsed(groupId) ? '▶' : '▼')
                   .fontSize(12)
                   .fontColor($r('app.color.text_secondary'))
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                Text(this.groupName(groupId))
+                  .fontSize(14)
+                  .fontWeight(FontWeight.Medium)
+                  .layoutWeight(1)
+                Text(this.groupLatencyText(groupId))
+                  .fontSize(11)
+                  .fontColor($r('app.color.primary'))
+                  .backgroundColor($r('app.color.surface_selected'))
+                  .borderRadius(10)
+                  .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+                Button(this.testing ? $r('app.string.speed_testing') : $r('app.string.test_group'))
+                  .height(30)
+                  .fontSize(11)
+                  .backgroundColor($r('app.color.surface_selected'))
+                  .fontColor($r('app.color.primary'))
+                  .onClick(() => this.runGroupSpeedTest(groupId))
               }
-              .alignItems(HorizontalAlign.Start)
-              .layoutWeight(1)
-              .margin({ left: 4 })
+              .width('100%')
+              .padding({ left: 8, right: 8, top: 6, bottom: 6 })
               .onClick(() => {
-                this.onNodeTap(p);
+                if (groupId.length > 0) {
+                  const group = this.groups.find((item: ProfileGroup) => item.id === groupId);
+                  if (group !== undefined) {
+                    this.toggleGroupCollapsed(group);
+                  }
+                }
               })
 
-              if (this.latencies[p.id] !== undefined || this.testing) {
-                Text(this.latencyText(p))
-                  .fontSize(12)
-                  .fontColor(this.latencyColor(p))
-                  .margin({ right: 4 })
-              }
+              if (!this.isGroupCollapsed(groupId)) {
+                ForEach(this.profilesInGroup(groupId), (p: Profile) => {
+                  Row() {
+                    Radio({ value: p.id, group: 'profiles' })
+                      .checked(this.selectedId === p.id)
+                      .onChange((checked: boolean) => {
+                        if (checked) {
+                          this.onNodeTap(p);
+                        }
+                      })
+                    Column() {
+                      Text(p.name)
+                        .fontSize(16)
+                        .fontWeight(FontWeight.Medium)
+                        .maxLines(1)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      Text(`${profileTypeLabel(p.type)} · ${p.server}:${p.serverPort}`)
+                        .fontSize(12)
+                        .fontColor($r('app.color.text_secondary'))
+                        .maxLines(1)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    }
+                    .alignItems(HorizontalAlign.Start)
+                    .layoutWeight(1)
+                    .margin({ left: 4 })
+                    .onClick(() => {
+                      this.onNodeTap(p);
+                    })
 
-              Text('✏')
-                .fontSize(18)
-                .padding(8)
-                .onClick(() => {
-                  AppStorage.setOrCreate('editProfileId', p.id);
-                  router.pushUrl({ url: 'pages/ProfileEdit' });
-                })
+                    if (this.latencies[p.id] !== undefined || this.testing) {
+                      Text(this.latencyText(p))
+                        .fontSize(12)
+                        .fontColor(this.latencyColor(p))
+                        .margin({ right: 4 })
+                    }
+
+                    Text('✏')
+                      .fontSize(18)
+                      .padding(8)
+                      .onClick(() => {
+                        AppStorage.setOrCreate('editProfileId', p.id);
+                        router.pushUrl({ url: 'pages/ProfileEdit' });
+                      })
+                  }
+                  .width('100%')
+                  .padding(12)
+                  .borderRadius(UiSpec.CARD_RADIUS)
+                  .backgroundColor(this.selectedId === p.id ? $r('app.color.surface_selected') : $r('app.color.surface'))
+                  .hoverEffect(HoverEffect.Scale)
+                  .bindContextMenu(this.profileContextMenu(p), ResponseType.LongPress)
+                }, (p: Profile) => p.id)
+              }
             }
             .width('100%')
-            .padding(12)
+            .padding(8)
             .borderRadius(UiSpec.CARD_RADIUS)
-            .backgroundColor(this.selectedId === p.id ? $r('app.color.surface_selected') : $r('app.color.surface'))
-            .hoverEffect(HoverEffect.Scale)
-            .bindContextMenu(this.profileContextMenu(p), ResponseType.LongPress)
+            .backgroundColor($r('app.color.surface'))
           }
-        }, (p: Profile) => p.id)
+        }, (groupId: string) => groupId)
       }
       .layoutWeight(1)
       .width('100%')
@@ -685,6 +852,46 @@ struct Index {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.app_background'))
+  }
+}
+
+/** 分享降级弹窗:SDK 未提供 generateBarcode 时展示 URI 并支持复制。 */
+@CustomDialog
+struct ShareTextDialog {
+  controller?: CustomDialogController;
+  @Link text: string;
+  onCopy: (text: string) => void = (text: string) => {};
+
+  build() {
+    Column({ space: 12 }) {
+      Text($r('app.string.share_link_title'))
+        .fontSize(16)
+        .fontWeight(FontWeight.Bold)
+        .width('100%')
+      Text(this.text)
+        .fontSize(12)
+        .fontColor($r('app.color.text_secondary'))
+        .copyOption(CopyOptions.LocalDevice)
+        .width('100%')
+      Row({ space: 8 }) {
+        Button($r('app.string.cancel'))
+          .layoutWeight(1)
+          .backgroundColor($r('app.color.surface'))
+          .fontColor($r('app.color.text_primary'))
+          .onClick(() => {
+            if (this.controller !== undefined) {
+              this.controller.close();
+            }
+          })
+        Button($r('app.string.copy_share_link'))
+          .layoutWeight(1)
+          .backgroundColor($r('app.color.primary'))
+          .onClick(() => this.onCopy(this.text))
+      }
+      .width('100%')
+    }
+    .padding(16)
+    .width('100%')
   }
 }
 
