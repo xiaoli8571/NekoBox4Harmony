@@ -330,3 +330,6 @@ Existing notification files reviewed:
 - 降级路径：clash API 请求失败时继续显示首页通过现有 TUN 统计链路写入 AppStorage 的总速率与累计流量，不因 API 不可用而丢失基础统计；连接列表显示本地化不可用提示。真机需结合 sing-box 日志复核 c-shared 模式下控制器监听、鉴权和连接关闭行为。
 - 改动文件：`entry/src/main/ets/model/Profile.ets`、`entry/src/main/ets/model/Store.ets`、`entry/src/main/ets/core/ConfigBuilder.ets`、`entry/src/main/ets/pages/SettingsPage.ets`、`entry/src/main/ets/pages/ConnectionsPage.ets`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
 - 已执行只读 `git diff --check`、两份字符串 JSON 解析及配置、鉴权、生命周期和降级引用检查；未构建、未打包、未执行 Git 写操作，等待 G1 至 G5 统一构建验证。
+
+
+> 构建机注(2026-09-03,G1~G5 统一轮):首次编译仅 1 处错误 —— ConnectionsPage.ets:147 向 string 状态塞 Resource(G6 同款)。构建机修复:80 行改声明为 ResourceStr(空串默认值),198 行判空改不等比较,147 行保持资源赋值;重编译通过(versionCode 1001802)。G4 的 download_detour=direct 与 G5 的 clash_api 运行时行为仍为真机风险点。
