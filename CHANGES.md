@@ -355,3 +355,11 @@ Existing notification files reviewed:
 
 
 > 构建机注(2026-09-03,通知显示修复轮):真机实证本机 SDK 的 resourceManager.getStringSync(resource, args) 不展开 %1$s 占位符(原样输出);通知副标题改为纯字符串模板拼接(`${nodeName} · ${latencyText}`,未测速为 `节点名 · --`)。规则更新:系统 API 动态文案 = getStringSync 取静态资源 + 代码拼接动态值;占位符资源仅在 ArkUI 组件 $r() 内使用。versionCode 1001805。
+
+
+## 2026-09-03 release 1.6.0(G 阶段收官)
+
+- versionName 1.6.0 / versionCode 1001900(与 1001805 真机验证版内容一致,仅版本号差异)。
+- G1~G7 全部交付:G1 节点手动排序+排序模式、G2 分组测速汇总徽标、G3 分享二维码(降级纯文本)、G4 远程规则集订阅(route.rule_set)、G5 连接统计(clash_api)、G6 通知文案资源化、G7 切换可靠性与模式语义(forceRestart 串行重启;global=全走代理)。
+- 真机验证:通知两态显示、VPN 启动、cache_file 修复均已通过;G4(SRS 下载)与 G5(clash_api)运行时行为为已知风险点,详见 release notes。
+- 产物 dist/NekoBox4Harmony-1.6.0-unsigned.hap,签名由用户在 DevEco 完成。
