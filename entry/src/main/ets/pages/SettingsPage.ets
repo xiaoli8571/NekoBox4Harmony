@@ -3,6 +3,9 @@ import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import pasteboard from '@ohos.pasteboard';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
+import picker from '@ohos.file.picker';
+import fs from '@ohos.file.fs';
+import util from '@ohos.util';
 import bundle from '@ohos.bundle';
 import { AppSettings } from '../model/Profile';
 import { initStore, loadSettings, saveSettings, LogStore } from '../model/Store';
@@ -43,6 +46,7 @@ struct SettingsPage {
   @State appSearch: string = '';
   @State appListLoading: boolean = false;
   @State appListError: string = '';
+  @State backupFileBusy: boolean = false;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear(): void {
@@ -170,6 +174,97 @@ struct SettingsPage {
       LogStore.addLog(`[ui] 枚举已安装应用失败，降级为手动输入: ${message}`);
     } finally {
       this.appListLoading = false;
+    }
+  }
+
+  private backupFileName(): string {
+    const date = new Date();
+    const pad = (value: number): string => value < 10 ? `0${value}` : `${value}`;
+    return `nekobox-backup-${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}.json`;
+  }
+
+  private writeTextFileUri(uri: string, content: string): void {
+    const file = fs.openSync(uri, fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+    try {
+      fs.writeSync(file.fd, content);
+    } finally {
+      fs.closeSync(file);
+    }
+  }
+
+  private readTextFileUri(uri: string): string {
+    const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+    try {
+      const fileSize = fs.statSync(file.fd).size;
+      if (fileSize <= 0) {
+        throw new Error('备份文件为空');
+      }
+      if (fileSize > 20 * 1024 * 1024) {
+        throw new Error('备份文件超过 20 MiB');
+      }
+      const buffer = new ArrayBuffer(fileSize);
+      const bytesRead = fs.readSync(file.fd, buffer, { length: fileSize });
+      if (bytesRead !== fileSize) {
+        throw new Error('备份文件未完整读取');
+      }
+      const decoder = util.TextDecoder.create('utf-8');
+      return decoder.decodeToString(new Uint8Array(buffer, 0, bytesRead));
+    } finally {
+      fs.closeSync(file);
+    }
+  }
+
+  async exportBackupFile(): Promise<void> {
+    if (this.backupFileBusy) {
+      return;
+    }
+    this.backupFileBusy = true;
+    try {
+      const text = await exportBackup(this.context);
+      const documentPicker = new picker.DocumentViewPicker(this.context);
+      const uris = await documentPicker.save({
+        newFileNames: [this.backupFileName()],
+        fileSuffixChoices: ['JSON|.json']
+      });
+      if (uris.length === 0) {
+        promptAction.showToast({ message: '已取消导出备份' });
+        return;
+      }
+      this.writeTextFileUri(uris[0], text);
+      promptAction.showToast({ message: '备份文件已导出' });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : `${e}`;
+      promptAction.showToast({ message: `导出失败: ${message}` });
+    } finally {
+      this.backupFileBusy = false;
+    }
+  }
+
+  async importBackupFile(): Promise<void> {
+    if (this.backupFileBusy) {
+      return;
+    }
+    this.backupFileBusy = true;
+    try {
+      const documentPicker = new picker.DocumentViewPicker(this.context);
+      const uris = await documentPicker.select({
+        maxSelectNumber: 1,
+        fileSuffixFilters: ['JSON|.json']
+      });
+      if (uris.length === 0) {
+        promptAction.showToast({ message: '已取消导入备份' });
+        return;
+      }
+      const text = this.readTextFileUri(uris[0]).trim();
+      const message = await importBackup(this.context, text);
+      this.s = await loadSettings();
+      this.subs = await listSubs();
+      promptAction.showToast({ message: message });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : `${e}`;
+      promptAction.showToast({ message: `恢复失败: ${message}` });
+    } finally {
+      this.backupFileBusy = false;
     }
   }
 
@@ -488,6 +583,20 @@ struct SettingsPage {
           // 备份与恢复
           Column({ space: 8 }) {
             Text('备份与恢复').fontSize(14).fontWeight(FontWeight.Medium).width('100%')
+            Row({ space: 8 }) {
+              Button(this.backupFileBusy ? '处理中…' : '导出备份文件')
+                .layoutWeight(1)
+                .enabled(!this.backupFileBusy)
+                .backgroundColor($r('app.color.primary'))
+                .fontColor($r('app.color.surface'))
+                .onClick(() => this.exportBackupFile())
+              Button('从文件恢复')
+                .layoutWeight(1)
+                .enabled(!this.backupFileBusy)
+                .backgroundColor($r('app.color.surface'))
+                .fontColor($r('app.color.text_primary'))
+                .onClick(() => this.importBackupFile())
+            }.width('100%')
             Row({ space: 8 }) {
               Button('备份到剪贴板')
                 .backgroundColor($r('app.color.surface'))
