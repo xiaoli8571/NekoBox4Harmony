@@ -1,6 +1,6 @@
 # NekoBox for Harmony — Agent 交接说明
 
-> **当前阶段(2026-09-03)先看这里**:开发工作区已迁移到远程服务器 `root@oc1.720820.xyz:/worker/NekoBox4Harmony`(密码 `Lijx.820115`,SSH 22 端口;FTP 同账号,PASV)。接手开发的 agent 先读根目录 `HANDOFF.md`(完整交接指令)与 `DEVPLAN.md`(任务与验收),当前基线 1.5.7(versionCode 1001716),F1~F6 已完成(F2~F6 待真机验证),当前任务 F7(UI 适配鸿蒙,阶段最后一项)。本文件其余内容为架构与构建说明,继续有效。
+> **当前阶段(2026-09-03)先看这里**:开发工作区在远程服务器 `root@oc1.720820.xyz:/worker/NekoBox4Harmony`(密码 `Lijx.820115`,SSH 22 端口;FTP 同账号,PASV)。接手开发的 agent 先读根目录 `HANDOFF.md`(完整交接指令)与 `DEVPLAN.md`(任务与验收),当前基线 1.5.8(versionCode 1001800,commit eb35129),**F 阶段 F1~F7 已全部交付(勿重做)**,当前阶段为 **G(G6→G1→G2→G3→G4→G5,目标版本 1.6.0)**。本文件其余内容为架构与构建说明,继续有效。
 
 任何 AI Agent 接手本项目前必读。代码根目录:`C:\Users\Administrator\NekoBox4Harmony`(git 仓库,main 分支,对应 GitHub https://github.com/xiaoli8571/NekoBox4Harmony )。
 
