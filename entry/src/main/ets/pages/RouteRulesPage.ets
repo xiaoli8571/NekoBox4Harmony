@@ -180,7 +180,8 @@ struct RouteRulesPage {
       Text($r('app.string.route_rule_order_hint'))
         .fontSize(12).fontColor($r('app.color.text_secondary')).padding(12)
     }
-    .constraintSize({ maxWidth: UiSpec.CONTENT_MAX_WIDTH })
+    .width('100%')
+    .height('100%')
     }
     .width('100%')
     .height('100%')

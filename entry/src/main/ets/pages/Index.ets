@@ -675,7 +675,8 @@ struct Index {
       .alignItems(VerticalAlign.Center)
       .padding({ left: 16, right: 16, top: 10, bottom: 20 })
     }
-    .constraintSize({ maxWidth: UiSpec.CONTENT_MAX_WIDTH })
+    .width('100%')
+    .height('100%')
     }
     .width('100%')
     .height('100%')

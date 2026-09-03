@@ -159,7 +159,8 @@ struct SubDetailPage {
         }.layoutWeight(1).width('100%')
       }
     }
-    .constraintSize({ maxWidth: UiSpec.CONTENT_MAX_WIDTH })
+    .width('100%')
+    .height('100%')
     }
     .width('100%')
     .height('100%')

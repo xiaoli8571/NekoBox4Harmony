@@ -244,3 +244,16 @@ Existing notification files reviewed:
 - F7c 状态栏:EntryAbility.applyStatusBarStyle() 在 loadContent 后设置 setWindowSystemBarProperties;外观偏好=跟随系统时,用 resourceManager.getColorSync(text_primary) 亮度判定当前生效深浅色(随系统/应用 colorMode 自动正确)。
 - 改动文件:ets/common/UiSpec.ets(新)、pages/Index.ets、pages/ProfileEdit.ets、pages/SettingsPage.ets、pages/ConnectionsPage.ets、pages/RouteRulesPage.ets、pages/SubDetailPage.ets、entryability/EntryAbility.ets、resources/base+dark/element/color.json、AppScope/app.json5(1001717)、DEVPLAN.md、CHANGES.md
 - 已知限制:状态栏样式在启动/回前台时设置,运行中切换系统深浅色需回前台刷新;日志页终端配色刻意保留。
+
+## 2026-09-03 release 1.5.8(F 阶段收官)
+
+- versionName 1.5.8 / versionCode 1001800;F1~F7 全部交付:深色主题、通知栏延迟+断开按钮、订阅后台更新、per-app 图形选择器、备份文件化、中英双语(264 键)、HarmonyOS 原生观感适配(UiSpec 令牌/色值清零/600vp 限宽/状态栏跟随主题)。
+- 产物 dist/NekoBox4Harmony-1.5.8-unsigned.hap(24,913,367 字节,sha256 4655bb8f4974678ab8276f8e8149b0f48007f67f3f84972dc67e182fd61a13c7),签名由用户在 DevEco 完成。
+- 待真机验证清单:F2 通知延迟/断开按钮、F3 熄屏订阅更新、F4 应用列表枚举、F5 文件备份导出导入、F6 系统切英文、F7 观感与状态栏。
+
+## 2026-09-03 F7 真机验收修复轮(versionCode 1001718/1001719,已真机验证通过)
+
+- 修复 F7 限宽包装缺陷:内层包装 Column 缺少 width/height('100%')导致内容列测量超宽、右侧元素被推出屏幕(真机截图确认);六页面统一补齐。
+- 设置页出站模式/外观/分应用三组并排按钮改 layoutWeight(1) 等分铺满,剪贴板备份两按钮等分并统一 40vp 高,机制上杜绝按钮行溢出。
+- 按真机用户反馈移除 600vp 内容限宽(F7d 调整为全宽 + 16vp 页边距)。
+- 改动文件:六个 pages、ets/common/UiSpec.ets、AppScope/app.json5

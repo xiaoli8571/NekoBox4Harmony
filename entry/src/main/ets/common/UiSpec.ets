@@ -6,7 +6,6 @@ export class UiSpec {
   static readonly GAP_MD: number = 12;
   static readonly GAP_LG: number = 16;
   static readonly BTN_HEIGHT: number = 40;
-  static readonly CONTENT_MAX_WIDTH: number = 600;
   static readonly STATUS_BAR_CONTENT_DARK_BG: string = '#FFFFFF';
   static readonly STATUS_BAR_CONTENT_LIGHT_BG: string = '#000000';
 }
