@@ -29,7 +29,7 @@
 - 原方案(备查):`ApplicationContext.setColorMode()`(公开 API)设置全局色彩模式;外观状态入 AppStorage,页面用 `@StorageProp` 绑定或监听变更即时刷新;自绘固定色替换为主题资源色
 - 验收:切深色/浅色/跟随系统,所有页面立即生效,无需重启或重进
 
-## F2 通知栏增强(纯应用层)—— 状态:待开发
+## F2 通知栏增强(纯应用层)—— 状态:已完成，待构建机编译与真机验证
 
 - F2a 延迟显示:UI 进程测速完成(`utils/LatencyTester.ets` 回调处)通过 CommonEvent(如事件名 `NB_EVENT_LATENCY`,携带节点名+延迟)发给 VPN 扩展进程;`vpnext/VpnExtAbility.ets` 订阅后更新常驻通知文本,显示"当前节点 · 123ms";断连/测速失败显示 "--"
 - F2b 通知按钮:通知加"断开"按钮,`wantAgent` 拉起 EntryAbility 并带参数(如 `action=disconnect`),`onNewWant` 里识别后调用现有停止 VPN 流程;连接状态反之显示"连接"按钮同理

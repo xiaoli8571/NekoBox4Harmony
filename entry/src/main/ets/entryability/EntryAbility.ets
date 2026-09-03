@@ -8,6 +8,7 @@ import BusinessError from '@ohos.base';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 import { initStore, loadSettings, LogStore } from '../model/Store';
 import { subscribeVpnEvents } from '../core/VpnIpc';
+import { VpnService } from '../core/VpnService';
 
 export default class EntryAbility extends UIAbility {
   private async applyAppearance(): Promise<void> {
@@ -25,8 +26,18 @@ export default class EntryAbility extends UIAbility {
     }
   }
 
+  private handleAction(want: Want): void {
+    if (want.parameters === undefined || `${want.parameters['action']}` !== 'disconnect') {
+      return;
+    }
+    VpnService.disconnect(this.context).catch((e: Object) => {
+      LogStore.addLog(`[app] 通知栏断开失败: ${e}`);
+    });
+  }
+
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     LogStore.addLog('[app] NekoBox 启动');
+    this.handleAction(want);
     this.applyAppearance();
     // 请求通知权限(常驻通知用),用户拒绝也不影响功能
     try {
@@ -46,6 +57,11 @@ export default class EntryAbility extends UIAbility {
       AppStorage.setOrCreate('vpnStatus', status);
       AppStorage.setOrCreate('vpnRunningProfileId', profileId);
     });
+  }
+
+  onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    LogStore.addLog('[app] 收到新的 Want');
+    this.handleAction(want);
   }
 
   onDestroy(): void {

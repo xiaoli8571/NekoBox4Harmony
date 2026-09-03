@@ -5,13 +5,15 @@ import common from '@ohos.app.ability.common';
 import fs from '@ohos.file.fs';
 import notificationManager from '@ohos.notificationManager';
 import notification from '@ohos.notification';
+import wantAgent from '@ohos.app.ability.wantAgent';
+import commonEventManager from '@ohos.commonEventManager';
 import BusinessError from '@ohos.base';
 import { Profile, AppSettings } from '../model/Profile';
 import { initStore, loadProfiles, loadSettings, getPendingProfileId, setPendingProfileId, clearPendingProfileId, setRunningProfileId, LogStore } from '../model/Store';
 import { buildCoreConfig } from '../core/ConfigBuilder';
 import { loadRouteRules, RouteRule } from '../model/RouteRule';
 import { CoreManager } from '../core/CoreManager';
-import { publishVpnLog, publishVpnStatus } from '../core/VpnIpc';
+import { publishVpnLog, publishVpnStatus, VPN_EVENT_LATENCY } from '../core/VpnIpc';
 import { geoReady, geoSitePath as geoSiteFile, geoIpPath as geoIpFile } from '../utils/GeoAssets';
 
 /**
@@ -47,6 +49,8 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   private starting: boolean = false;
   private started: boolean = false;
   private currentRunId: string = '';
+  private currentNodeName: string = '';
+  private latencySubscribed: boolean = false;
   private teardownPromise: Promise<void> | null = null;
   private lifecycleGeneration: number = 0;
 
@@ -76,7 +80,41 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     LogStore.setPublisher((line: string) => {
       publishVpnLog(line);
     });
+    this.subscribeLatencyEvents();
     this.tryStart();
+  }
+
+  private subscribeLatencyEvents(): void {
+    if (this.latencySubscribed) {
+      return;
+    }
+    this.latencySubscribed = true;
+    const info: commonEventManager.CommonEventSubscribeInfo = { events: [VPN_EVENT_LATENCY] };
+    commonEventManager.createSubscriber(info).then((subscriber: commonEventManager.CommonEventSubscriber) => {
+      commonEventManager.subscribe(subscriber,
+        (err: BusinessError, data: commonEventManager.CommonEventData) => {
+          if (err || data === undefined || data.data === undefined || data.event !== VPN_EVENT_LATENCY) {
+            return;
+          }
+          try {
+            const payload = JSON.parse(data.data) as Record<string, Object>;
+            const profileId: string = payload['profileId'] === undefined ? '' : `${payload['profileId']}`;
+            if (!this.started || profileId !== this.currentRunId) {
+              return;
+            }
+            const nodeName: string = payload['nodeName'] === undefined
+              ? this.currentNodeName : `${payload['nodeName']}`;
+            const latencyMs: number = Number(payload['latencyMs']);
+            this.currentNodeName = nodeName;
+            this.showConnectedNotification(nodeName, latencyMs);
+          } catch (e) {
+            // 忽略格式错误的测速事件
+          }
+        });
+    }).catch((e: Object) => {
+      this.latencySubscribed = false;
+      LogStore.addLog(`[vpn] 延迟事件订阅失败: ${e}`);
+    });
   }
 
   onDisconnect(want: Want): void {
@@ -318,33 +356,47 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     LogStore.addLog('[vpn] 内核已启动(进程内)');
     this.started = true;
     this.currentRunId = pendingId;
+    this.currentNodeName = node.name;
     await setRunningProfileId(pendingId);
-    this.showConnectedNotification(node.name);
+    this.showConnectedNotification(node.name, -1);
     publishVpnStatus(`已连接: ${node.name}`, true, pendingId);
     await clearPendingProfileId();
   }
 
-  /** 常驻通知:显示当前连接,常驻不掉 */
-  private showConnectedNotification(nodeName: string): void {
+  /** 常驻通知:显示当前连接和最近一次测速结果,并提供断开操作 */
+  private async showConnectedNotification(nodeName: string, latencyMs: number): Promise<void> {
     try {
+      const latencyText: string = latencyMs >= 0 ? `${latencyMs}ms` : '--';
+      const disconnectAgent = await wantAgent.getWantAgent({
+        wants: [{
+          bundleName: 'com.nekobox.app',
+          abilityName: 'EntryAbility',
+          parameters: { 'action': 'disconnect' }
+        }],
+        actionType: wantAgent.OperationType.START_ABILITY,
+        requestCode: 1002,
+        actionFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
+      });
       const content: notificationManager.NotificationContent = {
         contentType: notification.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
         normal: {
           title: 'VPN 已连接',
-          text: nodeName,
+          text: `${nodeName} · ${latencyText}`,
           additionalText: 'NekoBox'
         }
       };
       const request: notificationManager.NotificationRequest = {
         id: 1001,
         isOngoing: true,
-        content: content
+        content: content,
+        actionButtons: [{
+          title: '断开',
+          wantAgent: disconnectAgent
+        }]
       };
-      notificationManager.publish(request).catch((e: BusinessError) => {
-        LogStore.addLog(`[vpn] 通知发布失败(忽略): ${e.message}`);
-      });
+      await notificationManager.publish(request);
     } catch (e) {
-      // 通知失败不影响 VPN
+      LogStore.addLog(`[vpn] 通知发布失败(忽略): ${e}`);
     }
   }
 
