@@ -36,7 +36,7 @@
 - 改动:`vpnext/VpnExtAbility.ets`、`entryability/EntryAbility.ets`、`utils/LatencyTester.ets`、通知构建处
 - 验收:通知栏能看到当前节点延迟;点"断开"能停止 VPN(拉起应用自动断开也算达标)
 
-## F3 订阅后台定时更新(需要改 module.json5,仅限本项)—— 状态:待开发
+## F3 订阅后台定时更新(需要改 module.json5,仅限本项)—— 状态:已完成，待构建机编译与真机验证
 
 - `module.json5`:requestPermissions 增加 `ohos.permission.KEEP_BACKGROUND_RUNNING`;EntryAbility 增加 `"backgroundModes": ["dataTransfer"]`。**除这两处外 module.json5 一个字都不许动**
 - 方案:到期订阅在应用回前台/启动时更新(已有)之外,退后台后用 `@ohos.resourceschedule.backgroundTaskManager` 申请连续任务(dataTransfer)→ 更新到期订阅 → `stopContinuousTask` 释放;单次更新控制在最短必要时间。若真机验证连续任务受限,降级为 transientTask(短时任务)并在 CHANGES.md 注明

@@ -6,11 +6,71 @@ import common from '@ohos.app.ability.common';
 import notificationManager from '@ohos.notificationManager';
 import BusinessError from '@ohos.base';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
+import backgroundTaskManager from '@ohos.resourceschedule.backgroundTaskManager';
+import wantAgent from '@ohos.app.ability.wantAgent';
 import { initStore, loadSettings, LogStore } from '../model/Store';
 import { subscribeVpnEvents } from '../core/VpnIpc';
 import { VpnService } from '../core/VpnService';
+import { needAutoUpdate, updateSubscription, markSubSuccess, markSubFailure, setAppContext } from '../core/Subscriptions';
 
 export default class EntryAbility extends UIAbility {
+  private backgroundUpdating: boolean = false;
+
+  private async updateDueSubscriptionsInBackground(): Promise<void> {
+    if (this.backgroundUpdating) {
+      return;
+    }
+    this.backgroundUpdating = true;
+    let backgroundRunning: boolean = false;
+    try {
+      await initStore(this.context);
+      setAppContext(this.context);
+      const settings = await loadSettings();
+      if (!settings.autoUpdateSubs) {
+        return;
+      }
+      const due = await needAutoUpdate();
+      if (due.length === 0) {
+        return;
+      }
+      const agent = await wantAgent.getWantAgent({
+        wants: [{
+          bundleName: this.context.abilityInfo.bundleName,
+          abilityName: 'EntryAbility'
+        }],
+        actionType: wantAgent.OperationType.START_ABILITY,
+        requestCode: 1003,
+        actionFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
+      });
+      await backgroundTaskManager.startBackgroundRunning(
+        this.context,
+        backgroundTaskManager.BackgroundMode.DATA_TRANSFER,
+        agent);
+      backgroundRunning = true;
+      for (const sub of due) {
+        try {
+          const result = await updateSubscription(sub.url);
+          await markSubSuccess(sub.url);
+          LogStore.addLog(`[app] 后台更新订阅 ${sub.name}:新增 ${result.added},移除 ${result.removed}`);
+        } catch (e) {
+          await markSubFailure(sub.url);
+          LogStore.addLog(`[app] 后台更新订阅 ${sub.name} 失败: ${e}`);
+        }
+      }
+    } catch (e) {
+      LogStore.addLog(`[app] 后台订阅更新任务失败: ${e}`);
+    } finally {
+      if (backgroundRunning) {
+        try {
+          await backgroundTaskManager.stopBackgroundRunning(this.context);
+        } catch (e) {
+          LogStore.addLog(`[app] 释放后台订阅任务失败: ${e}`);
+        }
+      }
+      this.backgroundUpdating = false;
+    }
+  }
+
   private async applyAppearance(): Promise<void> {
     try {
       await initStore(this.context);
@@ -39,6 +99,7 @@ export default class EntryAbility extends UIAbility {
     LogStore.addLog('[app] NekoBox 启动');
     this.handleAction(want);
     this.applyAppearance();
+    this.updateDueSubscriptionsInBackground();
     // 请求通知权限(常驻通知用),用户拒绝也不影响功能
     try {
       notificationManager.requestEnableNotification(this.context, (err: BusinessError) => {
@@ -80,8 +141,10 @@ export default class EntryAbility extends UIAbility {
 
   onForeground(): void {
     this.applyAppearance();
+    this.updateDueSubscriptionsInBackground();
   }
 
   onBackground(): void {
+    this.updateDueSubscriptionsInBackground();
   }
 }
