@@ -314,8 +314,9 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     } catch (e) {
       LogStore.addLog('[vpn] 读取远程规则集失败,本次连接忽略');
     }
+    const cachePath = logPath.length > 0 ? logPath.substring(0, logPath.lastIndexOf('/') + 1) + 'cache.db' : '';
     const configJson = buildCoreConfig(profile, settings, ifname, logPath, geositePath, geoIpPath,
-      customRules, remoteRuleSets);
+      customRules, remoteRuleSets, cachePath);
     const configPath = CoreManager.writeConfigFile(context, configJson);
     LogStore.addLog(`[vpn] sing-box 配置已写入 ${configPath}`);
 
