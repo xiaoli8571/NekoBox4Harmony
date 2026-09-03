@@ -24,7 +24,7 @@ struct Index {
   @State testing: boolean = false;
   @State settings: AppSettings = new AppSettings();
   @StorageLink('vpnRunning') @Watch('onRunningChange') isRunning: boolean = false;
-  @StorageLink('vpnStatus') statusText: string = '未连接';
+  @StorageLink('vpnStatus') statusText: string = 'disconnected';
   @StorageLink('vpnUpSpeed') upSpeed: number = 0;
   @StorageLink('vpnDownSpeed') downSpeed: number = 0;
   @StorageLink('vpnTotalUp') totalUp: number = 0;
@@ -90,14 +90,14 @@ struct Index {
     AppStorage.setOrCreate('vpnDownSpeed', 0);
   }
 
-  modeLabel(): string {
+  modeLabel(): Resource {
     if (this.settings.mode === 'direct') {
-      return '直连';
+      return $r('app.string.mode_direct');
     }
     if (this.settings.mode === 'global') {
-      return '全局';
+      return $r('app.string.mode_global');
     }
-    return '规则';
+    return $r('app.string.mode_rule');
   }
 
   async refresh(): Promise<void> {
@@ -145,7 +145,7 @@ struct Index {
     }
     this.testing = true;
     this.latencies = {};
-    promptAction.showToast({ message: `正在测试 ${this.profiles.length} 个节点…` });
+    promptAction.showToast({ message: $r('app.string.index_testing_count', this.profiles.length) });
     const snapshot: Array<Profile> = this.profiles;
     await testProfiles(snapshot, (id: string, ms: number) => {
       const next: Record<string, number> = {};
@@ -168,10 +168,42 @@ struct Index {
     await saveProfiles(this.profiles);
     this.profiles = this.profiles.slice();
     this.testing = false;
-    promptAction.showToast({ message: '测速完成，结果已保存' });
+    promptAction.showToast({ message: $r('app.string.speed_test_complete') });
   }
 
-  latencyText(p: Profile): string {
+  statusDisplay(): ResourceStr {
+    const s = this.statusText;
+    if (s === 'connecting') {
+      return $r('app.string.status_connecting');
+    }
+    if (s === 'disconnecting') {
+      return $r('app.string.status_disconnecting');
+    }
+    if (s === 'disconnected') {
+      return $r('app.string.status_disconnected');
+    }
+    if (s === 'switching') {
+      return $r('app.string.status_switching');
+    }
+    if (s === 'start_timeout') {
+      return $r('app.string.status_start_timeout');
+    }
+    if (s === 'awaiting_auth') {
+      return $r('app.string.status_awaiting_auth');
+    }
+    if (s.startsWith('connected:')) {
+      return $r('app.string.status_connected_node', s.substring('connected:'.length));
+    }
+    if (s.startsWith('start_failed:')) {
+      return $r('app.string.status_start_failed', s.substring('start_failed:'.length));
+    }
+    if (s.startsWith('connect_failed:')) {
+      return $r('app.string.status_connect_failed', s.substring('connect_failed:'.length));
+    }
+    return s;
+  }
+
+  latencyText(p: Profile): ResourceStr {
     const ms = this.latencies[p.id];
     if (this.testing && ms === undefined) {
       return '…';
@@ -179,7 +211,7 @@ struct Index {
     if (ms === undefined) {
       return '';
     }
-    return ms < 0 ? '超时' : `${ms}ms`;
+    return ms < 0 ? $r('app.string.timeout') : `${ms}ms`;
   }
 
   latencyColor(p: Profile): ResourceColor {
@@ -198,7 +230,7 @@ struct Index {
 
   async connectTo(p: Profile): Promise<void> {
     if (this.isRunning) {
-      promptAction.showToast({ message: '请先断开当前连接' });
+      promptAction.showToast({ message: $r('app.string.disconnect_first') });
       return;
     }
     this.selectedId = p.id;
@@ -220,7 +252,7 @@ struct Index {
       return;
     }
     if (this.switching) {
-      promptAction.showToast({ message: '正在切换中,请稍候' });
+      promptAction.showToast({ message: $r('app.string.switching_wait') });
       return;
     }
     const runningId = AppStorage.get<string>('vpnRunningProfileId') ?? '';
@@ -229,7 +261,7 @@ struct Index {
     }
     this.switching = true;
     try {
-      promptAction.showToast({ message: `正在切换到 ${p.name}…` });
+      promptAction.showToast({ message: $r('app.string.switching_to_name', p.name) });
       await VpnService.switchTo(this.context, p.id);
     } finally {
       this.switching = false;
@@ -260,7 +292,7 @@ struct Index {
     const t = await getClipboardText();
     this.importText = t;
     if (t.trim().length === 0) {
-      promptAction.showToast({ message: '剪贴板为空,请手动粘贴到输入框' });
+      promptAction.showToast({ message: $r('app.string.clipboard_empty_paste_manually') });
     }
   }
 
@@ -268,7 +300,7 @@ struct Index {
     try {
       const text = raw === undefined || raw === null ? '' : raw;
       if (text.trim().length === 0) {
-        promptAction.showToast({ message: '请先粘贴订阅链接或节点链接' });
+        promptAction.showToast({ message: $r('app.string.paste_subscription_or_profile_link') });
         return;
       }
       const firstLine = text.trim().split(/[\r\n]+/)[0].trim();
@@ -277,7 +309,7 @@ struct Index {
       let subUserinfo = '';
       if (firstLine.startsWith('http://') || firstLine.startsWith('https://')) {
         // 订阅链接:下载内容后解析(服务商返回 Clash YAML 时自动切换解析器)
-        promptAction.showToast({ message: '正在获取订阅…' });
+        promptAction.showToast({ message: $r('app.string.fetching_subscription') });
         subUrl = firstLine;
         const fetched = await fetchSubscriptionWithInfo(firstLine);
         const content = fetched.content;
@@ -287,7 +319,7 @@ struct Index {
           parsed = r.profiles;
           if (parsed.length === 0) {
             promptAction.showToast({
-              message: `订阅返回 Clash 格式,但没有可导入的节点(跳过 ${r.skipped} 个不支持的协议)`
+              message: $r('app.string.clash_skipped_count', r.skipped)
             });
             return;
           }
@@ -298,7 +330,7 @@ struct Index {
         parsed = parseShareText(text);
       }
       if (parsed.length === 0) {
-        promptAction.showToast({ message: '未解析到可识别的节点' });
+        promptAction.showToast({ message: $r('app.string.no_recognizable_profiles') });
         return;
       }
       await initStore(this.context);
@@ -313,14 +345,14 @@ struct Index {
       this.profiles = profiles;
       if (subUrl.length > 0) {
         await upsertSub(subUrl, subUserinfo);
-        promptAction.showToast({ message: `已导入 ${parsed.length} 个节点(订阅: ${subNameOf(subUrl)})` });
+        promptAction.showToast({ message: $r('app.string.imported_from_sub', parsed.length, subNameOf(subUrl)) });
       } else {
-        promptAction.showToast({ message: `已导入 ${parsed.length} 个节点` });
+        promptAction.showToast({ message: $r('app.string.imported_count', parsed.length) });
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
       LogStore.addLog(`[ui] 导入失败: ${msg}`);
-      promptAction.showToast({ message: `导入失败: ${msg}` });
+      promptAction.showToast({ message: $r('app.string.import_failed_reason', msg) });
     }
   }
 
@@ -345,12 +377,12 @@ struct Index {
     return this.sortedProfiles().filter((p: Profile) => p.groupId === groupId);
   }
 
-  groupName(groupId: string): string {
+  groupName(groupId: string): ResourceStr {
     if (groupId.length === 0) {
-      return '未分组';
+      return $r('app.string.ungrouped');
     }
     const group = this.groups.find((item: ProfileGroup) => item.id === groupId);
-    return group === undefined ? '未分组' : group.name;
+    return group === undefined ? $r('app.string.ungrouped') : group.name;
   }
 
   async moveProfileToGroup(p: Profile, groupId: string): Promise<void> {
@@ -368,15 +400,15 @@ struct Index {
     this.groups = this.groups.slice();
   }
 
-  sourceHost(p: Profile): string {
+  sourceHost(p: Profile): ResourceStr {
     if (p.subUrl.length === 0) {
-      return '本地节点';
+      return $r('app.string.local_profile');
     }
     try {
       const withoutScheme = p.subUrl.split('://').pop() ?? p.subUrl;
       return withoutScheme.split('/')[0];
     } catch (e) {
-      return '订阅节点';
+      return $r('app.string.subscription_profile');
     }
   }
 
@@ -389,21 +421,21 @@ struct Index {
   async copyProfileLink(p: Profile): Promise<void> {
     const link = exportProfileLink(p);
     if (link.length === 0) {
-      promptAction.showToast({ message: '该协议暂不支持导出' });
+      promptAction.showToast({ message: $r('app.string.protocol_export_unsupported') });
       return;
     }
     await setClipboardText(link);
-    promptAction.showToast({ message: '节点链接已复制' });
+    promptAction.showToast({ message: $r('app.string.profile_link_copied') });
   }
 
   async runUrlTest(p: Profile): Promise<void> {
     if (!this.isRunning) {
-      promptAction.showToast({ message: 'URL Test 需要先连接该节点' });
+      promptAction.showToast({ message: $r('app.string.url_test_requires_connection') });
       return;
     }
     const runningId = AppStorage.get<string>('vpnRunningProfileId') ?? '';
     if (runningId !== p.id) {
-      promptAction.showToast({ message: 'URL Test 仅支持当前连接节点' });
+      promptAction.showToast({ message: $r('app.string.url_test_current_profile_only') });
       return;
     }
     try {
@@ -423,13 +455,13 @@ struct Index {
 
   deleteProfile(p: Profile): void {
     AlertDialog.show({
-      message: `删除节点 "${p.name}"?`,
+      message: $r('app.string.confirm_delete_profile_name', p.name),
       primaryButton: {
-        value: '取消', action: () => {
+        value: $r('app.string.cancel'), action: () => {
         }
       },
       secondaryButton: {
-        value: '删除', fontColor: $r('app.color.error'), action: () => {
+        value: $r('app.string.delete'), fontColor: $r('app.color.error'), action: () => {
           this.profiles = this.profiles.filter(x => x.id !== p.id);
           saveProfiles(this.profiles);
         }
@@ -440,17 +472,17 @@ struct Index {
   @Builder
   profileContextMenu(p: Profile) {
     Column() {
-      MenuItem({ content: p.pinned ? '取消置顶' : '置顶' })
+      MenuItem({ content: p.pinned ? $r('app.string.unpin') : $r('app.string.pin') })
         .onClick(() => this.togglePinned(p))
       MenuItem({ content: 'URL Test' })
         .onClick(() => this.runUrlTest(p))
-      MenuItem({ content: '复制分享链接' })
+      MenuItem({ content: $r('app.string.copy_share_link') })
         .onClick(() => this.copyProfileLink(p))
       if (p.subUrl.length > 0) {
-        MenuItem({ content: '查看订阅' })
+        MenuItem({ content: $r('app.string.view_subscription') })
           .onClick(() => router.pushUrl({ url: 'pages/SubDetailPage', params: { url: p.subUrl } }))
       }
-      MenuItem({ content: '删除', labelInfo: '不可撤销' })
+      MenuItem({ content: $r('app.string.delete'), labelInfo: $r('app.string.irreversible') })
         .onClick(() => this.deleteProfile(p))
     }
   }
@@ -474,13 +506,13 @@ struct Index {
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
 
-        Button(this.testing ? '测速中' : '测速')
+        Button(this.testing ? $r('app.string.speed_testing') : $r('app.string.speed_test'))
           .height(34)
           .fontSize(12)
           .fontColor($r('app.color.primary'))
           .backgroundColor($r('app.color.surface_selected'))
           .onClick(() => this.runSpeedTest())
-        Button('连接')
+        Button($r('app.string.connect'))
           .height(34)
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
@@ -488,7 +520,7 @@ struct Index {
           .onClick(() => {
             router.pushUrl({ url: 'pages/ConnectionsPage' });
           })
-        Button('日志')
+        Button($r('app.string.logs'))
           .height(34)
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
@@ -496,7 +528,7 @@ struct Index {
           .onClick(() => {
             router.pushUrl({ url: 'pages/LogPage' });
           })
-        Button('设置')
+        Button($r('app.string.settings_title'))
           .height(34)
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
@@ -514,7 +546,7 @@ struct Index {
           Text(this.isRunning ? '●' : '○')
             .fontSize(16)
             .fontColor(this.isRunning ? '#2E7D32' : '#9E9E9E')
-          Text(this.statusText)
+          Text(this.statusDisplay())
             .fontSize(15)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.isRunning ? '#2E7D32' : '#616161')
@@ -529,7 +561,7 @@ struct Index {
         .width('100%')
 
         if (this.isRunning) {
-          Text(`↑ ${formatSpeed(this.upSpeed)}  ↓ ${formatSpeed(this.downSpeed)}   ·   总计 ↑ ${formatBytes(this.totalUp)} ↓ ${formatBytes(this.totalDown)}`)
+          Text($r('app.string.traffic_speed_total', formatSpeed(this.upSpeed), formatSpeed(this.downSpeed), formatBytes(this.totalUp), formatBytes(this.totalDown)))
             .fontSize(11)
             .fontColor($r('app.color.text_secondary'))
             .width('100%')
@@ -601,12 +633,12 @@ struct Index {
 
       // 底部主操作与独立悬浮按钮
       Row({ space: 10 }) {
-        Button('导入链接')
+        Button($r('app.string.import_link'))
           .backgroundColor($r('app.color.surface'))
           .fontColor($r('app.color.text_primary'))
           .onClick(() => this.openImportDialog())
 
-        Button(this.isRunning ? '断开连接' : '启动 VPN')
+        Button(this.isRunning ? $r('app.string.disconnect') : $r('app.string.start_vpn'))
           .layoutWeight(1)
           .height(46)
           .backgroundColor(this.isRunning ? $r('app.color.error') : $r('app.color.primary'))
@@ -616,7 +648,7 @@ struct Index {
             } else {
               const target = this.profiles.find(x => x.id === this.selectedId);
               if (target === undefined) {
-                promptAction.showToast({ message: '请先选择或创建一个节点' });
+                promptAction.showToast({ message: $r('app.string.select_or_create_profile') });
                 return;
               }
               this.connectTo(target);
@@ -658,19 +690,19 @@ struct ImportDialog {
 
   build() {
     Column({ space: 10 }) {
-      Text('导入链接 / 订阅')
+      Text($r('app.string.import_link_subscription'))
         .fontSize(16)
         .fontWeight(FontWeight.Bold)
       TextArea({
         text: this.text,
-        placeholder: '粘贴订阅链接(http…)、节点链接(vless:// 等)或 base64 订阅内容'
+        placeholder: $r('app.string.import_content_placeholder')
       })
         .height(120)
         .onChange((v: string) => {
           this.text = v;
         })
       Row({ space: 8 }) {
-        Button('取消')
+        Button($r('app.string.cancel'))
           .backgroundColor($r('app.color.surface'))
           .fontColor($r('app.color.text_primary'))
           .onClick(() => {
@@ -679,11 +711,11 @@ struct ImportDialog {
             }
           })
         Blank()
-        Button('从剪贴板读取')
+        Button($r('app.string.read_from_clipboard'))
           .backgroundColor($r('app.color.surface'))
           .fontColor($r('app.color.text_primary'))
           .onClick(() => this.onPickClipboard())
-        Button('导入')
+        Button($r('app.string.import_action'))
           .backgroundColor($r('app.color.primary'))
           .onClick(() => {
             const t = this.text;

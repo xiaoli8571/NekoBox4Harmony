@@ -35,7 +35,7 @@ export class VpnService {
         // A failed previous operation must not block later user requests.
       }
     await setPendingProfileId(profileId);
-    AppStorage.setOrCreate('vpnStatus', '正在建立 VPN…');
+    AppStorage.setOrCreate('vpnStatus', 'connecting');
     try {
       await vpnExtension.startVpnExtensionAbility(wantFor(context, profileId));
       LogStore.addLog('[app] startVpnExtensionAbility 已调用,等待扩展回调…');
@@ -43,7 +43,7 @@ export class VpnService {
       await clearPendingProfileId();
       AppStorage.setOrCreate('vpnRunning', false);
       const msg = e instanceof Error ? e.message : `${e}`;
-      AppStorage.setOrCreate('vpnStatus', `启动 VPN 服务失败: ${msg}`);
+      AppStorage.setOrCreate('vpnStatus', `start_failed:${msg}`);
       LogStore.addLog(`[app] startVpnExtensionAbility 失败: ${msg}`);
       throw new Error(msg);
     }
@@ -54,8 +54,8 @@ export class VpnService {
       }
       const running: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
       const status: string = AppStorage.get<string>('vpnStatus') ?? '';
-      if (!running && status === '正在建立 VPN…') {
-        AppStorage.setOrCreate('vpnStatus', '建立 VPN 超时:扩展没有完成启动,请到「日志」页查看卡在哪一步');
+      if (!running && status === 'connecting') {
+        AppStorage.setOrCreate('vpnStatus', 'start_timeout');
         LogStore.addLog('[app] VPN 启动看门狗超时(60s):扩展未报告任何进展');
         VpnService.disconnect(context);
       }
@@ -73,7 +73,7 @@ export class VpnService {
       } catch (e) {
         // Continue with teardown even if startup failed.
       }
-    AppStorage.setOrCreate('vpnStatus', '正在断开…');
+    AppStorage.setOrCreate('vpnStatus', 'disconnecting');
     try {
       await vpnExtension.stopVpnExtensionAbility(wantFor(context));
     } catch (e) {
@@ -82,14 +82,14 @@ export class VpnService {
     await clearPendingProfileId();
     AppStorage.setOrCreate('vpnRunning', false);
     AppStorage.setOrCreate('vpnRunningProfileId', '');
-    AppStorage.setOrCreate('vpnStatus', '已断开');
+    AppStorage.setOrCreate('vpnStatus', 'disconnected');
     })();
     return VpnService.operation;
   }
 
   /** 运行中切换节点:自动断开 → 等待系统清理 → 自动重连(最稳路径) */
   static async switchTo(context: common.UIAbilityContext, profileId: string): Promise<void> {
-    AppStorage.setOrCreate('vpnStatus', '正在切换节点…');
+    AppStorage.setOrCreate('vpnStatus', 'switching');
     LogStore.addLog('[app] 切换节点:自动断开后重连');
     await VpnService.disconnect(context);
     // 给系统一点时间完成路由/隧道的拆除,避免立即重建时挂起

@@ -38,10 +38,10 @@ struct RouteRulesPage {
 
   removeRule(index: number): void {
     AlertDialog.show({
-      message: '删除这条路由规则?',
-      primaryButton: { value: '取消', action: () => {} },
+      message: $r('app.string.confirm_delete_route_rule'),
+      primaryButton: { value: $r('app.string.cancel'), action: () => {} },
       secondaryButton: {
-        value: '删除',
+        value: $r('app.string.delete'),
         fontColor: $r('app.color.error'),
         action: () => {
           const next = this.rules.slice();
@@ -76,8 +76,8 @@ struct RouteRulesPage {
     Column() {
       Row() {
         Text('←').fontSize(22).padding(8).onClick(() => router.back())
-        Text('自定义路由规则').fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
-        Button('添加').height(34).onClick(() => this.addRule())
+        Text($r('app.string.route_rules_title')).fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
+        Button($r('app.string.add')).height(34).onClick(() => this.addRule())
       }.width('100%').padding(12)
 
       if (this.loading) {
@@ -86,7 +86,7 @@ struct RouteRulesPage {
             .width(32)
             .height(32)
             .color($r('app.color.primary'))
-          Text('正在加载路由规则…')
+          Text($r('app.string.loading_route_rules'))
             .fontSize(13)
             .fontColor($r('app.color.text_secondary'))
         }
@@ -94,14 +94,14 @@ struct RouteRulesPage {
         .padding({ top: 36, bottom: 20 })
       } else if (this.loadError.length > 0) {
         Column({ space: 8 }) {
-          Text('路由规则加载失败')
+          Text($r('app.string.route_rules_load_failed'))
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.text_primary'))
           Text(this.loadError)
             .fontSize(13)
             .fontColor($r('app.color.error'))
-          Button('重新加载')
+          Button($r('app.string.reload'))
             .height(36)
             .backgroundColor($r('app.color.primary'))
             .onClick(() => this.load())
@@ -110,11 +110,11 @@ struct RouteRulesPage {
         .padding({ top: 28, bottom: 20 })
       } else if (this.rules.length === 0) {
         Column({ space: 8 }) {
-          Text('暂无自定义路由规则')
+          Text($r('app.string.no_route_rules'))
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.text_primary'))
-          Text('点击右上角“添加”创建第一条规则。')
+          Text($r('app.string.route_rule_empty_hint'))
             .fontSize(13)
             .fontColor($r('app.color.text_secondary'))
         }
@@ -127,7 +127,7 @@ struct RouteRulesPage {
           ListItem() {
             Column({ space: 8 }) {
               Row() {
-                TextInput({ text: rule.remark, placeholder: '规则备注' })
+                TextInput({ text: rule.remark, placeholder: $r('app.string.route_rule_remark') })
                   .layoutWeight(1)
                   .onChange((value: string) => this.updateRule(index, 'remark', value))
                 Toggle({ type: ToggleType.Switch, isOn: rule.enabled })
@@ -135,11 +135,11 @@ struct RouteRulesPage {
               }.width('100%')
 
               Select([
-                { value: '完整域名' },
-                { value: '域名后缀' },
-                { value: '域名关键字' },
+                { value: $r('app.string.domain') },
+                { value: $r('app.string.domain_suffix') },
+                { value: $r('app.string.domain_keyword') },
                 { value: 'IP CIDR' },
-                { value: '端口' }
+                { value: $r('app.string.port') }
               ])
                 .selected(['domain', 'domain_suffix', 'domain_keyword', 'ip_cidr', 'port'].indexOf(rule.type))
                 .onSelect((indexValue: number) => {
@@ -147,13 +147,13 @@ struct RouteRulesPage {
                   this.updateRule(index, 'type', types[indexValue]);
                 })
 
-              TextArea({ text: rule.value, placeholder: '多个值使用英文逗号分隔' })
+              TextArea({ text: rule.value, placeholder: $r('app.string.comma_separated_values') })
                 .height(80)
                 .onChange((value: string) => this.updateRule(index, 'value', value))
 
               Row({ space: 8 }) {
                 ForEach(['proxy', 'direct', 'reject'], (outbound: string) => {
-                  Button(outbound === 'proxy' ? '代理' : outbound === 'direct' ? '直连' : '拒绝')
+                  Button(outbound === 'proxy' ? $r('app.string.proxy') : outbound === 'direct' ? $r('app.string.mode_direct') : $r('app.string.reject'))
                     .layoutWeight(1)
                     .backgroundColor(rule.outbound === outbound ? $r('app.color.primary') : '#E0E0E0')
                     .fontColor(rule.outbound === outbound ? $r('app.color.surface') : $r('app.color.text_primary'))
@@ -161,7 +161,7 @@ struct RouteRulesPage {
                 })
               }.width('100%')
 
-              Text('删除规则').fontSize(13).fontColor($r('app.color.error')).padding(6)
+              Text($r('app.string.delete_rule')).fontSize(13).fontColor($r('app.color.error')).padding(6)
                 .onClick(() => this.removeRule(index))
             }
             .width('100%')
@@ -175,7 +175,7 @@ struct RouteRulesPage {
       .width('100%')
       .padding({ left: 12, right: 12 })
 
-      Text('规则按列表顺序匹配，修改后重新连接 VPN 生效。')
+      Text($r('app.string.route_rule_order_hint'))
         .fontSize(12).fontColor($r('app.color.text_secondary')).padding(12)
     }
     .width('100%').height('100%').backgroundColor($r('app.color.app_background'))

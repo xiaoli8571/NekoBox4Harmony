@@ -56,11 +56,11 @@ struct SubDetailPage {
     try {
       const result = await updateSubscription(this.sub.url);
       await markSubSuccess(this.sub.url);
-      promptAction.showToast({ message: `更新完成:新增 ${result.added},移除 ${result.removed}` });
+      promptAction.showToast({ message: $r('app.string.sub_update_result', result.added, result.removed) });
     } catch (e) {
       await markSubFailure(this.sub.url);
       const message = e instanceof Error ? e.message : `${e}`;
-      promptAction.showToast({ message: `更新失败: ${message}` });
+      promptAction.showToast({ message: $r('app.string.update_failed_reason', message) });
     } finally {
       this.updating = false;
       await this.load();
@@ -69,10 +69,10 @@ struct SubDetailPage {
 
   confirmDelete(): void {
     AlertDialog.show({
-      message: `删除订阅“${this.sub.name}”及其 ${this.profileCount} 个节点?`,
-      primaryButton: { value: '取消', action: () => {} },
+      message: $r('app.string.confirm_delete_sub_name', this.sub.name, this.profileCount),
+      primaryButton: { value: $r('app.string.cancel'), action: () => {} },
       secondaryButton: {
-        value: '删除',
+        value: $r('app.string.delete'),
         fontColor: $r('app.color.error'),
         action: async () => {
           const profiles = await loadProfiles();
@@ -88,7 +88,7 @@ struct SubDetailPage {
     Column() {
       Row() {
         Text('←').fontSize(22).padding(8).onClick(() => router.back())
-        Text('订阅详情').fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
+        Text($r('app.string.subscription_detail_title')).fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
       }.width('100%').padding(12)
 
       if (this.loading) {
@@ -97,7 +97,7 @@ struct SubDetailPage {
             .width(32)
             .height(32)
             .color($r('app.color.primary'))
-          Text('正在加载订阅…')
+          Text($r('app.string.loading_subscription'))
             .fontSize(13)
             .fontColor($r('app.color.text_secondary'))
         }
@@ -106,14 +106,14 @@ struct SubDetailPage {
         .justifyContent(FlexAlign.Center)
       } else if (this.loadError.length > 0) {
         Column({ space: 8 }) {
-          Text('订阅加载失败')
+          Text($r('app.string.subscription_load_failed'))
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.text_primary'))
           Text(this.loadError)
             .fontSize(13)
             .fontColor($r('app.color.error'))
-          Button('重新加载')
+          Button($r('app.string.reload'))
             .height(36)
             .backgroundColor($r('app.color.primary'))
             .onClick(() => this.load())
@@ -123,14 +123,14 @@ struct SubDetailPage {
         .justifyContent(FlexAlign.Center)
       } else if (this.notFound) {
         Column({ space: 8 }) {
-          Text('订阅不存在')
+          Text($r('app.string.subscription_not_found'))
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.text_primary'))
-          Text('该订阅可能已被删除，请返回订阅列表。')
+          Text($r('app.string.subscription_missing_hint'))
             .fontSize(13)
             .fontColor($r('app.color.text_secondary'))
-          Button('返回')
+          Button($r('app.string.back'))
             .height(36)
             .backgroundColor($r('app.color.primary'))
             .onClick(() => router.back())
@@ -141,17 +141,17 @@ struct SubDetailPage {
       } else {
         Scroll() {
           Column({ space: 14 }) {
-            Text(this.sub.name.length > 0 ? this.sub.name : '未命名订阅')
+            Text(this.sub.name.length > 0 ? this.sub.name : $r('app.string.unnamed_subscription'))
               .fontSize(20).fontWeight(FontWeight.Bold).width('100%')
             Text(this.sub.url).fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
-            Text(`节点数量: ${this.profileCount}`).width('100%')
-            Text(`已用流量: ${formatBytes(this.sub.upload + this.sub.download)}`).width('100%')
-            Text(`总流量: ${this.sub.total > 0 ? formatBytes(this.sub.total) : '未知'}`).width('100%')
-            Text(`连续失败: ${Number(this.sub.failCount)} 次`)
+            Text($r('app.string.profile_count_value', this.profileCount)).width('100%')
+            Text($r('app.string.used_traffic_value', formatBytes(this.sub.upload + this.sub.download))).width('100%')
+            Text(this.sub.total > 0 ? $r('app.string.total_traffic_value', formatBytes(this.sub.total)) : $r('app.string.total_traffic_unknown')).width('100%')
+            Text($r('app.string.consecutive_failures_value', Number(this.sub.failCount)))
               .fontColor(Number(this.sub.failCount) >= 3 ? $r('app.color.error') : $r('app.color.text_secondary')).width('100%')
-            Button(this.updating ? '正在更新…' : '立即更新')
+            Button(this.updating ? $r('app.string.updating') : $r('app.string.update_now'))
               .width('100%').enabled(!this.updating).onClick(() => this.updateNow())
-            Button('删除订阅及节点')
+            Button($r('app.string.delete_subscription_profiles'))
               .width('100%').backgroundColor($r('app.color.error')).onClick(() => this.confirmDelete())
           }.width('100%').padding(16).alignItems(HorizontalAlign.Start)
         }.layoutWeight(1).width('100%')

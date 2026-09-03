@@ -222,3 +222,15 @@ Existing notification files reviewed:
 - 已核对 DocumentViewPicker 导出、文件写入、文件选择、完整读取、schema v3 恢复和剪贴板降级链路。
 - 按约束未执行构建、打包或任何 Git 写操作。
 - DocumentViewPicker 的文件 URI 读写、取消选择行为及恢复后的实际数据完整性仍需构建机编译和真机验证。
+
+## 2026-09-03 F6 中英多语言收尾:已完成,待真机验证
+
+- Codex(服务器工作区):建立 base/en_US 双份 string.json,Index/ProfileEdit/SubDetailPage/RouteRulesPage 四页文案资源化,SettingsPage 大部分文案资源化。
+- 构建机补完:SettingsPage 剩余 35 处(出站模式说明、Geo 状态、订阅流量/到期、DNS/IPv6/主题、per-app 提示、剪贴板备份/恢复、不安全 TLS、重连提示)与 Backup.ets 4 处(无效 JSON/格式错误/版本不支持/恢复摘要)全部资源化。
+- 修复全仓 43 处 `${$r('app.string.x')}` 模板串插值(运行时会渲染为 [object Object]):整句迁移为占位符句式(%1$s/%1$d),validationError/latencyText/groupName/sourceHost/importBackup 返回类型改 ResourceStr;新增 backupErrorText 将 Backup 机器错误键(backup_invalid_json 等)映射为资源文案;appListError 状态改 ResourceStr。
+- 改动文件:pages/Index.ets、pages/ProfileEdit.ets、pages/SettingsPage.ets、pages/SubDetailPage.ets、core/Backup.ets、resources/base/element/string.json、resources/en_US/element/string.json、DEVPLAN.md、CHANGES.md、AppScope/app.json5(versionCode 1001716)、core/VpnService.ets、vpnext/VpnExtAbility.ets
+- 已知限制/例外:LogStore.addLog 调试日志行与代码注释保留中文(非用户可见 UI,与既有惯例一致);运行时系统错误(网络/文件系统)原文经占位符句式包装透传;纯 ASCII 动态串(如 `URL Test: 123ms`)保留。
+- 状态链路资源化(构建机):vpnStatus 状态由 VpnService(6 处)与 VpnExtAbility 扩展进程(5 处)以硬编码中文写入 AppStorage,
+  首页状态卡无法跟随语言 —— 改为机器状态键(connecting/disconnected/switching/awaiting_auth/start_timeout/connected:<节点>/start_failed:<详情>/connect_failed:<详情>),
+  Index 新增 statusDisplay() 映射为资源文案,VpnService 看门狗比较同步改为机器键;通知栏文案在 :vpn 扩展进程内,不在 F6 声明范围,保留中文待后续处理。
+- 审计:五页面 + Backup 用户可见中文残留 0;`${$r(` 模板混用残留 0;base/en_US 各 264 键、键集合一致、无重复、引用无缺失(编译器逐键校验通过)。
