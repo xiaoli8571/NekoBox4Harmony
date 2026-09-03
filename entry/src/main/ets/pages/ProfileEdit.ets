@@ -176,8 +176,8 @@ struct ProfileEdit {
               })
             Row({ space: 8 }) {
               Button('从剪贴板读取')
-                .backgroundColor('#F5F5F5')
-                .fontColor('#333333')
+                .backgroundColor($r('app.color.surface'))
+                .fontColor($r('app.color.text_primary'))
                 .onClick(() => this.readClipboardIntoBox())
               Blank()
               Button('解析并填入')
@@ -191,7 +191,7 @@ struct ProfileEdit {
 
           // 协议类型
           Column() {
-            Text('协议类型').fontSize(13).fontColor('#666')
+            Text('协议类型').fontSize(13).fontColor($r('app.color.text_secondary'))
             Select(ALL_TYPES.map((t: string) => ({ value: profileTypeLabel(t) } as SelectOption)))
               .selected(ALL_TYPES.indexOf(this.p.type))
               .value(profileTypeLabel(this.p.type))
@@ -242,13 +242,13 @@ struct ProfileEdit {
       .layoutWeight(1)
       .align(Alignment.Top)
     }
-    .width('100%').height('100%').backgroundColor('#F2F4F7')
+    .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
   }
 
   @Builder
   Field(label: string, placeholder: string, val: string, onChange: (v: string) => void, inputType: InputType = InputType.Normal) {
     Column() {
-      Text(label).fontSize(13).fontColor('#666').width('100%')
+      Text(label).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
       TextInput({ text: val, placeholder: placeholder })
         .type(inputType)
         .width('100%')
@@ -352,7 +352,7 @@ struct ProfileEdit {
   @Builder
   TransportFields() {
     Column() {
-      Text('传输层').fontSize(13).fontColor('#666').width('100%')
+      Text('传输层').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
       Select(TRANSPORTS.map((t: string) => ({ value: t === '' ? 'TCP (无)' : t } as SelectOption)))
         .selected(TRANSPORTS.indexOf(this.p.transport) < 0 ? 0 : TRANSPORTS.indexOf(this.p.transport))
         .value(this.p.transport === '' ? 'TCP (无)' : this.p.transport)
@@ -402,7 +402,7 @@ struct ProfileEdit {
       this.Field('附加 JSON (高级, 与出站对象合并)', '{"dialer":{}}', this.p.extra,
         (v: string) => { this.p.extra = v; })
       Text('长按主页节点可删除;支持从剪贴板导入 ss/vmess/vless/trojan/hysteria/tuic 链接与 base64 订阅')
-        .fontSize(11).fontColor('#999').width('100%')
+        .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
     }
   }
 }

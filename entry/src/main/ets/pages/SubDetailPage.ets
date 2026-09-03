@@ -73,7 +73,7 @@ struct SubDetailPage {
       primaryButton: { value: '取消', action: () => {} },
       secondaryButton: {
         value: '删除',
-        fontColor: '#E53935',
+        fontColor: $r('app.color.error'),
         action: async () => {
           const profiles = await loadProfiles();
           await saveProfiles(profiles.filter(p => p.subUrl !== this.sub.url));

@@ -177,10 +177,10 @@ struct Index {
     return ms < 0 ? '超时' : `${ms}ms`;
   }
 
-  latencyColor(p: Profile): string {
+  latencyColor(p: Profile): ResourceColor {
     const ms = this.latencies[p.id];
     if (ms === undefined || ms < 0) {
-      return ms === -1 ? '#E53935' : '#999999';
+      return ms === -1 ? $r('app.color.error') : $r('app.color.text_secondary');
     }
     if (ms < 150) {
       return '#2E7D32';
@@ -188,7 +188,7 @@ struct Index {
     if (ms < 400) {
       return '#F9A825';
     }
-    return '#E53935';
+    return $r('app.color.error');
   }
 
   async connectTo(p: Profile): Promise<void> {
@@ -424,7 +424,7 @@ struct Index {
         }
       },
       secondaryButton: {
-        value: '删除', fontColor: '#E53935', action: () => {
+        value: '删除', fontColor: $r('app.color.error'), action: () => {
           this.profiles = this.profiles.filter(x => x.id !== p.id);
           saveProfiles(this.profiles);
         }
@@ -516,7 +516,7 @@ struct Index {
             .layoutWeight(1)
           Text(this.modeLabel())
             .fontSize(11)
-            .fontColor('#1E88E5')
+            .fontColor($r('app.color.primary'))
             .backgroundColor('#E3F2FD')
             .borderRadius(10)
             .padding({ left: 8, right: 8, top: 3, bottom: 3 })
@@ -526,7 +526,7 @@ struct Index {
         if (this.isRunning) {
           Text(`↑ ${formatSpeed(this.upSpeed)}  ↓ ${formatSpeed(this.downSpeed)}   ·   总计 ↑ ${formatBytes(this.totalUp)} ↓ ${formatBytes(this.totalDown)}`)
             .fontSize(11)
-            .fontColor('#666666')
+            .fontColor($r('app.color.text_secondary'))
             .width('100%')
         }
       }
@@ -534,7 +534,7 @@ struct Index {
       .margin({ left: 12, right: 12, bottom: 10 })
       .padding(12)
       .borderRadius(12)
-      .backgroundColor('#FFFFFF')
+      .backgroundColor($r('app.color.surface'))
 
       // 节点列表
       List({ space: 8 }) {
@@ -585,7 +585,7 @@ struct Index {
             .width('100%')
             .padding(12)
             .borderRadius(12)
-            .backgroundColor(this.selectedId === p.id ? '#E3F2FD' : '#FFFFFF')
+            .backgroundColor(this.selectedId === p.id ? '#E3F2FD' : $r('app.color.surface'))
             .bindContextMenu(this.profileContextMenu(p), ResponseType.LongPress)
           }
         }, (p: Profile) => p.id)
@@ -622,7 +622,7 @@ struct Index {
           .width(52)
           .height(52)
           .fontSize(28)
-          .fontColor('#FFFFFF')
+          .fontColor($r('app.color.surface'))
           .backgroundColor($r('app.color.primary'))
           .borderRadius(26)
           .shadow({ radius: 8, color: '#40000000', offsetX: 0, offsetY: 3 })
@@ -666,8 +666,8 @@ struct ImportDialog {
         })
       Row({ space: 8 }) {
         Button('取消')
-          .backgroundColor('#F5F5F5')
-          .fontColor('#333333')
+          .backgroundColor($r('app.color.surface'))
+          .fontColor($r('app.color.text_primary'))
           .onClick(() => {
             if (this.controller !== undefined) {
               this.controller.close();
@@ -675,11 +675,11 @@ struct ImportDialog {
           })
         Blank()
         Button('从剪贴板读取')
-          .backgroundColor('#F5F5F5')
-          .fontColor('#333333')
+          .backgroundColor($r('app.color.surface'))
+          .fontColor($r('app.color.text_primary'))
           .onClick(() => this.onPickClipboard())
         Button('导入')
-          .backgroundColor('#1E88E5')
+          .backgroundColor($r('app.color.primary'))
           .onClick(() => {
             const t = this.text;
             if (this.controller !== undefined) {

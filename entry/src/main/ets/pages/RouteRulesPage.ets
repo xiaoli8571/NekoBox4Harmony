@@ -42,7 +42,7 @@ struct RouteRulesPage {
       primaryButton: { value: '取消', action: () => {} },
       secondaryButton: {
         value: '删除',
-        fontColor: '#E53935',
+        fontColor: $r('app.color.error'),
         action: () => {
           const next = this.rules.slice();
           next.splice(index, 1);
@@ -155,18 +155,18 @@ struct RouteRulesPage {
                 ForEach(['proxy', 'direct', 'reject'], (outbound: string) => {
                   Button(outbound === 'proxy' ? '代理' : outbound === 'direct' ? '直连' : '拒绝')
                     .layoutWeight(1)
-                    .backgroundColor(rule.outbound === outbound ? '#1E88E5' : '#E0E0E0')
-                    .fontColor(rule.outbound === outbound ? '#FFFFFF' : '#333333')
+                    .backgroundColor(rule.outbound === outbound ? $r('app.color.primary') : '#E0E0E0')
+                    .fontColor(rule.outbound === outbound ? $r('app.color.surface') : $r('app.color.text_primary'))
                     .onClick(() => this.updateRule(index, 'outbound', outbound))
                 })
               }.width('100%')
 
-              Text('删除规则').fontSize(13).fontColor('#E53935').padding(6)
+              Text('删除规则').fontSize(13).fontColor($r('app.color.error')).padding(6)
                 .onClick(() => this.removeRule(index))
             }
             .width('100%')
             .padding(12)
-            .backgroundColor('#FFFFFF')
+            .backgroundColor($r('app.color.surface'))
             .borderRadius(12)
           }
         }, (rule: RouteRule, index: number) => `${index}_${rule.remark}_${rule.type}`)
@@ -176,8 +176,8 @@ struct RouteRulesPage {
       .padding({ left: 12, right: 12 })
 
       Text('规则按列表顺序匹配，修改后重新连接 VPN 生效。')
-        .fontSize(12).fontColor('#666666').padding(12)
+        .fontSize(12).fontColor($r('app.color.text_secondary')).padding(12)
     }
-    .width('100%').height('100%').backgroundColor('#F2F4F7')
+    .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
   }
 }

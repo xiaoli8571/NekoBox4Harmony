@@ -111,7 +111,7 @@ struct ConnectionsPage {
       Row() {
         Text('←').fontSize(22).onClick(() => router.back()).padding(8)
         Text(`连接 (${this.conns.length})`).fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
-        Text('刷新').fontSize(14).fontColor('#1E88E5').padding(8)
+        Text('刷新').fontSize(14).fontColor($r('app.color.primary')).padding(8)
           .onClick(() => this.refresh())
       }
       .width('100%').padding(12)
@@ -173,7 +173,7 @@ struct ConnectionsPage {
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                   .layoutWeight(1)
                 Text(`${c.network}`)
-                  .fontSize(11).fontColor('#1E88E5')
+                  .fontSize(11).fontColor($r('app.color.primary'))
               }.width('100%')
 
               Text(`${c.rule}  ${c.chains}`)
@@ -184,9 +184,9 @@ struct ConnectionsPage {
 
               Row() {
                 Text(`↑ ${formatBytes(c.up)}  ↓ ${formatBytes(c.down)}`)
-                  .fontSize(11).fontColor('#666666').layoutWeight(1)
+                  .fontSize(11).fontColor($r('app.color.text_secondary')).layoutWeight(1)
                 Text('断开')
-                  .fontSize(12).fontColor('#E53935')
+                  .fontSize(12).fontColor($r('app.color.error'))
                   .onClick(() => this.closeConn(c))
               }.width('100%')
             }
@@ -194,7 +194,7 @@ struct ConnectionsPage {
             .width('100%')
             .padding(10)
             .borderRadius(8)
-            .backgroundColor('#FFFFFF')
+            .backgroundColor($r('app.color.surface'))
           }
         }, (c: ConnItem) => c.id)
       }
@@ -203,6 +203,6 @@ struct ConnectionsPage {
       .padding({ left: 12, right: 12 })
       .scrollBar(BarState.On)
     }
-    .width('100%').height('100%').backgroundColor('#F2F4F7')
+    .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
   }
 }

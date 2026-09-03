@@ -2,6 +2,7 @@ import common from '@ohos.app.ability.common';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import pasteboard from '@ohos.pasteboard';
+import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 import { AppSettings } from '../model/Profile';
 import { initStore, loadSettings, saveSettings, LogStore } from '../model/Store';
 import { SubInfo, listSubs, updateSubscription, removeSub, markSubSuccess, markSubFailure } from '../core/Subscriptions';
@@ -69,6 +70,15 @@ struct SettingsPage {
   modeIndex(): number {
     const i = MODES.indexOf(this.s.mode);
     return i < 0 ? 0 : i;
+  }
+
+  private applyAppearance(): void {
+    const colorMode = this.s.appearance === 'dark'
+      ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
+      : (this.s.appearance === 'light'
+        ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
+        : ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+    this.context.setColorMode(colorMode);
   }
 
   async save(quiet: boolean = false): Promise<void> {
@@ -149,12 +159,12 @@ struct SettingsPage {
         Column({ space: 14 }) {
           // 出站模式
           Column() {
-            Text('出站模式').fontSize(13).fontColor('#666').width('100%')
+            Text('出站模式').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
             Row({ space: 8 }) {
               ForEach(MODES, (m: string, idx: number) => {
                 Button(MODE_LABELS[idx])
-                  .backgroundColor(this.s.mode === m ? '#1E88E5' : '#F5F5F5')
-                  .fontColor(this.s.mode === m ? '#FFFFFF' : '#333333')
+                  .backgroundColor(this.s.mode === m ? $r('app.color.primary') : $r('app.color.surface'))
+                  .fontColor(this.s.mode === m ? $r('app.color.surface') : $r('app.color.text_primary'))
                   .onClick(() => {
                     this.s.mode = m;
                     this.save(true);
@@ -164,15 +174,15 @@ struct SettingsPage {
             }.width('100%')
             Text(this.s.mode === 'direct' ? '所有流量直连(不走代理)'
               : this.s.mode === 'global' ? '所有流量走代理' : '私网与自定义列表直连,其余走代理')
-              .fontSize(11).fontColor('#999').width('100%')
+              .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           Row() {
             Column() {
               Text('自定义路由规则').fontSize(14)
-              Text('按域名、IP、端口指定代理、直连或拒绝').fontSize(11).fontColor('#999')
+              Text('按域名、IP、端口指定代理、直连或拒绝').fontSize(11).fontColor($r('app.color.text_secondary'))
             }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-            Text('进入 ›').fontSize(14).fontColor('#1E88E5')
+            Text('进入 ›').fontSize(14).fontColor($r('app.color.primary'))
           }
           .width('100%')
           .padding({ top: 8, bottom: 8 })
@@ -180,11 +190,11 @@ struct SettingsPage {
 
           if (this.s.mode === 'rule') {
             Column() {
-              Text('直连域名后缀(逗号分隔)').fontSize(13).fontColor('#666').width('100%')
+              Text('直连域名后缀(逗号分隔)').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
               TextInput({ text: this.s.directDomains, placeholder: 'baidu.com,qq.com,163.com' })
                 .width('100%').height(40)
                 .onChange((v: string) => { this.s.directDomains = v; })
-              Text('直连 IP 段(逗号分隔 CIDR)').fontSize(13).fontColor('#666').width('100%')
+              Text('直连 IP 段(逗号分隔 CIDR)').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
                 .margin({ top: 6 })
               TextInput({ text: this.s.directIpCidrs, placeholder: '114.114.114.114/32' })
                 .width('100%').height(40)
@@ -192,10 +202,10 @@ struct SettingsPage {
               Row({ space: 8 }) {
                 Text(this.geoOk ? '✓ Geo 数据已就绪(cn 直连分流已启用)'
                   : '未下载 Geo 数据(cn 分流不可用)')
-                  .fontSize(12).fontColor(this.geoOk ? '#2E7D32' : '#999').layoutWeight(1)
+                  .fontSize(12).fontColor(this.geoOk ? '#2E7D32' : $r('app.color.text_secondary')).layoutWeight(1)
                 Button(this.geoLoading ? '下载中…' : (this.geoOk ? '重新下载' : '下载数据'))
                   .height(30)
-                  .backgroundColor(this.geoLoading ? '#BBBBBB' : '#1E88E5')
+                  .backgroundColor(this.geoLoading ? '#BBBBBB' : $r('app.color.primary'))
                   .onClick(() => this.downloadGeo())
               }.width('100%').margin({ top: 6 })
             }.alignItems(HorizontalAlign.Start).width('100%')
@@ -208,7 +218,7 @@ struct SettingsPage {
             Text('订阅').fontSize(14).fontWeight(FontWeight.Medium).width('100%')
             if (this.subs.length === 0) {
               Text('暂无订阅。在主页「导入链接」粘贴订阅地址后会自动记录到这里。')
-                .fontSize(12).fontColor('#999').width('100%')
+                .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
             }
             ForEach(this.subs, (sub: SubInfo) => {
               Row() {
@@ -216,22 +226,22 @@ struct SettingsPage {
                   Text(sub.name).fontSize(14).maxLines(1)
                   Text(sub.lastUpdate === 0 ? '从未更新'
                     : `更新于 ${new Date(sub.lastUpdate).toLocaleString()}`)
-                    .fontSize(11).fontColor('#999')
+                    .fontSize(11).fontColor($r('app.color.text_secondary'))
                   if (sub.total > 0) {
                     Text(`已用 ${formatBytes(sub.upload + sub.download)} / ${formatBytes(sub.total)}`)
-                      .fontSize(11).fontColor(sub.upload + sub.download > sub.total ? '#E53935' : '#2E7D32')
+                      .fontSize(11).fontColor(sub.upload + sub.download > sub.total ? $r('app.color.error') : '#2E7D32')
                   }
                   if (sub.expire > 0) {
                     Text(`到期: ${new Date(sub.expire * 1000).toLocaleDateString()}`)
-                      .fontSize(11).fontColor('#999')
+                      .fontSize(11).fontColor($r('app.color.text_secondary'))
                   }
                 }.alignItems(HorizontalAlign.Start).layoutWeight(1)
 
                 Button('更新')
                   .height(30)
-                  .backgroundColor(this.updatingUrl === sub.url ? '#BBBBBB' : '#1E88E5')
+                  .backgroundColor(this.updatingUrl === sub.url ? '#BBBBBB' : $r('app.color.primary'))
                   .onClick(() => this.updateOne(sub))
-                Text('删除').fontSize(13).fontColor('#E53935').padding(6)
+                Text('删除').fontSize(13).fontColor($r('app.color.error')).padding(6)
                   .onClick(() => {
                     removeSub(sub.url);
                     this.subs = this.subs.filter(x => x.url !== sub.url);
@@ -252,7 +262,7 @@ struct SettingsPage {
           Blank().height(2)
 
           Column() {
-            Text('TUN MTU').fontSize(13).fontColor('#666').width('100%')
+            Text('TUN MTU').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
             TextInput({ text: `${this.s.mtu}`, placeholder: '9000' })
               .type(InputType.Number).width('100%').height(40)
               .onChange((v: string) => {
@@ -262,7 +272,7 @@ struct SettingsPage {
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           Column() {
-            Text('TUN 协议栈').fontSize(13).fontColor('#666').width('100%')
+            Text('TUN 协议栈').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
             Select(STACKS.map((t: string) => ({ value: t } as SelectOption)))
               .selected(STACKS.indexOf(this.s.stack) < 0 ? 0 : STACKS.indexOf(this.s.stack))
               .value(this.s.stack)
@@ -270,16 +280,16 @@ struct SettingsPage {
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           Column() {
-            Text('远程 DNS (经代理, 防泄漏)').fontSize(13).fontColor('#666').width('100%')
+            Text('远程 DNS (经代理, 防泄漏)').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
             TextInput({ text: this.s.remoteDns })
               .width('100%').height(40)
               .onChange((v: string) => { this.s.remoteDns = v; })
             Text('远程 DNS 的主机部分必须是 IP(如 https://8.8.8.8/dns-query),避免启动时引导解析')
-              .fontSize(11).fontColor('#999').width('100%')
+              .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           Column() {
-            Text('直连 DNS (用于解析代理服务器域名)').fontSize(13).fontColor('#666').width('100%')
+            Text('直连 DNS (用于解析代理服务器域名)').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
             TextInput({ text: this.s.directDns })
               .width('100%').height(40)
               .onChange((v: string) => { this.s.directDns = v; })
@@ -299,10 +309,11 @@ struct SettingsPage {
             Row({ space: 8 }) {
               ForEach(['system', 'light', 'dark'], (mode: string) => {
                 Button(mode === 'system' ? '跟随系统' : (mode === 'light' ? '浅色' : '深色'))
-                  .backgroundColor(this.s.appearance === mode ? '#1E88E5' : '#F5F5F5')
-                  .fontColor(this.s.appearance === mode ? '#FFFFFF' : '#333333')
+                  .backgroundColor(this.s.appearance === mode ? $r('app.color.primary') : $r('app.color.surface'))
+                  .fontColor(this.s.appearance === mode ? $r('app.color.surface') : $r('app.color.text_primary'))
                   .onClick(() => {
                     this.s.appearance = mode;
+                    this.applyAppearance();
                     this.save(true);
                   })
               }, (mode: string) => mode)
@@ -324,7 +335,7 @@ struct SettingsPage {
                 })
             }.width('100%')
             Text('主题选项会保存为应用偏好；受当前 SDK 能力限制，部分页面需重新进入后刷新。')
-              .fontSize(11).fontColor('#999').width('100%')
+              .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           Blank().height(2)
@@ -335,8 +346,8 @@ struct SettingsPage {
             Row({ space: 8 }) {
               ForEach(APP_MODES, (m: string, idx: number) => {
                 Button(APP_MODE_LABELS[idx])
-                  .backgroundColor(this.s.perAppMode === m ? '#1E88E5' : '#F5F5F5')
-                  .fontColor(this.s.perAppMode === m ? '#FFFFFF' : '#333333')
+                  .backgroundColor(this.s.perAppMode === m ? $r('app.color.primary') : $r('app.color.surface'))
+                  .fontColor(this.s.perAppMode === m ? $r('app.color.surface') : $r('app.color.text_primary'))
                   .onClick(() => {
                     this.s.perAppMode = m;
                     this.save(true);
@@ -353,7 +364,7 @@ struct SettingsPage {
                 .width('100%').height(40)
                 .onChange((v: string) => { this.s.perAppList = v; })
               Text('示例: com.huawei.hmos.browser。包名可在应用详情/日志中查看,重连生效。')
-                .fontSize(11).fontColor('#999').width('100%')
+                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
             }
           }.alignItems(HorizontalAlign.Start).width('100%')
 
@@ -364,8 +375,8 @@ struct SettingsPage {
             Text('备份与恢复').fontSize(14).fontWeight(FontWeight.Medium).width('100%')
             Row({ space: 8 }) {
               Button('备份到剪贴板')
-                .backgroundColor('#F5F5F5')
-                .fontColor('#333333')
+                .backgroundColor($r('app.color.surface'))
+                .fontColor($r('app.color.text_primary'))
                 .onClick(async () => {
                   try {
                     const data = await exportBackup(this.context);
@@ -377,8 +388,8 @@ struct SettingsPage {
                   }
                 })
               Button('从剪贴板恢复')
-                .backgroundColor('#F5F5F5')
-                .fontColor('#333333')
+                .backgroundColor($r('app.color.surface'))
+                .fontColor($r('app.color.text_primary'))
                 .onClick(async () => {
                   try {
                     const text = await getClipboardText();
@@ -396,7 +407,7 @@ struct SettingsPage {
                 })
             }.width('100%')
             Text('备份包含节点、分组、设置、订阅和自定义路由规则，以带版本的 JSON 存于剪贴板。')
-              .fontSize(11).fontColor('#999').width('100%')
+              .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           Blank().height(2)
@@ -404,14 +415,14 @@ struct SettingsPage {
           Row() {
             Column() {
               Text('全局放行不安全 TLS').fontSize(14)
-              Text('调试自签证书节点时使用').fontSize(11).fontColor('#999')
+              Text('调试自签证书节点时使用').fontSize(11).fontColor($r('app.color.text_secondary'))
             }.alignItems(HorizontalAlign.Start).layoutWeight(1)
             Toggle({ type: ToggleType.Switch, isOn: this.s.allowInsecureAll })
               .onChange((v: boolean) => { this.s.allowInsecureAll = v; })
           }.width('100%')
 
           Text('注意:修改设置后需重新连接 VPN 才会生效。')
-            .fontSize(12).fontColor('#E53935').width('100%')
+            .fontSize(12).fontColor($r('app.color.error')).width('100%')
         }
         .width('100%')
         .padding(12)
@@ -419,6 +430,6 @@ struct SettingsPage {
       .layoutWeight(1)
       .align(Alignment.Top)
     }
-    .width('100%').height('100%').backgroundColor('#F2F4F7')
+    .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
   }
 }

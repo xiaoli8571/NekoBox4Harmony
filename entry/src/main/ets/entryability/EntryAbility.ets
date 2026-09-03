@@ -5,15 +5,29 @@ import window from '@ohos.window';
 import common from '@ohos.app.ability.common';
 import notificationManager from '@ohos.notificationManager';
 import BusinessError from '@ohos.base';
-import { initStore, LogStore } from '../model/Store';
+import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
+import { initStore, loadSettings, LogStore } from '../model/Store';
 import { subscribeVpnEvents } from '../core/VpnIpc';
 
 export default class EntryAbility extends UIAbility {
+  private async applyAppearance(): Promise<void> {
+    try {
+      await initStore(this.context);
+      const settings = await loadSettings();
+      const colorMode = settings.appearance === 'dark'
+        ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
+        : (settings.appearance === 'light'
+          ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
+          : ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+      this.context.setColorMode(colorMode);
+    } catch (e) {
+      LogStore.addLog(`[app] 应用主题失败: ${e}`);
+    }
+  }
+
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     LogStore.addLog('[app] NekoBox 启动');
-    initStore(this.context).catch((e: Error) => {
-      LogStore.addLog(`[app] 初始化存储失败: ${e.message}`);
-    });
+    this.applyAppearance();
     // 请求通知权限(常驻通知用),用户拒绝也不影响功能
     try {
       notificationManager.requestEnableNotification(this.context, (err: BusinessError) => {
@@ -49,6 +63,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onForeground(): void {
+    this.applyAppearance();
   }
 
   onBackground(): void {
