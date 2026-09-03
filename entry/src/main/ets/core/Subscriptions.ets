@@ -17,6 +17,10 @@ export class SubInfo {
   download: number = 0;
   total: number = 0;
   expire: number = 0;
+  updateIntervalHours: number = 12;
+  nextUpdateAt: number = 0;
+  lastAttemptAt: number = 0;
+  lastError: string = '';
   // 连续更新失败次数(成功一次即清零);≥3 次跳过自动更新,由手动更新复位
   failCount: number = 0;
 }
@@ -30,7 +34,26 @@ export interface SubUpdateResult {
 export async function listSubs(): Promise<Array<SubInfo>> {
   try {
     const raw = await readPrefString(KEY_SUBS, '[]');
-    return JSON.parse(raw) as Array<SubInfo>;
+    const parsed = JSON.parse(raw) as Array<SubInfo>;
+    const result: Array<SubInfo> = [];
+    for (const source of parsed) {
+      const item = new SubInfo();
+      item.url = source.url ?? '';
+      item.name = source.name ?? subNameOf(item.url);
+      item.lastUpdate = Number(source.lastUpdate) || 0;
+      item.upload = Number(source.upload) || 0;
+      item.download = Number(source.download) || 0;
+      item.total = Number(source.total) || 0;
+      item.expire = Number(source.expire) || 0;
+      item.updateIntervalHours = Math.max(1, Number(source.updateIntervalHours) || 12);
+      item.nextUpdateAt = Number(source.nextUpdateAt)
+        || item.lastUpdate + item.updateIntervalHours * 3600 * 1000;
+      item.lastAttemptAt = Number(source.lastAttemptAt) || 0;
+      item.lastError = source.lastError ?? '';
+      item.failCount = Number(source.failCount) || 0;
+      result.push(item);
+    }
+    return result;
   } catch (e) {
     return [];
   }
@@ -105,7 +128,8 @@ export async function needAutoUpdate(): Promise<Array<SubInfo>> {
   }
   const now = Date.now();
   // 连续失败 ≥3 次的订阅跳过自动更新(手动更新成功后由 markSubSuccess 清零恢复)
-  return subs.filter(s => now - s.lastUpdate > AUTO_UPDATE_INTERVAL && !(Number(s.failCount) >= 3));
+  return subs.filter(s => now >= (s.nextUpdateAt || s.lastUpdate + Math.max(1, s.updateIntervalHours) * 3600 * 1000)
+    && !(Number(s.failCount) >= 3));
 }
 
 /** 记录订阅更新成功:失败计数清零,恢复自动更新资格 */

@@ -1,12 +1,13 @@
 import dataPreferences from '@ohos.data.preferences';
 import common from '@ohos.app.ability.common';
 import emitter from '@ohos.events.emitter';
-import { Profile, AppSettings } from './Profile';
+import { Profile, ProfileGroup, AppSettings } from './Profile';
 
 /** 持久化(Preferences) + 全局日志缓冲。 */
 
 const PREF_NAME = 'nekobox_store';
 const KEY_PROFILES = 'profiles';
+const KEY_GROUPS = 'profile_groups';
 const KEY_SETTINGS = 'settings';
 const KEY_PENDING = 'pending_profile_id';
 export const LOG_EVENT_ID: number = 1001;
@@ -44,6 +45,29 @@ export async function loadProfiles(): Promise<Array<Profile>> {
 export async function saveProfiles(list: Array<Profile>): Promise<void> {
   const pref = await requirePref();
   await pref.put(KEY_PROFILES, JSON.stringify(list));
+  await pref.flush();
+}
+
+export async function loadGroups(): Promise<Array<ProfileGroup>> {
+  const pref = await requirePref();
+  const raw: string = (await pref.get(KEY_GROUPS, '[]')) as string;
+  try {
+    const parsed: Array<ProfileGroup> = JSON.parse(raw) as Array<ProfileGroup>;
+    const result: Array<ProfileGroup> = [];
+    for (let i = 0; i < parsed.length; i++) {
+      const group = new ProfileGroup();
+      fillFrom(group, parsed[i]);
+      result.push(group);
+    }
+    return result.sort((a: ProfileGroup, b: ProfileGroup) => a.sortOrder - b.sortOrder);
+  } catch (e) {
+    return [];
+  }
+}
+
+export async function saveGroups(list: Array<ProfileGroup>): Promise<void> {
+  const pref = await requirePref();
+  await pref.put(KEY_GROUPS, JSON.stringify(list));
   await pref.flush();
 }
 

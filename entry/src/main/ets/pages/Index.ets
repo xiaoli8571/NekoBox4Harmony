@@ -1,8 +1,8 @@
 import common from '@ohos.app.ability.common';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
-import { Profile, AppSettings, profileTypeLabel } from '../model/Profile';
-import { initStore, loadProfiles, saveProfiles, loadSettings, LogStore } from '../model/Store';
+import { Profile, ProfileGroup, AppSettings, profileTypeLabel } from '../model/Profile';
+import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, loadSettings, LogStore } from '../model/Store';
 import { VpnService } from '../core/VpnService';
 import { parseShareText } from '../utils/LinkParser';
 import { getClipboardText, setClipboardText } from '../utils/ClipboardHelper';
@@ -17,6 +17,7 @@ import { exportProfileLink } from '../utils/LinkExporter';
 @Component
 struct Index {
   @State profiles: Array<Profile> = [];
+  @State groups: Array<ProfileGroup> = [];
   @State selectedId: string = '';
   @State latencies: Record<string, number> = {};
   @State testing: boolean = false;
@@ -102,6 +103,7 @@ struct Index {
     try {
       await initStore(this.context);
       this.profiles = await loadProfiles();
+      this.groups = await loadGroups();
       this.settings = await loadSettings();
       if (this.selectedId.length === 0 && this.profiles.length > 0) {
         this.selectedId = this.profiles[0].id;
@@ -152,9 +154,16 @@ struct Index {
       }
       next[id] = ms;
       this.latencies = next;
+      const profile = this.profiles.find((item: Profile) => item.id === id);
+      if (profile !== undefined) {
+        profile.latencyMs = ms;
+        profile.latencyTestedAt = Date.now();
+      }
     });
+    await saveProfiles(this.profiles);
+    this.profiles = this.profiles.slice();
     this.testing = false;
-    promptAction.showToast({ message: '测速完成' });
+    promptAction.showToast({ message: '测速完成，结果已保存' });
   }
 
   latencyText(p: Profile): string {
@@ -325,6 +334,33 @@ struct Index {
       const bValue = bLatency === undefined || bLatency < 0 ? Number.MAX_SAFE_INTEGER : bLatency;
       return aValue - bValue;
     });
+  }
+
+  profilesInGroup(groupId: string): Array<Profile> {
+    return this.sortedProfiles().filter((p: Profile) => p.groupId === groupId);
+  }
+
+  groupName(groupId: string): string {
+    if (groupId.length === 0) {
+      return '未分组';
+    }
+    const group = this.groups.find((item: ProfileGroup) => item.id === groupId);
+    return group === undefined ? '未分组' : group.name;
+  }
+
+  async moveProfileToGroup(p: Profile, groupId: string): Promise<void> {
+    p.groupId = groupId;
+    p.sortOrder = this.profilesInGroup(groupId).length;
+    p.updatedAt = Date.now();
+    await saveProfiles(this.profiles);
+    this.profiles = this.profiles.slice();
+  }
+
+  async toggleGroupCollapsed(group: ProfileGroup): Promise<void> {
+    group.collapsed = !group.collapsed;
+    group.updatedAt = Date.now();
+    await saveGroups(this.groups);
+    this.groups = this.groups.slice();
   }
 
   sourceHost(p: Profile): string {

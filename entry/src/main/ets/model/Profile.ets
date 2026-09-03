@@ -75,10 +75,27 @@ export class Profile {
   // 来源订阅(自动更新用)
   subUrl: string = '';
 
+  // 节点分组与组内顺序。空 groupId 表示未分组。
+  groupId: string = '';
+  sortOrder: number = 0;
+
+  // 最近一次延迟测试结果。-1 表示失败，0 表示尚未测试。
+  latencyMs: number = 0;
+  latencyTestedAt: number = 0;
+
   updatedAt: number = 0;
 
   // 置顶(节点列表排序时置顶节点恒排在前)
   pinned: boolean = false;
+}
+
+export class ProfileGroup {
+  id: string = '';
+  name: string = '';
+  sortOrder: number = 0;
+  collapsed: boolean = false;
+  createdAt: number = 0;
+  updatedAt: number = 0;
 }
 
 export class AppSettings {
@@ -91,7 +108,11 @@ export class AppSettings {
   directDns: string = '223.5.5.5';     // 直连,用于解析代理服务器域名
   ipv6: boolean = false;
   allowInsecureAll: boolean = false;   // 全局放行不安全 TLS
-  autoUpdateSubs: boolean = true;      // 启动时自动更新超过 12h 的订阅
+  autoUpdateSubs: boolean = true;      // 启动时自动更新到期的订阅
+  subscriptionUpdateIntervalHours: number = 12;
+  hapticFeedback: boolean = true;
+  appearance: string = 'system';       // system / light / dark
+  liquidGlass: boolean = true;
   perAppMode: string = 'off';          // off / exclude(排除这些应用) / include(仅这些应用走代理)
   perAppList: string = '';             // 应用包名,逗号分隔(如 com.huawei.hmos.browser)
 }

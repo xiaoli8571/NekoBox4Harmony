@@ -4,7 +4,7 @@ import { readPrefString, writePrefString } from './Store';
  *  顺序即优先级:排在越前的规则越先生效。 */
 
 export class RouteRule {
-  type: string = 'domain_suffix'; // domain | domain_suffix | domain_keyword | ip_cidr | port
+  type: string = 'domain_suffix'; // domain | domain_suffix | domain_keyword | ip_cidr | geoip | geosite | port
   value: string = '';             // 匹配值(多条用英文逗号分隔)
   outbound: string = 'proxy';     // proxy | direct | reject
   enabled: boolean = true;
@@ -19,6 +19,8 @@ export function parseRuleType(r: RouteRule): string {
     case 'domain_suffix': return 'domain_suffix';
     case 'domain_keyword': return 'domain_keyword';
     case 'ip_cidr': return 'ip_cidr';
+    case 'geoip': return 'geoip';
+    case 'geosite': return 'geosite';
     case 'port': return 'port';
     default: return '';
   }

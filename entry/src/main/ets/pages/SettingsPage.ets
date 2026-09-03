@@ -293,6 +293,42 @@ struct SettingsPage {
 
           Blank().height(2)
 
+          // 外观与交互
+          Column({ space: 8 }) {
+            Text('外观与交互').fontSize(14).fontWeight(FontWeight.Medium).width('100%')
+            Row({ space: 8 }) {
+              ForEach(['system', 'light', 'dark'], (mode: string) => {
+                Button(mode === 'system' ? '跟随系统' : (mode === 'light' ? '浅色' : '深色'))
+                  .backgroundColor(this.s.appearance === mode ? '#1E88E5' : '#F5F5F5')
+                  .fontColor(this.s.appearance === mode ? '#FFFFFF' : '#333333')
+                  .onClick(() => {
+                    this.s.appearance = mode;
+                    this.save(true);
+                  })
+              }, (mode: string) => mode)
+            }.width('100%')
+            Row() {
+              Text('触感反馈').fontSize(14).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.hapticFeedback })
+                .onChange((v: boolean) => {
+                  this.s.hapticFeedback = v;
+                  this.save(true);
+                })
+            }.width('100%')
+            Row() {
+              Text('液态玻璃效果').fontSize(14).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.liquidGlass })
+                .onChange((v: boolean) => {
+                  this.s.liquidGlass = v;
+                  this.save(true);
+                })
+            }.width('100%')
+            Text('主题选项会保存为应用偏好；受当前 SDK 能力限制，部分页面需重新进入后刷新。')
+              .fontSize(11).fontColor('#999').width('100%')
+          }.alignItems(HorizontalAlign.Start).width('100%')
+
+          Blank().height(2)
+
           // 分应用代理
           Column({ space: 8 }) {
             Text('分应用代理').fontSize(14).fontWeight(FontWeight.Medium).width('100%')
@@ -359,7 +395,7 @@ struct SettingsPage {
                   }
                 })
             }.width('100%')
-            Text('备份包含全部节点与设置(不含订阅列表),以 JSON 存于剪贴板,可自行保存。')
+            Text('备份包含节点、分组、设置、订阅和自定义路由规则，以带版本的 JSON 存于剪贴板。')
               .fontSize(11).fontColor('#999').width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
 

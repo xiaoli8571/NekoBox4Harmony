@@ -37,14 +37,61 @@ struct ProfileEdit {
     });
   }
 
-  async save(): Promise<void> {
-    if (this.p.name.length === 0) {
-      this.p.name = `${this.p.server}:${this.p.serverPort}`;
+  validationError(): string {
+    if (this.p.server.trim().length === 0) {
+      return '服务器地址不能为空';
     }
-    if (this.p.server.length === 0) {
-      promptAction.showToast({ message: '服务器地址不能为空' });
+    if (!Number.isInteger(this.p.serverPort) || this.p.serverPort < 1 || this.p.serverPort > 65535) {
+      return '端口必须是 1 到 65535 之间的整数';
+    }
+    const uuidRequired = this.p.type === ProfileType.VMESS || this.p.type === ProfileType.VLESS
+      || this.p.type === ProfileType.TUIC;
+    if (uuidRequired && !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(this.p.uuid.trim())) {
+      return '请输入有效的 UUID';
+    }
+    if (this.p.type === ProfileType.SHADOWSOCKS) {
+      if (this.p.method.trim().length === 0) {
+        return 'Shadowsocks 加密方式不能为空';
+      }
+      if (this.p.password.length === 0) {
+        return 'Shadowsocks 密码不能为空';
+      }
+    }
+    if ((this.p.type === ProfileType.TROJAN || this.p.type === ProfileType.HYSTERIA
+      || this.p.type === ProfileType.HYSTERIA2) && this.p.password.length === 0) {
+      return '认证密码不能为空';
+    }
+    if (this.p.type === ProfileType.TUIC && this.p.password.length === 0) {
+      return 'TUIC 密码不能为空';
+    }
+    if (this.p.realityPublicKey.length > 0
+      && !/^[A-Za-z0-9_-]{32,64}$/.test(this.p.realityPublicKey.trim())) {
+      return 'REALITY 公钥格式不正确';
+    }
+    if (this.p.realityShortId.length > 0
+      && !/^[0-9a-fA-F]{2,16}$/.test(this.p.realityShortId.trim())) {
+      return 'REALITY short_id 必须是 2 到 16 位十六进制字符';
+    }
+    if (this.p.extra.trim().length > 0) {
+      try {
+        JSON.parse(this.p.extra);
+      } catch (e) {
+        return '附加 JSON 格式不正确';
+      }
+    }
+    return '';
+  }
+
+  async save(): Promise<void> {
+    const validationError = this.validationError();
+    if (validationError.length > 0) {
+      promptAction.showToast({ message: validationError });
       return;
     }
+    if (this.p.name.trim().length === 0) {
+      this.p.name = `${this.p.server.trim()}:${this.p.serverPort}`;
+    }
+    this.p.server = this.p.server.trim();
     try {
       await initStore(this.context);
       const profiles = await loadProfiles();
