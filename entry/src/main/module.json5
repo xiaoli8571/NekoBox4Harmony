@@ -40,7 +40,8 @@
     "requestPermissions": [
       { "name": "ohos.permission.INTERNET" },
       { "name": "ohos.permission.GET_NETWORK_INFO" },
-      { "name": "ohos.permission.KEEP_BACKGROUND_RUNNING" }
+      { "name": "ohos.permission.KEEP_BACKGROUND_RUNNING" },
+      { "name": "ohos.permission.GET_BUNDLE_INFO" }
       // 若系统提示缺少 VPN 权限,按 SDK 文档追加(可能属于受限 ACL,需在 AGC 申请):
       // { "name": "ohos.permission.MANAGE_VPN" }
     ]

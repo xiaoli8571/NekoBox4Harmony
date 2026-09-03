@@ -43,7 +43,7 @@
 - 改动:`core/Subscriptions.ets`、`entryability/EntryAbility.ets`、`module.json5`(仅上述两处)
 - 验收:应用退到后台/熄屏,到期订阅仍能自动更新(真机验证项,代码按 API 正确性交付)
 
-## F4 per-app 应用列表(需要改 module.json5,仅限本项)—— 状态:待开发
+## F4 per-app 应用列表(需要改 module.json5,仅限本项)—— 状态:已完成，待构建机编译与真机验证
 
 - `module.json5`:requestPermissions 增加 `ohos.permission.GET_BUNDLE_INFO`,此外不许动
 - 方案:用 `@ohos.bundle.bundleManager` 枚举已装应用(名称+包名+图标,图标可省略),做图形化选择器:列表+搜索+勾选,写回现有 per-app include/exclude 模式字段;**若真机报 201 权限拒绝或枚举失败,自动降级保留现有手输包名 UI**,并在 CHANGES.md 记录

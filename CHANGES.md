@@ -181,3 +181,24 @@ Existing notification files reviewed:
 - 已核对只读 `git status` 和差异，未修改冻结内核、版本号、签名配置、构建输出或�其他受限文件。
 - 按约束未执行构建、打包或任何 Git 写操作。
 - `backgroundTaskManager.startBackgroundRunning()`、熄屏期间执行能力及系统连续任务限制仍需构建机编译和真机验证；若真机拒绝连续任务，再按计划降级为 transientTask。
+
+## 2026-09-03 F4 per-app 应用列表：已完成，待构建机编译与真机验证
+
+- 设置页新增已安装应用读取入口，支持按应用名称或包名搜索，并通过复选框选择分应用代理名单。
+- 勾选结果写回现有 `perAppList` 字段，兼容原有 include/exclude 模式，并在变更后静默保存。
+- 应用枚举失败、权限被拒绝或返回空列表时显示明确提示，同时完整保留下方手动包名输入框作为降级路径。
+- `module.json5` 仅按 F4 许可新增 `ohos.permission.GET_BUNDLE_INFO` 权限声明。
+
+改动文件：
+- `entry/src/main/ets/pages/SettingsPage.ets`
+- `entry/src/main/module.json5`
+- `DEVPLAN.md`
+- `CHANGES.md`
+
+静态检查与限制：
+- `git diff --check` 已通过，无空白错误。
+- 已核对应用枚举、搜索、勾选、持久化和手动输入降级链路。
+- 按约束未执行构建、打包或任何 Git 写操作。
+- `bundleManager.getAllBundleInfo()` 的编译兼容性、权限授权及真机应用列表可见范围仍需构建机和真机验证；若系统拒绝枚举，手动输入功能仍可正常使用。
+
+> 构建机注(2026-09-03,F4 轮):本机 SDK(API 24)的 `@ohos.bundle.bundleManager` 无 `getAllBundleInfo`,枚举改用旧模块 `@ohos.bundle` 的 `getAllBundleInfo(bundle.BundleFlag.GET_BUNDLE_DEFAULT)`(since 7 / deprecated since 9,仅弃用警告,编译通过);`BundleInfo.appInfo.label` 字段名两代一致,label 为空时已有回退包名,真机需核对应用名显示效果。
