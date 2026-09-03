@@ -1,5 +1,6 @@
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
+import { UiSpec } from '../common/UiSpec';
 import common from '@ohos.app.ability.common';
 import { Profile, ProfileType, profileTypeLabel, supportsTransport, needsTlsByDefault } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles } from '../model/Store';
@@ -154,6 +155,7 @@ struct ProfileEdit {
 
   build() {
     Column() {
+    Column() {
       Row() {
         Text('←').fontSize(22).onClick(() => router.back()).padding(8)
         Text(this.isNew ? $r('app.string.profile_new_title') : $r('app.string.profile_edit_title'))
@@ -181,7 +183,7 @@ struct ProfileEdit {
                 .onClick(() => this.readClipboardIntoBox())
               Blank()
               Button($r('app.string.parse_and_fill'))
-                .backgroundColor('#1565C0')
+                .backgroundColor($r('app.color.primary'))
                 .onClick(() => this.applyPasted())
             }
             .width('100%')
@@ -242,6 +244,12 @@ struct ProfileEdit {
       .layoutWeight(1)
       .align(Alignment.Top)
     }
+    .constraintSize({ maxWidth: UiSpec.CONTENT_MAX_WIDTH })
+    }
+    .width('100%')
+    .height('100%')
+    .alignItems(HorizontalAlign.Center)
+    .backgroundColor($r('app.color.app_background'))
     .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
   }
 

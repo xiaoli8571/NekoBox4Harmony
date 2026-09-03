@@ -1,22 +1,88 @@
 {
   "color": [
-    { "name": "start_window_background", "value": "#101318" },
-    { "name": "app_background", "value": "#101318" },
-    { "name": "surface", "value": "#1B2028" },
-    { "name": "surface_selected", "value": "#233653" },
-    { "name": "primary", "value": "#6EA1FF" },
-    { "name": "primary_pressed", "value": "#4E86ED" },
-    { "name": "text_primary", "value": "#F2F4F7" },
-    { "name": "text_secondary", "value": "#A7B0BE" },
-    { "name": "divider", "value": "#343B46" },
-    { "name": "success", "value": "#4CCB7F" },
-    { "name": "warning", "value": "#FFB547" },
-    { "name": "error", "value": "#FF6B61" },
-    { "name": "protocol_vmess", "value": "#A78BFA" },
-    { "name": "protocol_vless", "value": "#60A5FA" },
-    { "name": "protocol_trojan", "value": "#F472B6" },
-    { "name": "protocol_shadowsocks", "value": "#22D3EE" },
-    { "name": "protocol_hysteria2", "value": "#FB923C" },
-    { "name": "protocol_tuic", "value": "#4ADE80" }
+    {
+      "name": "start_window_background",
+      "value": "#101318"
+    },
+    {
+      "name": "app_background",
+      "value": "#101318"
+    },
+    {
+      "name": "surface",
+      "value": "#1B2028"
+    },
+    {
+      "name": "surface_selected",
+      "value": "#233653"
+    },
+    {
+      "name": "primary",
+      "value": "#6EA1FF"
+    },
+    {
+      "name": "primary_pressed",
+      "value": "#4E86ED"
+    },
+    {
+      "name": "text_primary",
+      "value": "#F2F4F7"
+    },
+    {
+      "name": "text_secondary",
+      "value": "#A7B0BE"
+    },
+    {
+      "name": "divider",
+      "value": "#343B46"
+    },
+    {
+      "name": "success",
+      "value": "#4CCB7F"
+    },
+    {
+      "name": "warning",
+      "value": "#FFB547"
+    },
+    {
+      "name": "error",
+      "value": "#FF6B61"
+    },
+    {
+      "name": "protocol_vmess",
+      "value": "#A78BFA"
+    },
+    {
+      "name": "protocol_vless",
+      "value": "#60A5FA"
+    },
+    {
+      "name": "protocol_trojan",
+      "value": "#F472B6"
+    },
+    {
+      "name": "protocol_shadowsocks",
+      "value": "#22D3EE"
+    },
+    {
+      "name": "protocol_hysteria2",
+      "value": "#FB923C"
+    },
+    {
+      "name": "protocol_tuic",
+      "value": "#4ADE80"
+    },
+    {
+      "name": "text_disabled",
+      "value": "#6B7280"
+    },
+    {
+      "name": "control_disabled",
+      "value": "#4A5568"
+    },
+    {
+      "name": "shadow_color",
+      "value": "#66000000"
+    }
   ]
 }

@@ -65,7 +65,9 @@
 - 全量抽取硬编码中文进 `resources/base/element/string.json`(base=中文),新建 `resources/en_US/element/string.json` 英文对照,代码改用 `$r('app.string.xxx')`;覆盖 Index、ProfileEdit、SettingsPage、SubDetailPage、RouteRulesPage、弹窗/按钮/Toast
 - 验收:系统切英文后主要页面全英文,无漏翻(允许极个别动态拼接处注明)
 
-## F7 UI 适配鸿蒙(纯应用层)—— 状态:待开发
+## F7 UI 适配鸿蒙(纯应用层)—— 状态:已完成,待真机验证
+
+- 构建机实现(2026-09-03,versionCode 1001717):新建 `ets/common/UiSpec.ets`(页边距16/卡片圆角16/间距档8-12-16/按钮高40/内容限宽600);全仓十六进制色值清零(六页面 0 残留),新增 text_disabled/control_disabled/shadow_color 令牌(base/dark 双份,现 21 令牌);延迟/Geo/订阅/状态卡等语义色全部换 success/warning/error/text_disabled;Index 节点行加 hoverEffect+卡片圆角统一;ProfileEdit/SubDetail 主按钮高 40;SettingsPage 备份按钮高 40;六页面内容限宽 600vp 居中(F7d);EntryAbility 新增 applyStatusBarStyle():状态栏前景色跟随外观偏好,跟随系统时以 resourceManager 取 text_primary 亮度判定(天然跟随深浅色)
 
 - 目标:整体观感对齐 HarmonyOS NEXT 系统原生应用(以系统"设置"应用的卡片/列表/控件为基准),消除移植感。只动 `entry/src/main/ets/` 页面与 `resources/`,不动内核与 module.json5
 - F7a 布局与间距统一:全页面统一页面左右边距 16vp、卡片圆角 16vp、卡片内边距 12~16vp、元素纵向间距 8/12/16 档位、列表行高 ≥44vp;圆角/边距/间距常量集中定义(如 common/UiSpec.ets 或资源 dimen),避免各页散落魔法数;覆盖 Index、ProfileEdit、SettingsPage、ConnectionsPage、RouteRulesPage、SubDetailPage

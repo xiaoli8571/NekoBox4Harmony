@@ -1,6 +1,7 @@
 import http from '@ohos.net.http';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
+import { UiSpec } from '../common/UiSpec';
 import { formatBytes } from '../utils/TrafficStats';
 import { CLASH_API_PORT } from '../utils/TrafficStats';
 
@@ -108,6 +109,7 @@ struct ConnectionsPage {
 
   build() {
     Column() {
+    Column() {
       Row() {
         Text('←').fontSize(22).onClick(() => router.back()).padding(8)
         Text(`连接 (${this.conns.length})`).fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
@@ -177,7 +179,7 @@ struct ConnectionsPage {
               }.width('100%')
 
               Text(`${c.rule}  ${c.chains}`)
-                .fontSize(11).fontColor('#888888')
+                .fontSize(11).fontColor($r('app.color.text_secondary'))
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
                 .width('100%')
@@ -200,9 +202,15 @@ struct ConnectionsPage {
       }
       .layoutWeight(1)
       .width('100%')
-      .padding({ left: 12, right: 12 })
+      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
       .scrollBar(BarState.On)
     }
+    .constraintSize({ maxWidth: UiSpec.CONTENT_MAX_WIDTH })
+    }
+    .width('100%')
+    .height('100%')
+    .alignItems(HorizontalAlign.Center)
+    .backgroundColor($r('app.color.app_background'))
     .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
   }
 }
