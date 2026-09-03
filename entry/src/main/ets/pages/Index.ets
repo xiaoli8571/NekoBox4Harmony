@@ -1,6 +1,7 @@
 import common from '@ohos.app.ability.common';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
+import { UiSpec } from '../common/UiSpec';
 import { Profile, ProfileGroup, AppSettings, profileTypeLabel } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, loadSettings, LogStore } from '../model/Store';
 import { VpnService } from '../core/VpnService';
@@ -220,10 +221,10 @@ struct Index {
       return ms === -1 ? $r('app.color.error') : $r('app.color.text_secondary');
     }
     if (ms < 150) {
-      return '#2E7D32';
+      return $r('app.color.success');
     }
     if (ms < 400) {
-      return '#F9A825';
+      return $r('app.color.warning');
     }
     return $r('app.color.error');
   }
@@ -489,6 +490,7 @@ struct Index {
 
   build() {
     Column() {
+    Column() {
       // Android NekoBox 风格顶栏与快捷导航
       Row({ space: 4 }) {
         Column({ space: 2 }) {
@@ -538,23 +540,23 @@ struct Index {
           })
       }
       .width('100%')
-      .padding({ left: 16, right: 12, top: 12, bottom: 8 })
+      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 12, bottom: 8 })
 
       // 连接状态卡片
       Column({ space: 6 }) {
         Row({ space: 8 }) {
           Text(this.isRunning ? '●' : '○')
             .fontSize(16)
-            .fontColor(this.isRunning ? '#2E7D32' : '#9E9E9E')
+            .fontColor(this.isRunning ? $r('app.color.success') : $r('app.color.text_disabled'))
           Text(this.statusDisplay())
             .fontSize(15)
             .fontWeight(FontWeight.Medium)
-            .fontColor(this.isRunning ? '#2E7D32' : '#616161')
+            .fontColor(this.isRunning ? $r('app.color.success') : $r('app.color.text_secondary'))
             .layoutWeight(1)
           Text(this.modeLabel())
             .fontSize(11)
             .fontColor($r('app.color.primary'))
-            .backgroundColor('#E3F2FD')
+            .backgroundColor($r('app.color.surface_selected'))
             .borderRadius(10)
             .padding({ left: 8, right: 8, top: 3, bottom: 3 })
         }
@@ -567,10 +569,10 @@ struct Index {
             .width('100%')
         }
       }
-      .width('calc(100% - 24vp)')
-      .margin({ left: 12, right: 12, bottom: 10 })
+      .width('calc(100% - 32vp)')
+      .margin({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, bottom: 10 })
       .padding(12)
-      .borderRadius(12)
+      .borderRadius(UiSpec.CARD_RADIUS)
       .backgroundColor($r('app.color.surface'))
 
       // 节点列表
@@ -593,7 +595,7 @@ struct Index {
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                 Text(`${profileTypeLabel(p.type)} · ${p.server}:${p.serverPort}`)
                   .fontSize(12)
-                  .fontColor('#888888')
+                  .fontColor($r('app.color.text_secondary'))
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
               }
@@ -621,15 +623,16 @@ struct Index {
             }
             .width('100%')
             .padding(12)
-            .borderRadius(12)
-            .backgroundColor(this.selectedId === p.id ? '#E3F2FD' : $r('app.color.surface'))
+            .borderRadius(UiSpec.CARD_RADIUS)
+            .backgroundColor(this.selectedId === p.id ? $r('app.color.surface_selected') : $r('app.color.surface'))
+            .hoverEffect(HoverEffect.Scale)
             .bindContextMenu(this.profileContextMenu(p), ResponseType.LongPress)
           }
         }, (p: Profile) => p.id)
       }
       .layoutWeight(1)
       .width('100%')
-      .padding({ left: 12, right: 12 })
+      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
 
       // 底部主操作与独立悬浮按钮
       Row({ space: 10 }) {
@@ -662,7 +665,7 @@ struct Index {
           .fontColor($r('app.color.surface'))
           .backgroundColor($r('app.color.primary'))
           .borderRadius(26)
-          .shadow({ radius: 8, color: '#40000000', offsetX: 0, offsetY: 3 })
+          .shadow({ radius: 8, color: $r('app.color.shadow_color'), offsetX: 0, offsetY: 3 })
           .onClick(() => {
             AppStorage.setOrCreate('editProfileId', '');
             router.pushUrl({ url: 'pages/ProfileEdit' });
@@ -672,6 +675,12 @@ struct Index {
       .alignItems(VerticalAlign.Center)
       .padding({ left: 16, right: 16, top: 10, bottom: 20 })
     }
+    .constraintSize({ maxWidth: UiSpec.CONTENT_MAX_WIDTH })
+    }
+    .width('100%')
+    .height('100%')
+    .alignItems(HorizontalAlign.Center)
+    .backgroundColor($r('app.color.app_background'))
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.app_background'))

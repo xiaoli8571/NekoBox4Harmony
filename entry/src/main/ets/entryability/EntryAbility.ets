@@ -2,6 +2,7 @@ import UIAbility from '@ohos.app.ability.UIAbility';
 import Want from '@ohos.app.ability.Want';
 import AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import window from '@ohos.window';
+import { UiSpec } from '../common/UiSpec';
 import common from '@ohos.app.ability.common';
 import notificationManager from '@ohos.notificationManager';
 import BusinessError from '@ohos.base';
@@ -133,7 +134,37 @@ export default class EntryAbility extends UIAbility {
       if (err.code) {
         return;
       }
+      this.applyStatusBarStyle(windowStage);
     });
+  }
+
+  /** F7c:状态栏前景色跟随深浅色(外观偏好 + 系统色模式) */
+  private async applyStatusBarStyle(windowStage: window.WindowStage): Promise<void> {
+    try {
+      const win = await windowStage.getMainWindow();
+      let dark = false;
+      try {
+        await initStore(this.context);
+        const settings = await loadSettings();
+        if (settings.appearance === 'dark') {
+          dark = true;
+        } else if (settings.appearance !== 'light') {
+          // 跟随系统:取当前生效主题下的 text_primary 亮度判定(resourceManager 自动跟随深浅色)
+          const c = this.context.resourceManager.getColorSync($r('app.color.text_primary'));
+          const r = (c >> 16) & 0xFF;
+          const g = (c >> 8) & 0xFF;
+          const b = c & 0xFF;
+          dark = (r * 299 + g * 587 + b * 114) / 1000 >= 128;
+        }
+      } catch (e) {
+        LogStore.addLog(`[app] 读取主题偏好失败,状态栏按浅色处理: ${e}`);
+      }
+      win.setWindowSystemBarProperties({
+        statusBarContentColor: dark ? UiSpec.STATUS_BAR_CONTENT_DARK_BG : UiSpec.STATUS_BAR_CONTENT_LIGHT_BG
+      });
+    } catch (e) {
+      LogStore.addLog(`[app] 设置状态栏样式失败: ${e}`);
+    }
   }
 
   onWindowStageDestroy(): void {

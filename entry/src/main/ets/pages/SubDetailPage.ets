@@ -1,6 +1,7 @@
 import common from '@ohos.app.ability.common';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
+import { UiSpec } from '../common/UiSpec';
 import { initStore, loadProfiles, saveProfiles } from '../model/Store';
 import { SubInfo, listSubs, removeSub, updateSubscription, markSubSuccess, markSubFailure } from '../core/Subscriptions';
 import { formatBytes } from '../utils/TrafficStats';
@@ -86,6 +87,7 @@ struct SubDetailPage {
 
   build() {
     Column() {
+    Column() {
       Row() {
         Text('←').fontSize(22).padding(8).onClick(() => router.back())
         Text($r('app.string.subscription_detail_title')).fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
@@ -150,12 +152,18 @@ struct SubDetailPage {
             Text($r('app.string.consecutive_failures_value', Number(this.sub.failCount)))
               .fontColor(Number(this.sub.failCount) >= 3 ? $r('app.color.error') : $r('app.color.text_secondary')).width('100%')
             Button(this.updating ? $r('app.string.updating') : $r('app.string.update_now'))
-              .width('100%').enabled(!this.updating).onClick(() => this.updateNow())
+              .width('100%').height(UiSpec.BTN_HEIGHT).enabled(!this.updating).onClick(() => this.updateNow())
             Button($r('app.string.delete_subscription_profiles'))
-              .width('100%').backgroundColor($r('app.color.error')).onClick(() => this.confirmDelete())
+              .width('100%').height(UiSpec.BTN_HEIGHT).backgroundColor($r('app.color.error')).onClick(() => this.confirmDelete())
           }.width('100%').padding(16).alignItems(HorizontalAlign.Start)
         }.layoutWeight(1).width('100%')
       }
-    }.width('100%').height('100%').backgroundColor($r('app.color.app_background'))
+    }
+    .constraintSize({ maxWidth: UiSpec.CONTENT_MAX_WIDTH })
+    }
+    .width('100%')
+    .height('100%')
+    .alignItems(HorizontalAlign.Center)
+    .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
   }
 }

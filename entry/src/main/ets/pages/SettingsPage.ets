@@ -1,6 +1,7 @@
 import common from '@ohos.app.ability.common';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
+import { UiSpec } from '../common/UiSpec';
 import pasteboard from '@ohos.pasteboard';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 import picker from '@ohos.file.picker';
@@ -314,6 +315,7 @@ struct SettingsPage {
 
   build() {
     Column() {
+    Column() {
       Row() {
         Text('←').fontSize(22).onClick(() => {
           this.save(true);
@@ -401,10 +403,10 @@ struct SettingsPage {
               Row({ space: 8 }) {
                 Text(this.geoOk ? $r('app.string.settings_geo_ready')
                   : $r('app.string.settings_geo_missing'))
-                  .fontSize(12).fontColor(this.geoOk ? '#2E7D32' : $r('app.color.text_secondary')).layoutWeight(1)
+                  .fontSize(12).fontColor(this.geoOk ? $r('app.color.success') : $r('app.color.text_secondary')).layoutWeight(1)
                 Button(this.geoLoading ? $r('app.string.settings_geo_downloading') : (this.geoOk ? $r('app.string.settings_geo_redownload') : $r('app.string.settings_geo_download')))
                   .height(30)
-                  .backgroundColor(this.geoLoading ? '#BBBBBB' : $r('app.color.primary'))
+                  .backgroundColor(this.geoLoading ? $r('app.color.control_disabled') : $r('app.color.primary'))
                   .onClick(() => this.downloadGeo())
               }.width('100%').margin({ top: 6 })
             }.alignItems(HorizontalAlign.Start).width('100%')
@@ -428,7 +430,7 @@ struct SettingsPage {
                     .fontSize(11).fontColor($r('app.color.text_secondary'))
                   if (sub.total > 0) {
                     Text($r('app.string.settings_sub_traffic', formatBytes(sub.upload + sub.download), formatBytes(sub.total)))
-                      .fontSize(11).fontColor(sub.upload + sub.download > sub.total ? $r('app.color.error') : '#2E7D32')
+                      .fontSize(11).fontColor(sub.upload + sub.download > sub.total ? $r('app.color.error') : $r('app.color.success'))
                   }
                   if (sub.expire > 0) {
                     Text($r('app.string.settings_sub_expire', new Date(sub.expire * 1000).toLocaleDateString()))
@@ -438,7 +440,7 @@ struct SettingsPage {
 
                 Button($r('app.string.update_action'))
                   .height(30)
-                  .backgroundColor(this.updatingUrl === sub.url ? '#BBBBBB' : $r('app.color.primary'))
+                  .backgroundColor(this.updatingUrl === sub.url ? $r('app.color.control_disabled') : $r('app.color.primary'))
                   .onClick(() => this.updateOne(sub))
                 Text($r('app.string.delete')).fontSize(13).fontColor($r('app.color.error')).padding(6)
                   .onClick(() => {
@@ -609,12 +611,14 @@ struct SettingsPage {
             Row({ space: 8 }) {
               Button(this.backupFileBusy ? $r('app.string.processing') : $r('app.string.export_backup_file'))
                 .layoutWeight(1)
+                .height(UiSpec.BTN_HEIGHT)
                 .enabled(!this.backupFileBusy)
                 .backgroundColor($r('app.color.primary'))
                 .fontColor($r('app.color.surface'))
                 .onClick(() => this.exportBackupFile())
               Button($r('app.string.restore_from_file'))
                 .layoutWeight(1)
+                .height(UiSpec.BTN_HEIGHT)
                 .enabled(!this.backupFileBusy)
                 .backgroundColor($r('app.color.surface'))
                 .fontColor($r('app.color.text_primary'))
@@ -671,11 +675,17 @@ struct SettingsPage {
             .fontSize(12).fontColor($r('app.color.error')).width('100%')
         }
         .width('100%')
-        .padding(12)
+        .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 12, bottom: 12 })
       }
       .layoutWeight(1)
       .align(Alignment.Top)
     }
+    .constraintSize({ maxWidth: UiSpec.CONTENT_MAX_WIDTH })
+    }
+    .width('100%')
+    .height('100%')
+    .alignItems(HorizontalAlign.Center)
+    .backgroundColor($r('app.color.app_background'))
     .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
   }
 }

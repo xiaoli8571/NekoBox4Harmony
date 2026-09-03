@@ -234,3 +234,13 @@ Existing notification files reviewed:
   首页状态卡无法跟随语言 —— 改为机器状态键(connecting/disconnected/switching/awaiting_auth/start_timeout/connected:<节点>/start_failed:<详情>/connect_failed:<详情>),
   Index 新增 statusDisplay() 映射为资源文案,VpnService 看门狗比较同步改为机器键;通知栏文案在 :vpn 扩展进程内,不在 F6 声明范围,保留中文待后续处理。
 - 审计:五页面 + Backup 用户可见中文残留 0;`${$r(` 模板混用残留 0;base/en_US 各 264 键、键集合一致、无重复、引用无缺失(编译器逐键校验通过)。
+
+## 2026-09-03 F7 UI 适配鸿蒙:已完成,待真机验证(构建机直接实现)
+
+- 新增 `ets/common/UiSpec.ets`:PAGE_PADDING=16、CARD_RADIUS=16、间距档 8/12/16、BTN_HEIGHT=40、CONTENT_MAX_WIDTH=600。
+- F7c 颜色收敛:六页面十六进制色值全部清零(审计 0 残留),新增 `text_disabled`/`control_disabled`/`shadow_color` 令牌(base+dark,共 21 令牌);latencyColor 改 success/warning;状态卡/Geo/订阅流量/禁用按钮/影子等全部语义令牌化。
+- F7a/F7b:首页边距与卡片圆角统一 16、节点行 hoverEffect(HoverEffect.Scale);SettingsPage 备份按钮、SubDetailPage 更新/删除主按钮高度 40;SettingsPage 滚动区/各列表页边距统一 PAGE_PADDING。
+- F7d:六个页面 build 根部包一层内容 Column,constraintSize maxWidth 600vp,外层 alignItems 居中(平板/横屏不拉伸破版)。
+- F7c 状态栏:EntryAbility.applyStatusBarStyle() 在 loadContent 后设置 setWindowSystemBarProperties;外观偏好=跟随系统时,用 resourceManager.getColorSync(text_primary) 亮度判定当前生效深浅色(随系统/应用 colorMode 自动正确)。
+- 改动文件:ets/common/UiSpec.ets(新)、pages/Index.ets、pages/ProfileEdit.ets、pages/SettingsPage.ets、pages/ConnectionsPage.ets、pages/RouteRulesPage.ets、pages/SubDetailPage.ets、entryability/EntryAbility.ets、resources/base+dark/element/color.json、AppScope/app.json5(1001717)、DEVPLAN.md、CHANGES.md
+- 已知限制:状态栏样式在启动/回前台时设置,运行中切换系统深浅色需回前台刷新;日志页终端配色刻意保留。

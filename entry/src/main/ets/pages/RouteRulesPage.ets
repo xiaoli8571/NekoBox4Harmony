@@ -1,5 +1,6 @@
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
+import { UiSpec } from '../common/UiSpec';
 import { RouteRule, loadRouteRules, saveRouteRules } from '../model/RouteRule';
 
 @Entry
@@ -73,6 +74,7 @@ struct RouteRulesPage {
   }
 
   build() {
+    Column() {
     Column() {
       Row() {
         Text('←').fontSize(22).padding(8).onClick(() => router.back())
@@ -155,7 +157,7 @@ struct RouteRulesPage {
                 ForEach(['proxy', 'direct', 'reject'], (outbound: string) => {
                   Button(outbound === 'proxy' ? $r('app.string.proxy') : outbound === 'direct' ? $r('app.string.mode_direct') : $r('app.string.reject'))
                     .layoutWeight(1)
-                    .backgroundColor(rule.outbound === outbound ? $r('app.color.primary') : '#E0E0E0')
+                    .backgroundColor(rule.outbound === outbound ? $r('app.color.primary') : $r('app.color.divider'))
                     .fontColor(rule.outbound === outbound ? $r('app.color.surface') : $r('app.color.text_primary'))
                     .onClick(() => this.updateRule(index, 'outbound', outbound))
                 })
@@ -173,11 +175,17 @@ struct RouteRulesPage {
       }
       .layoutWeight(1)
       .width('100%')
-      .padding({ left: 12, right: 12 })
+      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
 
       Text($r('app.string.route_rule_order_hint'))
         .fontSize(12).fontColor($r('app.color.text_secondary')).padding(12)
     }
+    .constraintSize({ maxWidth: UiSpec.CONTENT_MAX_WIDTH })
+    }
+    .width('100%')
+    .height('100%')
+    .alignItems(HorizontalAlign.Center)
+    .backgroundColor($r('app.color.app_background'))
     .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
   }
 }
