@@ -1,5 +1,7 @@
 # NekoBox for Harmony — Agent 交接说明
 
+> **当前阶段(2026-09-03)先看这里**:开发工作区已迁移到远程服务器 `root@oc1.720820.xyz:/worker/NekoBox4Harmony`(密码 `Lijx.820115`,SSH 22 端口;FTP 同账号,PASV)。接手开发的 agent 先读根目录 `HANDOFF.md`(完整交接指令)与 `DEVPLAN.md`(F2~F6 任务),当前基线 1.5.7(versionCode 1001711),F1 深色主题已完成。本文件其余内容为架构与构建说明,继续有效。
+
 任何 AI Agent 接手本项目前必读。代码根目录:`C:\Users\Administrator\NekoBox4Harmony`(git 仓库,main 分支,对应 GitHub https://github.com/xiaoli8571/NekoBox4Harmony )。
 
 > 2026-09-02 起,仓库已改为「克隆即可构建」:内核源码(含全部 OHOS 补丁)**和成品内核 `entry/libs/arm64-v8a/libsingbox.so`** 随仓库分发;`build-profile.json5` 为无签名配置(`signingConfigs: []`),克隆后直接 assembleHap 即得未签名 HAP,零额外步骤。`hvigorw.js` 已打补丁修复 Node ≥ 18.20 下 `.cmd` 子进程 EINVAL 问题(见下)。
