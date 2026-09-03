@@ -50,7 +50,7 @@
 - 改动:`pages/SettingsPage.ets`(或新建 per-app 选择页)、`model/Profile.ets`/`model/Store.ets` 按需、`module.json5`(仅权限)
 - 验收:能从列表勾选应用;失败时手输兜底仍可用
 
-## F5 备份文件化(纯应用层)—— 状态:待开发
+## F5 备份文件化(纯应用层)—— 状态:已完成，待构建机编译与真机验证
 
 - 用 `@ohos.file.picker` 的 DocumentViewPicker(公开 API,无需权限):导出——把现有 schema v3 备份 JSON 保存为用户选择路径的 `.json` 文件;导入——选择文件恢复。剪贴板方式保留为快捷入口
 - 改动:`core/Backup.ets`、`pages/SettingsPage.ets`

@@ -202,3 +202,23 @@ Existing notification files reviewed:
 - `bundleManager.getAllBundleInfo()` 的编译兼容性、权限授权及真机应用列表可见范围仍需构建机和真机验证；若系统拒绝枚举，手动输入功能仍可正常使用。
 
 > 构建机注(2026-09-03,F4 轮):本机 SDK(API 24)的 `@ohos.bundle.bundleManager` 无 `getAllBundleInfo`,枚举改用旧模块 `@ohos.bundle` 的 `getAllBundleInfo(bundle.BundleFlag.GET_BUNDLE_DEFAULT)`(since 7 / deprecated since 9,仅弃用警告,编译通过);`BundleInfo.appInfo.label` 字段名两代一致,label 为空时已有回退包名,真机需核对应用名显示效果。
+
+## 2026-09-03 F5 备份文件化：已完成，待构建机编译与真机验证
+
+- 设置页新增 DocumentViewPicker 文件导出与导入入口，继续使用现有 schema v3 备份内容。
+- 导出时生成带时间戳的 `.json` 文件名，并将备份 JSON 写入用户选择的位置。
+- 导入时仅选择 `.json` 文件，读取完整内容后调用现有恢复流程，并刷新设置与订阅状态。
+- 保留原有剪贴板备份和恢复入口作为快捷方式。
+- 文件读取增加空文件、读取不完整和超过 20 MiB 的检查；Backup 导入增加无效 JSON 的明确错误提示，未来 schema 版本仍沿用现有不兼容提示。
+
+改动文件：
+- `entry/src/main/ets/core/Backup.ets`
+- `entry/src/main/ets/pages/SettingsPage.ets`
+- `DEVPLAN.md`
+- `CHANGES.md`
+
+静态检查与限制：
+- `git diff --check` 已通过，无空白错误。
+- 已核对 DocumentViewPicker 导出、文件写入、文件选择、完整读取、schema v3 恢复和剪贴板降级链路。
+- 按约束未执行构建、打包或任何 Git 写操作。
+- DocumentViewPicker 的文件 URI 读写、取消选择行为及恢复后的实际数据完整性仍需构建机编译和真机验证。

@@ -36,7 +36,12 @@ export async function exportBackup(context: common.Context): Promise<string> {
 
 export async function importBackup(context: common.Context, text: string): Promise<string> {
   await initStore(context);
-  const obj = JSON.parse(text) as BackupPayload;
+  let obj: BackupPayload;
+  try {
+    obj = JSON.parse(text) as BackupPayload;
+  } catch (e) {
+    throw new Error('备份文件不是有效的 JSON');
+  }
   if (obj === null || obj.profiles === undefined || obj.settings === undefined) {
     throw new Error('备份内容格式不正确');
   }
