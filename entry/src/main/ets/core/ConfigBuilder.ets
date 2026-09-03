@@ -251,7 +251,8 @@ export function buildCustomRule(r: RouteRule): Record<string, Object> | null {
 
 export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: string,
   logPath: string = '', geositePath: string = '', geoIpPath: string = '',
-  customRules: Array<RouteRule> = [], remoteRuleSets: Array<RemoteRuleSet> = []): string {
+  customRules: Array<RouteRule> = [], remoteRuleSets: Array<RemoteRuleSet> = [],
+  cachePath: string = ''): string {
   if (p.server.length === 0) {
     throw new Error('服务器地址为空');
   }
@@ -416,7 +417,13 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     experimental['clash_api'] = clashApi;
   }
   const cacheFile: Record<string, Object> = {};
-  cacheFile['enabled'] = true;
+  if (cachePath.length > 0) {
+    // OHOS 沙箱内内核 CWD 不可写,必须给绝对路径,否则 open cache.db: permission denied
+    cacheFile['enabled'] = true;
+    cacheFile['path'] = cachePath;
+  } else {
+    cacheFile['enabled'] = false;
+  }
   experimental['cache_file'] = cacheFile;
 
   // ---- log ----

@@ -333,3 +333,6 @@ Existing notification files reviewed:
 
 
 > 构建机注(2026-09-03,G1~G5 统一轮):首次编译仅 1 处错误 —— ConnectionsPage.ets:147 向 string 状态塞 Resource(G6 同款)。构建机修复:80 行改声明为 ResourceStr(空串默认值),198 行判空改不等比较,147 行保持资源赋值;重编译通过(versionCode 1001802)。G4 的 download_detour=direct 与 G5 的 clash_api 运行时行为仍为真机风险点。
+
+
+> 构建机修复(2026-09-03,真机日志:内核启动失败 initialize cache-file: open cache.db: permission denied):G5 开启的 experimental.cache_file 未设路径,内核回退相对路径且 CWD 不可写导致启动必败。修复:cache_file.path 指向应用沙箱 files/core/cache.db(与 singbox.log/config.json 同目录,已验证可写),路径缺失时禁用 cache_file 而非阻塞启动。versionCode 1001803。
