@@ -15,6 +15,7 @@ import { formatBytes } from '../utils/TrafficStats';
 import { exportBackup, importBackup } from '../core/Backup';
 import { getClipboardText } from '../utils/ClipboardHelper';
 import { geoReady, downloadGeoAssets } from '../utils/GeoAssets';
+import { VpnService } from '../core/VpnService';
 
 const APP_MODES: Array<string> = ['off', 'exclude', 'include'];
 const APP_MODE_LABELS: Array<Resource> = [$r('app.string.per_app_off'), $r('app.string.per_app_exclude'), $r('app.string.per_app_include')];
@@ -110,6 +111,27 @@ struct SettingsPage {
       }
     } catch (e) {
       promptAction.showToast({ message: $r('app.string.save_failed_reason', e instanceof Error ? e.message : `${e}`) });
+    }
+  }
+
+  private async switchMode(mode: string, toast: Resource): Promise<void> {
+    if (this.s.mode === mode) {
+      return;
+    }
+    this.s.mode = mode;
+    try {
+      await saveSettings(this.s);
+      promptAction.showToast({ message: toast });
+      const running: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
+      const profileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
+      if (running && profileId.length > 0) {
+        AppStorage.setOrCreate('vpnStatus', 'switching');
+        LogStore.addLog(`[ui] 出站模式切换为 ${mode}，自动重启 VPN`);
+        await VpnService.switchTo(this.context, profileId);
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : `${e}`;
+      promptAction.showToast({ message: $r('app.string.save_failed_reason', message) });
     }
   }
 
@@ -368,9 +390,7 @@ struct SettingsPage {
                   .backgroundColor(this.s.mode === m ? $r('app.color.primary') : $r('app.color.surface'))
                   .fontColor(this.s.mode === m ? $r('app.color.surface') : $r('app.color.text_primary'))
                   .onClick(() => {
-                    this.s.mode = m;
-                    this.save(true);
-                    promptAction.showToast({ message: MODE_SWITCH_TOASTS[idx] });
+                    this.switchMode(m, MODE_SWITCH_TOASTS[idx]);
                   })
               }, (m: string) => m)
             }.width('100%')

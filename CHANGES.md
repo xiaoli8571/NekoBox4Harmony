@@ -336,3 +336,17 @@ Existing notification files reviewed:
 
 
 > 构建机修复(2026-09-03,真机日志:内核启动失败 initialize cache-file: open cache.db: permission denied):G5 开启的 experimental.cache_file 未设路径,内核回退相对路径且 CWD 不可写导致启动必败。修复:cache_file.path 指向应用沙箱 files/core/cache.db(与 singbox.log/config.json 同目录,已验证可写),路径缺失时禁用 cache_file 而非阻塞启动。versionCode 1001803。
+
+
+## G7 VPN 重连稳定性与模式即时生效（2026-09-03）
+
+- 真机日志确认：出现“正在建立 VPN”超过 60 秒时，TUN、DNS 与代理数据面可能已经正常工作。原看门狗会因 CommonEvent 状态未同步而误断连接，现改为仅记录控制面超时并保留 VPN。
+- 节点切换取消“停止扩展 + 固定等待 1.5 秒 + 重新启动”的竞态路径，改为通过 Want 携带目标节点，由现有 VPN 扩展实例串行重启。
+- VPN 扩展启动期间收到的新请求不再丢弃，改为记录最新节点与强制重启标记，并在当前操作结束后继续处理。
+- 设置页的规则、全局、直连模式点击后立即保存；VPN 运行中时自动使用当前节点强制串行重启，使新模式立即生效。
+- 修正全局模式：仅保留 DNS 劫持规则，不加载私网直连、自定义规则、Geo 分流或远程规则集，普通流量统一由 `final: proxy` 处理。
+- 改动文件：`entry/src/main/ets/core/VpnService.ets`、`entry/src/main/ets/vpnext/VpnExtAbility.ets`、`entry/src/main/ets/pages/SettingsPage.ets`、`entry/src/main/ets/core/ConfigBuilder.ets`、`DEVPLAN.md`、`CHANGES.md`。
+- 本轮不构建、不打包、不执行 Git 写操作；待构建机编译及真机验证。
+
+
+> 构建机注(2026-09-03,G7 轮):一次编译通过(versionCode 1001804)。铁律核查:module.json5/内核/AppScope 零改动,${$r( 模板混用 0;restartReason 仅入 LogStore,机器键协议未破坏。真机验证点以 Codex 建议为准:连续切换节点、断开换节点启动、运行中切换模式、全局模式国内地址走 proxy。
