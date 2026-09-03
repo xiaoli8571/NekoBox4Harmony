@@ -21,6 +21,8 @@
 4. 签名证书配置永不入库
 5. 外观偏好(系统/浅色/深色、触感、液态玻璃)已存在于 `model/Profile.ets` + `model/Store.ets`,设置 UI 在 `pages/SettingsPage.ets`,F1 在其基础上做
 6. 延迟测试器在 `utils/LatencyTester.ets`,链接解析在 `utils/LinkParser.ets`,剪贴板助手在 `utils/ClipboardHelper.ets`,规则页 `pages/RouteRulesPage.ets`,备份 `core/Backup.ets`(schema v3),订阅 `core/Subscriptions.ets`——先读懂再改
+7. **禁止把 `$r()` 写进模板串**(如 `` `${$r('app.string.x')}` ``):运行时渲染为 [object Object]。动态整句一律进 string.json 用 `%1$s`/`%1$d` 占位符,代码用 `$r('app.string.x', args)`;返回可能为资源的函数声明 `ResourceStr` 而非 `string`。`$r` 键名编译期校验,拼错键直接编译失败
+8. `AppStorage('vpnStatus')` 只存机器状态键(connecting/disconnected/switching/awaiting_auth/start_timeout/`connected:<节点>`/`start_failed:<详情>`/`connect_failed:<详情>`),显示由 `Index.statusDisplay()` 映射资源;**不要向 vpnStatus 写用户可读文案**(VpnService 与 VpnExtAbility 的 publishVpnStatus 均已机器键化)。另:`catch (e)` 的 e 传辅助函数前先转字符串,函数参数不能声明为 `unknown`(arkts-no-any-unknown)
 
 ## F1 主题即时生效(纯应用层)—— 状态:✅ 已完成(2026-09-03,versionCode 1001711,勿重做)
 
