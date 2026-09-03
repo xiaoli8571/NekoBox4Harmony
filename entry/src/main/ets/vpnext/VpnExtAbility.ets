@@ -11,7 +11,7 @@ import BusinessError from '@ohos.base';
 import { Profile, AppSettings } from '../model/Profile';
 import { initStore, loadProfiles, loadSettings, getPendingProfileId, setPendingProfileId, clearPendingProfileId, setRunningProfileId, LogStore } from '../model/Store';
 import { buildCoreConfig } from '../core/ConfigBuilder';
-import { loadRouteRules, RouteRule } from '../model/RouteRule';
+import { loadRouteRules, RouteRule, loadRemoteRuleSets, RemoteRuleSet } from '../model/RouteRule';
 import { CoreManager } from '../core/CoreManager';
 import { publishVpnLog, publishVpnStatus, VPN_EVENT_LATENCY } from '../core/VpnIpc';
 import { geoReady, geoSitePath as geoSiteFile, geoIpPath as geoIpFile } from '../utils/GeoAssets';
@@ -304,7 +304,18 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     } catch (e) {
       LogStore.addLog('[vpn] 读取自定义路由规则失败,本次连接忽略');
     }
-    const configJson = buildCoreConfig(profile, settings, ifname, logPath, geositePath, geoIpPath, customRules);
+    let remoteRuleSets: Array<RemoteRuleSet> = [];
+    try {
+      remoteRuleSets = await loadRemoteRuleSets();
+      const enabledRuleSetCount = remoteRuleSets.filter((item: RemoteRuleSet) => item.enabled).length;
+      if (enabledRuleSetCount > 0) {
+        LogStore.addLog(`[vpn] 注入远程规则集 ${enabledRuleSetCount} 个`);
+      }
+    } catch (e) {
+      LogStore.addLog('[vpn] 读取远程规则集失败,本次连接忽略');
+    }
+    const configJson = buildCoreConfig(profile, settings, ifname, logPath, geositePath, geoIpPath,
+      customRules, remoteRuleSets);
     const configPath = CoreManager.writeConfigFile(context, configJson);
     LogStore.addLog(`[vpn] sing-box 配置已写入 ${configPath}`);
 

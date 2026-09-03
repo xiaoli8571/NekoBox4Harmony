@@ -275,3 +275,58 @@ Existing notification files reviewed:
 - 未构建、未打包、未执行 Git 写操作；等待构建机验证。
 
 > 构建机注(2026-09-03,G6 轮):本机 SDK(API 24)的 notificationManager 通知字段(title/text/additionalText/actionButtons[].title)为 string 类型,不接受 Resource(编译报 Type 'Resource' is not assignable to type 'string' ×4);构建机改为 this.context.resourceManager.getStringSync($r(...), args) 构建时现取本地化字符串(resourceManager 跟随系统语言,en_US 下自动生效)。后续涉及系统 API 文案时优先确认 d.ts 字段类型。
+
+## 2026-09-03 G1 节点手动排序（已完成，待统一构建验证）
+
+- 在 `AppSettings` 新增持久化排序偏好 `profileSortMode`，支持 `manual`、`latency`、`name` 三种模式；旧设置或非法值兼容回退为手动排序，备份中的设置对象自动包含该字段。
+- 首页节点排序继续保持置顶优先；手动模式按同一分组内的 `Profile.sortOrder` 排序，并以现有延迟顺序兜底；延迟和名称模式分别按测速结果与节点名称�排序。
+- 节点长按菜单在手动模式下新增“上移/下移”，仅在同一分组、相同置顶层级内交换顺序并立即写回持久化数据，不影响其他分组。
+- 设置页“外观与交互”新增三等分排序模式按钮，切换后立即保存；base 与 en_US 字符串资源已同步补齐。
+- 改动文件：`entry/src/main/ets/model/Profile.ets`、`entry/src/main/ets/model/Store.ets`、`entry/src/main/ets/pages/Index.ets`、`entry/src/main/ets/pages/SettingsPage.ets`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
+- `Backup.ets` 无需修改：其备份载荷已直接序列化完整 `AppSettings` 与 `Profile` 数组，新字段会自动导出与恢复。
+- 已执行只读 `git diff --check` 与改动范围检查；未构建、未打包、未执行 Git 写操作，等待 G1 至 G5 统一构建验证。
+
+## 2026-09-03 G2 分组测速汇总（已完成，待统一构建验证）
+
+- 首页节点列表按现有分组元数据展示分组头；分组折叠后仍保留名称、延迟汇总徽标和“测速本组”操作。
+- 分组延迟徽标随测速回调实时刷新：存在未测节点时显示未测数量，全部完成且有成功结果时显示最低延迟，全部失败时显示超时。
+- 新增分组测速入口并复用 `testProfiles`；只传入当前分组节点，与全局测速�共用 `testing` 互斥状态，避免并发测速。
+- 分组测速只更新本组节点的延迟结果，保留其他分组已测数据；测速结束后统一持久化节点延迟元数据。
+- base 与 en_US 字符串资源已同步新增分组测速及汇总文案。
+- 改动文件：`entry/src/main/ets/pages/Index.ets`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。`LatencyTester.ets` 的现有列表参数�已支持按组过滤，因此无需修改。
+- 已执行只读 `git diff --check` 与改动范围检查；未构建、未打包、未执行 Git 写操作，等待 G1 至 G5 统一构建验证。
+
+## 2026-09-03 G3 节点分享二维码（已完成，采用纯文本 URI + 复制降级，待统一构建验证）
+
+- 预检当前项目与可见 SDK 声明后未发现 `@kit.ScanKit` 的 `generateBarcode` 能力，因此按计划启用安全降级路径，不引入未经确认的新 API。
+- 节点长按菜单新增“分享节点”入口，使用现有 `exportProfileLink` 生成分享 URI，并通过 `CustomDialog` 展示完整文本及复制按钮；不写入磁盘，关闭弹窗即释放��界面状态。
+- 订阅详情页新增“分享订阅链接”入口，同样通过 `CustomDialog` 展示订阅 URL 并支持复制。
+- 节点协议不支持导出时沿用现有提示；复制成功后显示本地化提示。
+- base 与 en_US 字符串资源已同步新增节点分享、订阅分享、弹窗标题及复制成功文案。
+- 降级说明：当前实现不生成二维码，原因是本机可见 SDK d.ts 中未发现 `ScanKit.generateBarcode`；纯文本 URI 可直接选择或复制，完整保留分享功能。
+- 改动文件：`entry/src/main/ets/pages/Index.ets`、`entry/src/main/ets/pages/SubDetailPage.ets`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
+- 已执行只读 `git diff --check` 与改动范围检查；未构建、未打包、未执行 Git 写操作，等待 G1 至 G5 统一构建验证。
+
+## 2026-09-03 G4 远程规则集订阅（已完成，待统一构建验证）
+
+- 新增 `RemoteRuleSet` 数据模型与独立持久化，支持名称、SRS URL、域名/IP 类型、直连/代理出站、启用状态、更新时间和最近错误字段。
+- 路由规则页新增远程规则集管理区块，支持添加、编辑、启停、类型和出站切换及删除；开关和字段更改即时保存，重连后生效。
+- `ConfigBuilder.ets` 为启用且 URL 有效的项目生成 sing-box 1.11 `route.rule_set` 远程二进制定义及对应 `route.rules[].rule_set` 引用，使用 `direct` 下载分流和 24 小时更新间隔。
+- 启用 `experimental.cache_file`，使成功下载的远程规则集可由内核缓存并在后续连接中复用；内核日志会记录后台更新错误。
+- `VpnExtAbility.ets` 在连接时加载并注入远程规则集，读取持久化配置失败时记录日志并忽略本次注入。
+- 备份 schema 从 v3 升至 v4，新增 `remoteRuleSets` 字段；恢复逻辑继续兼容 v3，缺少该字段时按空列表处理。
+- base 与 en_US 字符串资源已同步新增远程规则集管理文案。
+- 改动文件：`entry/src/main/ets/model/RouteRule.ets`、`entry/src/main/ets/core/ConfigBuilder.ets`、`entry/src/main/ets/vpnext/VpnExtAbility.ets`、`entry/src/main/ets/pages/RouteRulesPage.ets`、`entry/src/main/ets/core/Backup.ets`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
+- 已执行只读 `git diff --check`、两份字符串 JSON 解析和集成引用检查；未构建、未打包、未执行 Git 写操作，等待 G1 至 G5 统一构建验证。
+
+## 2026-09-03 G5 连接统计（已完成，待统一构建验证）
+
+- 在 `AppSettings` 新增 `clashApiEnabled`、`clashApiPort` 和 `clashApiSecret`，默认启用、端口 9090；旧设置首次加载时自动生成并持久化随机访问密钥，端口限制在 1024 至 65535。
+- `ConfigBuilder.ets` 按开关生成 `experimental.clash_api`，仅监听 `127.0.0.1`，配置自定义端口与 secret；同时保留 G4 所需的 `experimental.cache_file`。
+- 设置页新增连接统计 API 开关、监听端口和访问密钥编辑项，修改后提示重新连接 VPN 生效；base 与 en_US 文案已同步。
+- `ConnectionsPage.ets` 在 VPN 运行且 API 开启时每秒轮询 `/connections`，请求携带 `Authorization: Bearer <secret>`，展示实时上下行速率、累计流量及活动连接的目标、网络、规则链和上下行字节数。
+- 支持通过 `DELETE /connections/:id` 关闭单条连接，并检查 HTTP 状态码；连接 ID 在请求路径中进行 URL 编码。
+- 轮询在页面消失、VPN 断开或 API 关闭时停止，VPN 运行状态变化时自动重建或停止计时器，避免后台泄漏。
+- 降级路径：clash API 请求失败时继续显示首页通过现有 TUN 统计链路写入 AppStorage 的总速率与累计流量，不因 API 不可用而丢失基础统计；连接列表显示本地化不可用提示。真机需结合 sing-box 日志复核 c-shared 模式下控制器监听、鉴权和连接关闭行为。
+- 改动文件：`entry/src/main/ets/model/Profile.ets`、`entry/src/main/ets/model/Store.ets`、`entry/src/main/ets/core/ConfigBuilder.ets`、`entry/src/main/ets/pages/SettingsPage.ets`、`entry/src/main/ets/pages/ConnectionsPage.ets`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
+- 已执行只读 `git diff --check`、两份字符串 JSON 解析及配置、鉴权、生命周期和降级引用检查；未构建、未打包、未执行 Git 写操作，等待 G1 至 G5 统一构建验证。

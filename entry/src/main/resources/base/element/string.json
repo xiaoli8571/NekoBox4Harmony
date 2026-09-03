@@ -1065,6 +1065,150 @@
       "value": "断开"
     },
     {
+      "name": "profile_sort_mode",
+      "value": "节点排序"
+    },
+    {
+      "name": "sort_manual",
+      "value": "手动"
+    },
+    {
+      "name": "sort_latency",
+      "value": "按延迟"
+    },
+    {
+      "name": "sort_name",
+      "value": "按名称"
+    },
+    {
+      "name": "move_up",
+      "value": "上移"
+    },
+    {
+      "name": "move_down",
+      "value": "下移"
+    },
+    {
+      "name": "test_group",
+      "value": "测速本组"
+    },
+    {
+      "name": "group_latency_untested",
+      "value": "%1$d 未测"
+    },
+    {
+      "name": "group_latency_minimum",
+      "value": "最低 %1$dms"
+    },
+    {
+      "name": "share_profile",
+      "value": "分享节点"
+    },
+    {
+      "name": "share_subscription",
+      "value": "分享订阅链接"
+    },
+    {
+      "name": "share_link_title",
+      "value": "分享节点链接"
+    },
+    {
+      "name": "share_subscription_title",
+      "value": "分享订阅链接"
+    },
+    {
+      "name": "share_link_copied",
+      "value": "分享链接已复制"
+    },
+    {
+      "name": "remote_rule_sets",
+      "value": "远程规则集"
+    },
+    {
+      "name": "add_remote_rule_set",
+      "value": "添加规则集"
+    },
+    {
+      "name": "remote_rule_set_name",
+      "value": "规则集名称"
+    },
+    {
+      "name": "remote_rule_set_url",
+      "value": "规则集 URL（.srs）"
+    },
+    {
+      "name": "rule_set_site",
+      "value": "域名规则"
+    },
+    {
+      "name": "rule_set_ip",
+      "value": "IP 规则"
+    },
+    {
+      "name": "remote_rule_set_updated",
+      "value": "最近更新: %1$s"
+    },
+    {
+      "name": "remote_rule_set_error",
+      "value": "最近错误: %1$s"
+    },
+    {
+      "name": "clash_api_settings",
+      "value": "连接统计 API"
+    },
+    {
+      "name": "clash_api_enabled",
+      "value": "启用连接统计"
+    },
+    {
+      "name": "clash_api_port",
+      "value": "监听端口"
+    },
+    {
+      "name": "clash_api_secret",
+      "value": "访问密钥"
+    },
+    {
+      "name": "clash_api_reconnect_hint",
+      "value": "更改后需重新连接 VPN 才能生效"
+    },
+    {
+      "name": "connections_title_count",
+      "value": "连接 (%1$d)"
+    },
+    {
+      "name": "refresh",
+      "value": "刷新"
+    },
+    {
+      "name": "connections_api_unavailable",
+      "value": "无法访问连接统计 API，当前显示 TUN 总速率"
+    },
+    {
+      "name": "connection_closed",
+      "value": "已断开该连接"
+    },
+    {
+      "name": "connection_close_failed",
+      "value": "关闭失败: %1$s"
+    },
+    {
+      "name": "connections_loading",
+      "value": "正在加载连接…"
+    },
+    {
+      "name": "connections_unavailable",
+      "value": "连接信息暂不可用"
+    },
+    {
+      "name": "connections_empty",
+      "value": "暂无活动连接"
+    },
+    {
+      "name": "connections_empty_hint",
+      "value": "启动 VPN 并访问网络后，连接会显示在这里。"
+    },
+    {
       "name": "parse_failed_reason",
       "value": "解析失败: %1$s"
     }
