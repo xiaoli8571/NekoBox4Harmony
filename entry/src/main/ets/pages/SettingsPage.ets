@@ -4,12 +4,15 @@ import { SettingsView } from '../views/SettingsView';
 @Entry
 @Component
 struct SettingsPage {
+  @StorageProp('statusBarHeightVp') statusBarVp: number = 0;
+
   build() {
     Column() {
       SettingsView()
     }
     .width('100%')
     .height('100%')
+    .padding({ top: this.statusBarVp })
     .backgroundColor($r('app.color.app_background'))
   }
 }

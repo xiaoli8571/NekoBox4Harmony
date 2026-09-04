@@ -20,6 +20,7 @@ struct ProfileEdit {
   @State p: Profile = new Profile();
   @State isNew: boolean = true;
   @State pasteText: string = '';
+  @StorageProp('statusBarHeightVp') statusBarVp: number = 0;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear(): void {
@@ -267,7 +268,7 @@ struct ProfileEdit {
     .height('100%')
     .alignItems(HorizontalAlign.Center)
     .backgroundColor($r('app.color.app_background'))
-    .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
+    .padding({ top: this.statusBarVp })
   }
 
   @Builder

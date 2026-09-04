@@ -537,3 +537,10 @@ Existing notification files reviewed:
 - 未修改 `core/`、`entry/libs/`、CGo 接口、`module.json5`、`AppScope/`、`build-profile.json5`、版本号或构建产物。
 - 未构建、未打包、未执行 Git 写操作；构建机下一版使用 versionCode `1001907`。
 - ArkTS 编译、TCP DNS 完全退出后的持久化、不退出直接连接读取新值、pending→running 跨进程握手，以及订阅切换后的代理列表跟随仍需构建机和真机验证。
+
+## 2026-09-04 构建机直修:状态栏区域被遮挡修复(versionCode 1001908)
+
+- 真机反馈:打开应用后最上方黑色区域遮住系统通知栏(状态栏)。根因两层:①应用窗口自始为全屏沉浸布局,历史代码从未做系统栏避让,页面内容与近黑背景直接铺满状态栏区域;②状态栏图标颜色判定在"跟随系统"时依赖 resourceManager 亮度推断,colorMode 异步生效前会误判为浅色背景并写入黑色图标,深色背景下状态栏整体不可见。
+- `entryability/EntryAbility.ets`:新增 `updateStatusBarAvoid()`(TYPE_SYSTEM/TYPE_CUTOUT 避让高度 px→vp 写入 AppStorage `statusBarHeightVp`,窗口创建与 windowSizeChange 时刷新);深浅色判定改为 显式偏好 → `config.colorMode` → 亮度推断 三级回退;新增 `onConfigurationUpdate` 重刷外观与状态栏样式。
+- 页面顶部避让(读取 `statusBarHeightVp` 顶部内边距,避让高度为 0 时自动无额外留白):`pages/Index.ets`(主内容 Column)、`pages/SettingsPage.ets`、`pages/ProfileEdit.ets`、`pages/RouteRulesPage.ets`、`pages/SubDetailPage.ets`(后三者顺带清理了 build 根重复的 width/height/backgroundColor 修饰链,仅冗余调用,无行为变化)。
+- 待真机验证:状态栏时钟/电量在深浅色模式下均清晰可见;页面内容不再与状态栏图标重叠;横竖屏切换与系统深浅色切换后状态栏样式正确。

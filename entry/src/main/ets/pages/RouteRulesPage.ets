@@ -10,6 +10,7 @@ struct RouteRulesPage {
   @State remoteRuleSets: Array<RemoteRuleSet> = [];
   @State loading: boolean = true;
   @State loadError: string = '';
+  @StorageProp('statusBarHeightVp') statusBarVp: number = 0;
 
   aboutToAppear(): void {
     this.load();
@@ -312,6 +313,6 @@ struct RouteRulesPage {
     .height('100%')
     .alignItems(HorizontalAlign.Center)
     .backgroundColor($r('app.color.app_background'))
-    .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
+    .padding({ top: this.statusBarVp })
   }
 }

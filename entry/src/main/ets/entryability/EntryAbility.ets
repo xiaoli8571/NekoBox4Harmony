@@ -9,6 +9,7 @@ import common from '@ohos.app.ability.common';
 import notificationManager from '@ohos.notificationManager';
 import BusinessError from '@ohos.base';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
+import { Configuration } from '@ohos.app.ability.Configuration';
 import backgroundTaskManager from '@ohos.resourceschedule.backgroundTaskManager';
 import wantAgent from '@ohos.app.ability.wantAgent';
 import { initStore, loadSettings, LogStore } from '../model/Store';
@@ -24,7 +25,24 @@ export default class EntryAbility extends UIAbility {
     const density = display.getDefaultDisplaySync().densityPixels;
     const shortestSideVp = Math.min(size.width, size.height) / density;
     AppStorage.setOrCreate('uiBreakpoint', resolveUiBreakpoint(shortestSideVp));
+    this.updateStatusBarAvoid();
   };
+
+  /** 系统栏避让高度(px→vp),内容区据此下移,避免状态栏区域被页面内容与背景整体覆盖 */
+  private updateStatusBarAvoid(): void {
+    if (this.mainWindow === undefined) {
+      return;
+    }
+    try {
+      const systemArea = this.mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+      const cutout = this.mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_CUTOUT);
+      const density = display.getDefaultDisplaySync().densityPixels;
+      const topPx = Math.max(systemArea.topRect.height, cutout.topRect.height);
+      AppStorage.setOrCreate('statusBarHeightVp', density > 0 ? topPx / density : 0);
+    } catch (e) {
+      LogStore.addLog(`[app] 获取状态栏避让区失败: ${e}`);
+    }
+  }
 
   private updateUiBreakpoint(windowStage: window.WindowStage): void {
     windowStage.getMainWindow().then((mainWindow: window.Window) => {
@@ -143,6 +161,14 @@ export default class EntryAbility extends UIAbility {
     this.handleAction(want);
   }
 
+  onConfigurationUpdate(newConfig: Configuration): void {
+    this.applyAppearance();
+    this.updateStatusBarAvoid();
+    if (this.windowStage !== undefined) {
+      this.applyStatusBarStyle(this.windowStage);
+    }
+  }
+
   onDestroy(): void {
   }
 
@@ -152,6 +178,7 @@ export default class EntryAbility extends UIAbility {
     windowStage.getMainWindow().then((mainWindow: window.Window) => {
       this.mainWindow = mainWindow;
       mainWindow.on('windowSizeChange', this.onWindowSizeChange);
+      this.updateStatusBarAvoid();
     }).catch((e: Object) => {
       LogStore.addLog(`[app] 注册窗口尺寸监听失败: ${e}`);
     });
@@ -168,21 +195,38 @@ export default class EntryAbility extends UIAbility {
     try {
       const win = await windowStage.getMainWindow();
       let dark = false;
+      let decided = false;
       try {
         await initStore(this.context);
         const settings = await loadSettings();
         if (settings.appearance === 'dark') {
           dark = true;
-        } else if (settings.appearance !== 'light') {
-          // 跟随系统:取当前生效主题下的 text_primary 亮度判定(resourceManager 自动跟随深浅色)
-          const c = this.context.resourceManager.getColorSync($r('app.color.text_primary'));
-          const r = (c >> 16) & 0xFF;
-          const g = (c >> 8) & 0xFF;
-          const b = c & 0xFF;
-          dark = (r * 299 + g * 587 + b * 114) / 1000 >= 128;
+          decided = true;
+        } else if (settings.appearance === 'light') {
+          dark = false;
+          decided = true;
         }
       } catch (e) {
-        LogStore.addLog(`[app] 读取主题偏好失败,状态栏按浅色处理: ${e}`);
+        LogStore.addLog(`[app] 读取主题偏好失败,状态栏按系统色模式处理: ${e}`);
+      }
+      if (!decided) {
+        // 跟随系统:直接读当前生效 colorMode。resourceManager 亮度推断在 colorMode
+        // 异步生效前会误判,曾导致深色背景下写入黑色图标、状态栏整体不可见。
+        const cm = this.context.config?.colorMode;
+        if (cm === ConfigurationConstant.ColorMode.COLOR_MODE_DARK) {
+          dark = true;
+          decided = true;
+        } else if (cm === ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT) {
+          dark = false;
+          decided = true;
+        }
+      }
+      if (!decided) {
+        const c = this.context.resourceManager.getColorSync($r('app.color.text_primary'));
+        const r = (c >> 16) & 0xFF;
+        const g = (c >> 8) & 0xFF;
+        const b = c & 0xFF;
+        dark = (r * 299 + g * 587 + b * 114) / 1000 >= 128;
       }
       win.setWindowSystemBarProperties({
         statusBarContentColor: dark ? UiSpec.STATUS_BAR_CONTENT_DARK_BG : UiSpec.STATUS_BAR_CONTENT_LIGHT_BG

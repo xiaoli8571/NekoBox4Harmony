@@ -63,6 +63,7 @@ struct Index {
   @State subGroupDraft: string = '';
   @StorageLink('uiBreakpoint') uiBreakpoint: UiBreakpoint = 'compact';
   @StorageLink('uiFxLevel') uiFxLevel: string = 'full';
+  @StorageProp('statusBarHeightVp') statusBarVp: number = 0;
   @StorageLink('vpnRunning') @Watch('onRunningChange') isRunning: boolean = false;
   @StorageLink('vpnStatus') statusText: string = 'disconnected';
   @StorageLink('vpnUpSpeed') upSpeed: number = 0;
@@ -1508,6 +1509,7 @@ struct Index {
       }
       .width('100%')
       .height('100%')
+      .padding({ top: this.statusBarVp })
 
       this.bottomNav()
     }
