@@ -19,7 +19,11 @@ let vpnProcessMode = false;
 export async function initStore(context: common.Context, isVpnProcess: boolean = false): Promise<void> {
   storeContext = context;
   vpnProcessMode = isVpnProcess;
-  prefInstance = await dataPreferences.getPreferences(context, PREF_NAME);
+  // 同进程只保留一个实例:调用方 context 对象不同会产生指向同一文件的多个
+  // 实例,旧快照 flush 会整体回滚新保存的设置;UI 进程已有实例时必须复用。
+  if (isVpnProcess || prefInstance === null) {
+    prefInstance = await dataPreferences.getPreferences(context, PREF_NAME);
+  }
 }
 
 async function requirePref(): Promise<dataPreferences.Preferences> {
@@ -99,6 +103,7 @@ export async function loadSettings(): Promise<AppSettings> {
     s.profileSortMode = 'manual';
   }
   s.clashApiPort = Math.max(1024, Math.min(65535, s.clashApiPort));
+  console.info(`[NB] [store] loadSettings appearance=${s.appearance} mode=${s.mode} remoteDns=${s.remoteDns}`);
   if (s.clashApiSecret.length === 0) {
     s.clashApiSecret = `${Date.now().toString(36)}${Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36)}`;
     await pref.put(KEY_SETTINGS, JSON.stringify(s));

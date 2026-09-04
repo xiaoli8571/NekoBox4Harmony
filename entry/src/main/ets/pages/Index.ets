@@ -1215,7 +1215,8 @@ struct Index {
         .width('100%')
         .height('100%')
 
-        // FAB:延迟测试(只测当前配置);bottom 86 避让悬浮底部导航(高 66 + 边距 12)
+        // FAB:延迟测试(只测当前配置);bottom 94 = 悬浮底部导航顶(高 66 + 边距 12)+ 16,
+        // right 32 = 列表卡片右缘(屏内 PAGE_PADDING)+ 16,滚动时随 Stack 定位不动
         Button(this.testing ? '…' : '⚡')
           .type(ButtonType.Circle)
           .width(52)
@@ -1229,7 +1230,7 @@ struct Index {
             offsetX: 0,
             offsetY: 6
           })
-          .margin({ right: UiSpec.PAGE_PADDING + 8, bottom: 86 })
+          .margin({ right: UiSpec.PAGE_PADDING + 16, bottom: 94 })
           .hoverEffect(HoverEffect.Scale)
           .onClick(() => this.runProxySpeedTest())
       }

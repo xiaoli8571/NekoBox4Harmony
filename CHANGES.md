@@ -552,3 +552,13 @@ Existing notification files reviewed:
   2. **Preferences 每次读写磁盘重开(放大器,1001907 引入)**:跨进程覆写修复把 requirePref 改为每次 removePreferencesFromCache+getPreferences,高频读取全部变成磁盘 I/O。已改为:仅 :vpn 扩展进程(initStore 第二参数 isVpnProcess=true,VpnExtAbility 传入)每次重开以保留跨进程覆写修复;UI 进程恢复缓存实例,恢复原有读取性能。
 - 改动文件:`entry/src/main/ets/entryability/EntryAbility.ets`、`entry/src/main/ets/model/Store.ets`、`entry/src/main/ets/vpnext/VpnExtAbility.ets`
 - 待真机验证:启动与页面响应恢复流畅;TCP DNS 持久化修复(1001907)不回归——保存后完全退出重进仍保留、:vpn 进程读到新值。
+
+## 2026-09-04 2.0 第四轮设置页统一与视觉收尾(五项修复):已完成开发,待构建机与真机验证
+
+- **Store 同进程实例复用与诊断日志**:`initStore` 在 UI 进程已有 Preferences 实例时直接复用,仅 `:vpn` 进程重新 `getPreferences`,修复"调用方 context 对象不同产生指向同一文件的多个实例、旧快照 flush 整体回滚新保存设置"的问题;`loadSettings` 增加一行 appearance/mode/remoteDns 诊断日志,便于真机日志定位。
+- **设置页分区统一为 11px 标题 + 圆角玻璃卡片**:DNS、TUN(含 Clash API 与 IPv6 两组项)、分应用代理、备份与恢复、关于全部套用与外观/路由一致的单张卡片(`UiSpec.GLASS_RADIUS`、`bg_glass_solid`、`border_glass`、14px 内边距),卡片内相邻逻辑行以 0.5px `border_glass` Divider(margin left 14)分隔;全部业务项、回调和保存链路原样保留,Clash API(enabled/port/secret/提示)与 IPv6 开关并入 TUN 卡片未删除;视觉顺序固定为 外观与交互、路由、DNS、TUN、per-app、备份、关于,重复/残留外观区块确认为仅一份。
+- **文案**:base/en_US 的 `tab_mine` 分别为 设置/Settings,`settings_title` 已为 设置/Settings;未新增任何资源键。
+- **代理页 FAB 与底部导航核对**:`runProxySpeedTest` onClick 一字未改;Stack `BottomEnd` + 52 圆形 FAB 保持,最小视觉修正 margin 为 right `PAGE_PADDING+16`(距列表卡片右缘 16)、bottom 94(悬浮 bottomNav 顶 66+12=78 之上 16),不占独立行、滚动不动;bottomNav 确认仍非整宽贴底,半透明 glassBg、border、shadow、左右 `PAGE_PADDING`、bottom 12 安全距离,未改动。
+- **静态审计**:`git diff --check` 通过;`Store.ets` 相对基线 30aec48 仅 initStore 复用与 loadSettings 日志两处;base/en_US 资源 JSON 可解析且键集合一致(各 332 项);改动文件均 LF、无 NUL;Index.ets/SettingsView.ets 圆括号、方括号、花括号全部配平;无 `${$r(` 混拼。
+- 改动文件:`entry/src/main/ets/model/Store.ets`、`entry/src/main/ets/views/SettingsView.ets`、`entry/src/main/ets/pages/Index.ets`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
+- 约束与已知限制:未修改 `core/`、`entry/libs/`、CGo、`module.json5`、`AppScope/`、`build-profile.json5`、版本号或构建产物;未构建、未打包、未执行 Git 写操作;当前设置页不存在订阅相关业务控件,按要求未渲染空订阅分区、未凭空新增逻辑;订阅页自身 FAB 不在本轮范围未改动。构建机下一版使用 versionCode `1001910` 打包;ArkTS 编译、设置页卡片深浅色观感、FAB 避让与滚动行为待构建机与真机验证。
