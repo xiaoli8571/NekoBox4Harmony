@@ -17,6 +17,7 @@ import { fetchTrafficTotals, formatSpeed, formatBytes } from '../utils/TrafficSt
 import { fetchCurrentProxyDelay } from '../utils/ClashApi';
 import { exportProfileLink } from '../utils/LinkExporter';
 import { publishVpnLatency } from '../core/VpnIpc';
+import { SettingsView } from '../views/SettingsView';
 
 type MainDestination = 'home' | 'proxy' | 'subscriptions' | 'mine';
 
@@ -55,7 +56,8 @@ struct Index {
   @State settings: AppSettings = new AppSettings();
   @State activeDestination: MainDestination = 'home';
   @State subs: Array<SubInfo> = [];
-  @State proxyRegionTab: string = 'all';
+  @State activeConfigUrl: string = '';
+  @State proxyGroupTab: string = 'all';
   @State updatingSubUrl: string = '';
   @State connectedAt: number = 0;
   @State protectedNow: number = 0;
@@ -152,7 +154,7 @@ struct Index {
     AppStorage.setOrCreate('vpnDownSpeed', 0);
     this.speedTimer = setInterval(async () => {
       this.protectedNow = Date.now();
-      const t = await fetchTrafficTotals();
+      const t = await fetchTrafficTotals(this.settings.clashApiPort, this.settings.clashApiSecret);
       if (t === null) {
         return;
       }
@@ -208,8 +210,16 @@ struct Index {
       this.groups = await loadGroups();
       this.settings = await loadSettings();
       this.subs = await listSubs();
-      if (this.selectedId.length === 0 && this.profiles.length > 0) {
-        this.selectedId = this.profiles[0].id;
+      const storedActiveUrl = await readPrefString('active_config_url', '');
+      const storedExists = this.subs.some((sub: SubInfo) => sub.url === storedActiveUrl);
+      this.activeConfigUrl = storedExists ? storedActiveUrl : (this.subs.length > 0 ? this.subs[0].url : '');
+      if (this.activeConfigUrl !== storedActiveUrl) {
+        await writePrefString('active_config_url', this.activeConfigUrl);
+      }
+      const activeProfiles = this.profiles.filter((profile: Profile) => profile.subUrl === this.activeConfigUrl);
+      const selectedExists = activeProfiles.some((profile: Profile) => profile.id === this.selectedId);
+      if (!selectedExists) {
+        this.selectedId = activeProfiles.length > 0 ? activeProfiles[0].id : (this.profiles.length > 0 ? this.profiles[0].id : '');
       }
     } catch (e) {
       LogStore.addLog(`[ui] 加载节点失败: ${e}`);
@@ -404,7 +414,7 @@ struct Index {
   /** 点击节点:未运行则选中;运行中点其他节点 = 自动断开重连切换 */
   async onNodeTap(p: Profile): Promise<void> {
     this.selectedId = p.id;
-    this.proxyRegionTab = 'all';
+    this.proxyGroupTab = 'all';
     if (!this.isRunning) {
       return;
     }
@@ -510,7 +520,7 @@ struct Index {
         promptAction.showToast({ message: $r('app.string.imported_count', parsed.length) });
       }
       // 导入完成后立即刷新配置页与代理页数据(命名订阅即时归入 SubInfo.group 分组)
-      this.proxyRegionTab = 'all';
+      this.proxyGroupTab = 'all';
       await this.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
@@ -656,25 +666,9 @@ struct Index {
     return this.profiles.find((p: Profile) => p.id === targetId);
   }
 
-  /** 当前配置(订阅)URL;本地节点为空串。 */
-  currentSubUrl(): string {
-    const p = this.currentProfile();
-    return p === undefined ? '' : p.subUrl;
-  }
-
-  currentSubName(): ResourceStr {
-    const url = this.currentSubUrl();
-    if (url.length === 0) {
-      return $r('app.string.local_profile');
-    }
-    const sub = this.subs.find((s: SubInfo) => s.url === url);
-    return sub === undefined ? subNameOf(url) : sub.name;
-  }
-
-  /** 代理页:只显示当前所选配置(订阅)下的节点;本地节点作为本地配置。 */
+  /** 代理页数据源：当前持久化配置对应的节点。 */
   proxyProfiles(): Array<Profile> {
-    const subUrl = this.currentSubUrl();
-    return this.sortedProfiles().filter((p: Profile) => p.subUrl === subUrl);
+    return this.sortedProfiles().filter((p: Profile) => p.subUrl === this.activeConfigUrl);
   }
 
   /** 节点名前缀地区字标(如 "HK 香港-01" → HK);无前缀返回空串。 */
@@ -683,23 +677,42 @@ struct Index {
     return m === null ? '' : m[1].toUpperCase();
   }
 
-  /** 代理页顶部地区筛选 tabs:全部 + 当前配置下出现的地区前缀(按出现顺序)。 */
-  proxyRegionTabs(): Array<string> {
+  /** 代理页顶部配置分组筛选：全部 + 订阅分组去重 + 未分组。 */
+  proxyGroupTabs(): Array<string> {
     const tabs: Array<string> = ['all'];
-    for (const p of this.proxyProfiles()) {
-      const r = this.regionPrefixOf(p.name);
-      if (r.length > 0 && tabs.indexOf(r) < 0) {
-        tabs.push(r);
+    for (const sub of this.subs) {
+      const group = sub.group.trim();
+      const key = group.length > 0 ? group : '__ungrouped__';
+      if (tabs.indexOf(key) < 0) {
+        tabs.push(key);
       }
     }
     return tabs;
   }
 
-  visibleProxyProfiles(): Array<Profile> {
-    if (this.proxyRegionTab === 'all') {
-      return this.proxyProfiles();
+  private profileSubscriptionGroup(profile: Profile): string {
+    const sub = this.subs.find((item: SubInfo) => item.url === profile.subUrl);
+    if (sub === undefined || sub.group.trim().length === 0) {
+      return '__ungrouped__';
     }
-    return this.proxyProfiles().filter((p: Profile) => this.regionPrefixOf(p.name) === this.proxyRegionTab);
+    return sub.group.trim();
+  }
+
+  visibleProxyProfiles(): Array<Profile> {
+    if (this.proxyGroupTab === 'all') {
+      return this.sortedProfiles();
+    }
+    return this.sortedProfiles().filter((p: Profile) => this.profileSubscriptionGroup(p) === this.proxyGroupTab);
+  }
+
+  async selectActiveConfig(sub: SubInfo): Promise<void> {
+    this.activeConfigUrl = sub.url;
+    this.proxyGroupTab = sub.group.trim().length > 0 ? sub.group.trim() : '__ungrouped__';
+    await writePrefString('active_config_url', sub.url);
+    const profiles = this.profiles.filter((profile: Profile) => profile.subUrl === sub.url);
+    if (!profiles.some((profile: Profile) => profile.id === this.selectedId)) {
+      this.selectedId = profiles.length > 0 ? profiles[0].id : '';
+    }
   }
 
   // ---- 配置页(订阅源管理):按 SubInfo.group 分节 ----
@@ -738,7 +751,7 @@ struct Index {
       const r = await updateSubscription(sub.url);
       await markSubSuccess(sub.url);
       promptAction.showToast({ message: $r('app.string.sub_update_result', r.added, r.removed) });
-      this.proxyRegionTab = 'all';
+      this.proxyGroupTab = 'all';
       await this.refresh();
     } catch (e) {
       await markSubFailure(sub.url);
@@ -764,7 +777,12 @@ struct Index {
           const profiles = await loadProfiles();
           await saveProfiles(profiles.filter((p: Profile) => p.subUrl !== subUrl));
           await removeSub(subUrl);
-          this.proxyRegionTab = 'all';
+          if (this.activeConfigUrl === subUrl) {
+            const remainingSubs = this.subs.filter((item: SubInfo) => item.url !== subUrl);
+            this.activeConfigUrl = remainingSubs.length > 0 ? remainingSubs[0].url : '';
+            await writePrefString('active_config_url', this.activeConfigUrl);
+          }
+          this.proxyGroupTab = 'all';
           await this.refresh();
         }
       }
@@ -838,11 +856,6 @@ struct Index {
   }
 
   onNavTap(id: MainDestination): void {
-    if (id === 'mine') {
-      // 我的 = 现有设置页入口(一对一,不内嵌)
-      router.pushUrl({ url: 'pages/SettingsPage' });
-      return;
-    }
     this.activeDestination = id;
   }
 
@@ -1143,12 +1156,6 @@ struct Index {
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
           .layoutWeight(1)
-        Text(this.currentSubName())
-          .fontSize(12)
-          .fontColor($r('app.color.text_secondary'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .constraintSize({ maxWidth: 180 })
         Button($r('app.string.profile_new_title'))
           .height(30)
           .fontSize(11)
@@ -1166,20 +1173,21 @@ struct Index {
       // 地区筛选 tabs:全部 + 当前配置下节点名前缀(如 HK / JP / SG)
       Scroll() {
         Row({ space: UiSpec.GAP_SM }) {
-          ForEach(this.proxyRegionTabs(), (tab: string) => {
-            Button(tab === 'all' ? $r('app.string.proxy_all') : tab)
+          ForEach(this.proxyGroupTabs(), (tab: string) => {
+            Button(tab === 'all' ? $r('app.string.proxy_all')
+              : (tab === '__ungrouped__' ? $r('app.string.ungrouped') : tab))
               .height(30)
               .fontSize(12)
               .borderRadius(UiSpec.CHIP_RADIUS)
               .padding({ left: 14, right: 14 })
-              .backgroundColor(this.proxyRegionTab === tab ? $r('app.color.chip_on_bg_a') : $r('app.color.bg_glass_solid'))
-              .fontColor(this.proxyRegionTab === tab ? $r('app.color.text_primary') : $r('app.color.text_secondary'))
+              .backgroundColor(this.proxyGroupTab === tab ? $r('app.color.chip_on_bg_a') : $r('app.color.bg_glass_solid'))
+              .fontColor(this.proxyGroupTab === tab ? $r('app.color.text_primary') : $r('app.color.text_secondary'))
               .border({
                 width: UiSpec.GLASS_BORDER_WIDTH,
-                color: this.proxyRegionTab === tab ? $r('app.color.chip_on_border') : $r('app.color.border_glass')
+                color: this.proxyGroupTab === tab ? $r('app.color.chip_on_border') : $r('app.color.border_glass')
               })
               .onClick(() => {
-                this.proxyRegionTab = tab;
+                this.proxyGroupTab = tab;
               })
           }, (tab: string) => tab)
         }
@@ -1296,7 +1304,7 @@ struct Index {
             .layoutWeight(1)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
-          if (this.currentSubUrl().length > 0 && this.currentSubUrl() === sub.url) {
+          if (this.activeConfigUrl.length > 0 && this.activeConfigUrl === sub.url) {
             Text($r('app.string.sub_in_use'))
               .fontSize(10)
               .fontWeight(FontWeight.Bold)
@@ -1340,6 +1348,7 @@ struct Index {
       }
       .alignItems(HorizontalAlign.Start)
       .width('100%')
+      .onClick(() => this.selectActiveConfig(sub))
 
       Row({ space: UiSpec.GAP_SM }) {
         Button(this.updatingSubUrl === sub.url ? $r('app.string.updating') : $r('app.string.update_action'))
@@ -1379,11 +1388,11 @@ struct Index {
     .backgroundColor($r('app.color.bg_glass_solid'))
     .border({
       width: UiSpec.GLASS_BORDER_WIDTH,
-      color: this.currentSubUrl().length > 0 && this.currentSubUrl() === sub.url
+      color: this.activeConfigUrl.length > 0 && this.activeConfigUrl === sub.url
         ? $r('app.color.sel_border') : $r('app.color.border_glass')
     })
     .shadow({
-      radius: this.currentSubUrl().length > 0 && this.currentSubUrl() === sub.url ? UiSpec.GLASS_SHADOW_RADIUS : 0,
+      radius: this.activeConfigUrl.length > 0 && this.activeConfigUrl === sub.url ? UiSpec.GLASS_SHADOW_RADIUS : 0,
       color: $r('app.color.sel_glow'),
       offsetX: 0,
       offsetY: 0
@@ -1547,6 +1556,8 @@ struct Index {
           this.proxyPage()
         } else if (this.activeDestination === 'subscriptions') {
           this.subscriptionsPage()
+        } else {
+          SettingsView({ embedded: true })
         }
       }
       .width('100%')
@@ -1612,15 +1623,22 @@ struct ImportDialog {
   };
 
   build() {
-    Column({ space: 10 }) {
+    Column({ space: 12 }) {
       Text($r('app.string.import_link_subscription'))
-        .fontSize(16)
+        .fontSize(18)
         .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.text_primary'))
+        .width('100%')
       TextInput({
         text: this.name,
         placeholder: $r('app.string.subscription_name_optional')
       })
+        .width('100%')
         .height(UiSpec.BTN_HEIGHT)
+        .fontColor($r('app.color.text_primary'))
+        .backgroundColor($r('app.color.form_bg'))
+        .border({ width: UiSpec.GLASS_BORDER_WIDTH, color: $r('app.color.border_glass') })
+        .borderRadius(UiSpec.CHIP_RADIUS)
         .onChange((v: string) => {
           this.name = v;
         })
@@ -1628,26 +1646,39 @@ struct ImportDialog {
         text: this.text,
         placeholder: $r('app.string.import_content_placeholder')
       })
+        .width('100%')
         .height(120)
+        .fontColor($r('app.color.text_primary'))
+        .backgroundColor($r('app.color.form_bg'))
+        .border({ width: UiSpec.GLASS_BORDER_WIDTH, color: $r('app.color.border_glass') })
+        .borderRadius(UiSpec.CHIP_RADIUS)
         .onChange((v: string) => {
           this.text = v;
         })
       Row({ space: 8 }) {
         Button($r('app.string.cancel'))
-          .backgroundColor($r('app.color.surface'))
-          .fontColor($r('app.color.text_primary'))
+          .layoutWeight(1)
+          .backgroundColor($r('app.color.bg_glass_solid'))
+          .fontColor($r('app.color.text_2'))
+          .border({ width: UiSpec.GLASS_BORDER_WIDTH, color: $r('app.color.border_glass') })
           .onClick(() => {
             if (this.controller !== undefined) {
               this.controller.close();
             }
           })
-        Blank()
         Button($r('app.string.read_from_clipboard'))
-          .backgroundColor($r('app.color.surface'))
-          .fontColor($r('app.color.text_primary'))
+          .layoutWeight(1)
+          .backgroundColor($r('app.color.bg_glass_solid'))
+          .fontColor($r('app.color.text_2'))
+          .border({ width: UiSpec.GLASS_BORDER_WIDTH, color: $r('app.color.border_glass') })
           .onClick(() => this.onPickClipboard())
         Button($r('app.string.import_action'))
-          .backgroundColor($r('app.color.primary'))
+          .layoutWeight(1)
+          .fontColor($r('app.color.power_icon'))
+          .linearGradient({
+            angle: 90,
+            colors: [[$r('app.color.grad_neon_a'), 0.0], [$r('app.color.grad_neon_b'), 1.0]]
+          })
           .onClick(() => {
             const t = this.text;
             if (this.controller !== undefined) {
@@ -1658,8 +1689,11 @@ struct ImportDialog {
       }
       .width('100%')
     }
-    .padding(16)
+    .padding(20)
     .width('100%')
+    .backgroundColor($r('app.color.bg_glass_solid'))
+    .border({ width: UiSpec.GLASS_BORDER_WIDTH, color: $r('app.color.border_glass') })
+    .borderRadius(22)
   }
 }
 

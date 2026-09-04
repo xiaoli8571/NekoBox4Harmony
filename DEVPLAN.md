@@ -180,3 +180,16 @@
 - 改动文件：`entry/src/main/ets/pages/Index.ets`、删除 `entry/src/main/ets/common/components/Sidebar.ets`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
 - 约束遵守：未修改 `core/`、`model/`、`utils/`、`vpnext/`、`module.json5`、`AppScope/`、`build-profile.json5`、版本号、`.so` 或构建产物；不构建、不打包、不执行 Git 写操作。
 - 待验证：HarmonyOS ArkTS 类型检查、四 Tab 在三种断点下的实际布局、悬浮导航与 FAB 避让、地区前缀识别、订阅导入即时刷新及 full/lite 深浅色观感均交由构建机与真机验证。
+
+## 2.0 第二轮真机反馈修复 —— 状态：5 项已完成开发，待构建机与真机验证
+
+1. **当前配置持久化：已完成。** 新增 Preferences 键 `active_config_url`，启动时恢复当前订阅配置；配置卡点击后立即写入、更新高亮并切换代理数据源；删除当前订阅时回退到第一条剩余订阅并同步持久化。
+2. **代理分组筛选：已完成。** 筛选项改为「全部 + `SubInfo.group` 去重值 + 未分组」；全部展示所有节点，分组项依据 `Profile.subUrl` 映射订阅分组；移除代理页标题右侧的订阅名称。
+3. **设置页去重与重排：已完成。** 设置中移除重复的订阅管理入口，按「出站模式、路由、DNS、TUN、IPv6、外观与交互、per-app、备份、关于」顺序整理为统一 FlClash 式分区。
+4. **“我的”页内嵌：已完成。** 第四个底部 Tab 直接渲染共享设置视图，不再跳转旧 `SettingsPage`；旧路由保留为轻量兼容外壳。
+5. **导入弹窗主题统一：已完成。** 输入区、描边、次按钮及霓虹渐变主按钮统一使用 01C 玻璃/霓虹资源令牌，并补齐浅色与深色资源。
+6. **首页真实流量与 VPN 状态兜底：已完成开发。** 首页流量轮询不再使用固定错误端口，改为读取当前 `clashApiPort` 并携带 `clashApiSecret`；当跨进程状态事件丢失时，启动流程通过同一 Clash API 有限重试确认数据面已就绪，并同步 `vpnRunning`、运行节点与连接状态，避免真机已连通却长期停在 `connecting/start_timeout`。
+
+- 实际改动文件：`entry/src/main/ets/pages/Index.ets`、`entry/src/main/ets/pages/SettingsPage.ets`、`entry/src/main/ets/views/SettingsView.ets`、`entry/src/main/ets/core/VpnService.ets`、`entry/src/main/ets/utils/TrafficStats.ets`、`entry/src/main/resources/base/element/color.json`、`entry/src/main/resources/dark/element/color.json`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
+- 约束说明：因本轮真机反馈明确要求修复真实数据流，根因位于 `VpnService` 与 `TrafficStats`，故仅对这两个原冻结范围文件做必要的最小修复；未修改版本号、模块声明、VPN 扩展、模型、内核二进制或生成物；未构建、未打包、未执行 Git 写操作。
+- 待验证：ArkTS 类型检查、内嵌设置滚动与布局、分组筛选行为、配置持久化回退、导入弹窗深浅色观感，以及 CommonEvent 丢失场景下 Clash API 状态兜底和首页实时/累计流量均交由构建机与真机验证。

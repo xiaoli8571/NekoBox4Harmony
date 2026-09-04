@@ -137,6 +137,14 @@
       "value": "#E4E7EC"
     },
     {
+      "name": "form_bg",
+      "value": "#F2F4F7"
+    },
+    {
+      "name": "text_2",
+      "value": "#475467"
+    },
+    {
       "name": "text_3",
       "value": "#667085"
     },

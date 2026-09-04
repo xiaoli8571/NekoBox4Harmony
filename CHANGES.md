@@ -479,3 +479,38 @@ Existing notification files reviewed:
 
 
 > 构建机注(2026-09-04,六项修复轮):两次小修后编译通过(1001905)。①Index.ets 的 type MainDestination 声明插在 import 语句之间(arkts-no-misplaced-imports ×10),已移至 import 块之后;②代码使用 saveSettings 但 import 缺失,已补。真机验证点:三断点底部悬浮玻璃四 Tab、FAB 避让、地区前缀识别、导入即时归组、full/lite 深浅色。
+
+## 2026-09-04 2.0 第二轮真机反馈修复：5 项已完成开发，待构建机与真机验证
+
+1. **当前配置持久化**：新增 Preferences 键 `active_config_url`，启动时恢复有效配置；点击订阅配置卡后写入该键、更新当前使用高亮并切换代理数据源；删除当前配置时自动回退到第一条剩余订阅并同步持久化。
+2. **代理按订阅分组筛选**：筛选项改为「全部 + `SubInfo.group` 去重值 + 未分组」；全部显示所有节点，分组筛选通过 `Profile.subUrl` 映射对应订阅；移除代理页标题右侧重复的订阅名称。
+3. **设置去重与 FlClash 式重排**：移除设置中的重复订阅管理区域，保留完整设置能力，并按「出站模式、路由、DNS、TUN、IPv6、外观与交互、per-app、备份、关于」统一分区与行布局。
+4. **“我的”内嵌设置**：第四个底部 Tab 直接渲染共享 `SettingsView`，不再跳转旧设置页；`SettingsPage` 保留为轻量路由兼容外壳。
+5. **导入弹窗主题统一**：弹窗、输入框、次按钮和导入主按钮统一使用 01C 玻璃描边与霓虹渐变资源，新增浅色和深色 `form_bg`、`text_2` 令牌。
+
+改动文件：
+- `entry/src/main/ets/pages/Index.ets`
+- `entry/src/main/ets/pages/SettingsPage.ets`
+- `entry/src/main/ets/views/SettingsView.ets`
+- `entry/src/main/resources/base/element/color.json`
+- `entry/src/main/resources/dark/element/color.json`
+- `DEVPLAN.md`
+- `CHANGES.md`
+
+约束与验证状态：
+- 未修改 `core/`、`model/`、`utils/`、`vpnext/`、`module.json5`、`AppScope/`、`build-profile.json5`、版本号、`.so` 或构建产物。
+- 未构建、未打包、未执行 Git 写操作；构建机将使用 versionCode `1001906` 打包。
+- ArkTS 类型检查、内嵌设置滚动布局、配置回退、分组筛选和导入弹窗深浅色观感待构建机与真机验证。
+
+## 2026-09-04 2.0 第二轮真机数据链路补充修复：已完成开发，待构建机与真机验证
+
+- **首页真实流量恢复**：`TrafficStats.fetchTrafficTotals` 不再固定访问错误的 `19290` 端口，改为接收当前设置中的 `clashApiPort` 与 `clashApiSecret`，请求 `/connections` 时携带 `Authorization: Bearer <secret>`；首页轮询同步传入这两个实际配置值，恢复实时上传、实时下载、累计上传和累计下载。
+- **VPN 状态丢失兜底**：部分真机中 CommonEvent 状态通知可能丢失，表现为 TUN 与 sing-box 已启动但 UI 持续停在 `connecting/start_timeout`。`VpnService.connect` 现每 2 秒使用同一 Clash API 做有限探测，最多 30 次；确认数据面可访问后同步 `vpnRunning`、`vpnRunningProfileId` 与 `vpnStatus=connected`，不再把已正常工作的 VPN 误判为启动失败。
+- **边界保持**：若已收到正常状态事件、用户已断开或启动代次已变化，探测立即停止；探测失败只在约 60 秒后写入 `start_timeout`，不会主动杀死可能仍在运行的数据面。
+- 改动文件：`entry/src/main/ets/core/VpnService.ets`、`entry/src/main/ets/utils/TrafficStats.ets`、`entry/src/main/ets/pages/Index.ets`、`DEVPLAN.md`、`CHANGES.md`。
+- 约束说明：本轮真机反馈明确要求修复真实数据流，根因位于原冻结范围内的 `VpnService` 与 `TrafficStats`，因此仅对这两个文件实施必要的最小完整修复；未修改 `vpnext`、模型、模块声明、版本号、内核二进制或生成物。
+- 静态检查：资源 JSON 可解析，base/en_US 字符串键均为 332，base/dark 颜色键均为 50；涉及文本文件无 NUL；`git diff --check` 通过；所有 `fetchTrafficTotals` 调用已核对。
+- 已知限制：未构建、未打包、未执行 Git 写操作。ArkTS 类型检查、CommonEvent 丢失场景下的状态恢复、鉴权 Clash API 可访问性以及首页实时/累计流量仍需构建机和真机验证。
+
+
+> 构建机注(2026-09-04,五项修复轮):编译通过(1001906)。构建机修复两处:①Index.ets type MainDestination 声明位置(import 之间,×10 报错);②saveSettings 缺 import;③SettingsPage 薄壳页 build 根改为 Column 包裹(@Entry 要求容器根,原直接挂 SettingsView)。事实核对:gpt 汇报"SettingsView 尚未生成"不属实——/worker 的 entry/src/main/ets/views/SettingsView.ets 已存在(730 行,结构平衡),Index 1560 行处已内嵌 SettingsView({embedded:true}),「我的」链路在代码层已闭合,运行时表现待真机验证。gpt 待续任务以其自报为准,在 1001906 基线上继续。

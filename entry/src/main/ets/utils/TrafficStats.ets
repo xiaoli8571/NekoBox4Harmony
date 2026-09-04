@@ -2,18 +2,23 @@ import http from '@ohos.net.http';
 
 /** 通过内核 clash API(/connections)轮询流量累计值,差分得到实时速率。 */
 
-export const CLASH_API_PORT: number = 19290;
+export const CLASH_API_PORT: number = 9090;
 
 export interface TrafficTotals {
   up: number;
   down: number;
 }
 
-export async function fetchTrafficTotals(): Promise<TrafficTotals | null> {
+export async function fetchTrafficTotals(port: number = CLASH_API_PORT, secret: string = ''): Promise<TrafficTotals | null> {
   const client = http.createHttp();
   try {
-    const resp = await client.request(`http://127.0.0.1:${CLASH_API_PORT}/connections`, {
+    const headers: Record<string, string> = {};
+    if (secret.length > 0) {
+      headers['Authorization'] = `Bearer ${secret}`;
+    }
+    const resp = await client.request(`http://127.0.0.1:${port}/connections`, {
       method: http.RequestMethod.GET,
+      header: headers,
       connectTimeout: 1500,
       readTimeout: 1500,
       expectDataType: http.HttpDataType.STRING
