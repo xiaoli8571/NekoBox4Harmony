@@ -1259,6 +1259,54 @@
     {
       "name": "ui_fx_lite",
       "value": "Lite"
+    },
+    {
+      "name": "tab_home",
+      "value": "Home"
+    },
+    {
+      "name": "tab_mine",
+      "value": "Mine"
+    },
+    {
+      "name": "hero_protected_line",
+      "value": "%1$s · Protected for %2$s"
+    },
+    {
+      "name": "current_node",
+      "value": "Current node"
+    },
+    {
+      "name": "node_group_selected",
+      "value": "%1$s · Selected"
+    },
+    {
+      "name": "add_config",
+      "value": "Add profile"
+    },
+    {
+      "name": "proxy_all",
+      "value": "All"
+    },
+    {
+      "name": "node_source_auto",
+      "value": "Auto"
+    },
+    {
+      "name": "node_source_manual",
+      "value": "Manual"
+    },
+    {
+      "name": "sub_in_use",
+      "value": "In use"
+    },
+    {
+      "name": "share",
+      "value": "Share"
+    },
+    {
+      "name": "proxy_empty",
+      "value": "No nodes under this profile"
     }
   ]
 }

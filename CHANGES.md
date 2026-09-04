@@ -454,3 +454,28 @@ Existing notification files reviewed:
 
 
 > 构建机注(2026-09-04,U1~U7 方案 C 合入轮):一次修复后编译通过(1001904)。修复四处:①EntryAbility 的 windowSizeChange 误挂在 WindowStage 上(该对象仅支持 windowStageEvent),改为 getMainWindow 后在 Window 实例上挂/卸监听;②BigPowerButton 成员 size 为基类保留名,改 orbSize;③Sidebar 成员 width 为基类保留名,改 panelWidth(调用点同步);④Index 根容器现为 Row(适配 medium/large 侧边栏),尾部 alignItems 误用 HorizontalAlign 改 VerticalAlign,并清理重复修饰符。另:开发端以 tar 全量覆盖工作区会产生行尾幻影 diff,构建机以 git add 归一化后按真实改动 16 文件收编。
+
+## 2026-09-04 2.0 首轮真机反馈修复：6 项已完成开发，待构建机与真机验证
+
+1. **底部四 Tab**：compact、medium、large 三种断点统一改为底部悬浮玻璃导航，固定为「首页 / 代理 / 订阅 / 我的」；删除旧 `Sidebar` 组件及全部引用。订阅 Tab 在 `Index` 内展示订阅配置，我的 Tab 进入既有设置页。
+2. **首页仅显示当前节点**：首页保留连接 Hero、电源按钮、模式切换和实时统计，只显示当前运行或当前选中的节点卡；点击节点卡进入代理 Tab，全量节点列表不再占据首页。
+3. **代理按当前配置与地区筛选**：代理页仅显示当前订阅或本地配置下的节点，按节点名前缀生成「全部 / HK / JP / SG…」地区筛选；保留选择、编辑、长按菜单、延迟能量条和选中辉光，并提供仅测试当前配置节点的延迟测试入口。
+4. **配置按 `SubInfo.group` 分节**：订阅配置直接依据 `SubInfo.group` 分节，未分组独立显示；订阅卡展示流量、到期、最近更新时间和当前配置高亮，保留更新、分享、改组、删除操作。
+5. **导入命名即时归组**：非空导入名称继续通过 `upsertSub` 写入 `SubInfo.name` 与 `SubInfo.group`；导入成功后立即刷新订阅和节点状态，使订阅页即时归入对应分节，代理页同步读取新配置。
+6. **固定 2×2 统计卡**：Hero 的四张统计卡固定为两行两列，内容为实时上传、实时下载、累计上传、累计下载，复用现有 AppStorage 流量状态链路。
+
+改动文件：
+- `entry/src/main/ets/pages/Index.ets`
+- 删除 `entry/src/main/ets/common/components/Sidebar.ets`
+- `entry/src/main/resources/base/element/string.json`
+- `entry/src/main/resources/en_US/element/string.json`
+- `DEVPLAN.md`
+- `CHANGES.md`
+
+约束与验证状态：
+- 未修改 `core/`、`model/`、`utils/`、`vpnext/`、`module.json5`、`AppScope/`、`build-profile.json5`、版本号、`.so` 或构建产物。
+- 未构建、未打包、未执行 Git 写操作。
+- ArkTS 类型检查、三断点布局、悬浮导航与 FAB 避让、地区识别、导入即时刷新以及 full/lite 深浅色观感待构建机和真机验证。
+
+
+> 构建机注(2026-09-04,六项修复轮):两次小修后编译通过(1001905)。①Index.ets 的 type MainDestination 声明插在 import 语句之间(arkts-no-misplaced-imports ×10),已移至 import 块之后;②代码使用 saveSettings 但 import 缺失,已补。真机验证点:三断点底部悬浮玻璃四 Tab、FAB 避让、地区前缀识别、导入即时归组、full/lite 深浅色。

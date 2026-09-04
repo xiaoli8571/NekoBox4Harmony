@@ -167,3 +167,16 @@
 - **文案**：「导入链接」全局改为「导入订阅」(import_link_subscription / subscription_link_use_home / settings_subs_empty)；删除已无引用的 `import_link` 键；新增 `subscription_name_optional`、`sub_group_none_count`、`sub_group_value`；删除死资源 `sub_group_none`。
 - **静态检查**：4 个资源 JSON 语法通过；base/en_US 字符串键 311=311 无缺失；base/dark 色值键 24=24 无缺失；`git diff --check` 干净；无 `$r()` 进模板串；十六进制色值仅存于日志页(刻意保留)；改动全部位于 `entry/src/main/ets` 与 `entry/src/main/resources` 白名单，未触碰内核 `core/`、`.so`、`module.json5`、`build-profile.json5`、`AppScope`。
 - 未构建、未打包、未执行 Git 写操作；等待构建机编译与真机验证。
+
+## 2.0 首轮真机反馈：FlClash 式 UI 与功能分布修复 —— 状态：6 项已完成开发，待构建机与真机验证
+
+1. **底部四 Tab：已完成。** compact、medium、large 三种断点统一使用底部悬浮玻璃导航，四个入口固定为「首页 / 代理 / 订阅 / 我的」；已移除旧侧栏组件及其全部引用。「订阅」直接进入订阅配置视图，不再误跳设置页；「我的」进入既有设置页。
+2. **首页仅显示当前节点：已完成。** 首页保留连接 Hero、电源按钮、模式切换和实时统计，仅展示当前运行节点或当前选中节点卡；点击当前节点卡进入代理页，全量节点列表不再堆叠在首页。
+3. **代理按当前配置与地区筛选：已完成。** 代理页仅展示当前订阅或本地配置中的节点，依据节点名前缀生成「全部 / HK / JP / SG…」地区筛选；保留节点选择、编辑、长按菜单、延迟能量条、选中辉光，并新增仅测试当前配置节点的延迟测试入口。
+4. **配置按 `SubInfo.group` 分节：已完成。** 订阅页直接读取 `SubInfo.group` 分节，未分组单独显示；卡片展示名称、流量、到期、最近更新时间和当前配置高亮，并保留更新、分享、改组、删除操作。
+5. **导入命名即时归组：已完成。** 导入订阅继续复用 `upsertSub` 将非空名称写入 `SubInfo.name` 与 `SubInfo.group`；导入成功后立即重新加载订阅和节点数据，当前订阅页无需退出重进即可归入对应分节，代理页同步使用新配置数据。
+6. **2×2 统计卡：已完成。** Hero 内四张统计卡固定为两行两列，并改为实时上传、实时下载、累计上传、累计下载；使用现有 AppStorage 流量链路，没有新增模型或接口。
+
+- 改动文件：`entry/src/main/ets/pages/Index.ets`、删除 `entry/src/main/ets/common/components/Sidebar.ets`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
+- 约束遵守：未修改 `core/`、`model/`、`utils/`、`vpnext/`、`module.json5`、`AppScope/`、`build-profile.json5`、版本号、`.so` 或构建产物；不构建、不打包、不执行 Git 写操作。
+- 待验证：HarmonyOS ArkTS 类型检查、四 Tab 在三种断点下的实际布局、悬浮导航与 FAB 避让、地区前缀识别、订阅导入即时刷新及 full/lite 深浅色观感均交由构建机与真机验证。

@@ -1259,6 +1259,54 @@
     {
       "name": "ui_fx_lite",
       "value": "轻量"
+    },
+    {
+      "name": "tab_home",
+      "value": "首页"
+    },
+    {
+      "name": "tab_mine",
+      "value": "我的"
+    },
+    {
+      "name": "hero_protected_line",
+      "value": "%1$s · 已保护 %2$s"
+    },
+    {
+      "name": "current_node",
+      "value": "当前节点"
+    },
+    {
+      "name": "node_group_selected",
+      "value": "%1$s · 已选"
+    },
+    {
+      "name": "add_config",
+      "value": "添加配置"
+    },
+    {
+      "name": "proxy_all",
+      "value": "全部"
+    },
+    {
+      "name": "node_source_auto",
+      "value": "自动"
+    },
+    {
+      "name": "node_source_manual",
+      "value": "手动"
+    },
+    {
+      "name": "sub_in_use",
+      "value": "当前使用"
+    },
+    {
+      "name": "share",
+      "value": "分享"
+    },
+    {
+      "name": "proxy_empty",
+      "value": "该配置下暂无节点"
     }
   ]
 }
