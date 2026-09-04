@@ -185,7 +185,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     const generation = ++this.lifecycleGeneration;
     try {
       const context: common.Context = this.context;
-      await initStore(context);
+      await initStore(context, true);
       const pendingId = this.latestRequestedProfileId.length > 0
         ? this.latestRequestedProfileId : await getPendingProfileId();
       if (this.started) {

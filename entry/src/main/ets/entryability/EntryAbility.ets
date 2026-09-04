@@ -19,6 +19,7 @@ import { needAutoUpdate, updateSubscription, markSubSuccess, markSubFailure, set
 
 export default class EntryAbility extends UIAbility {
   private backgroundUpdating: boolean = false;
+  private appliedColorMode: number = -999;
   private windowStage?: window.WindowStage;
   private mainWindow?: window.Window;
   private readonly onWindowSizeChange = (size: window.Size): void => {
@@ -116,7 +117,10 @@ export default class EntryAbility extends UIAbility {
         : (settings.appearance === 'light'
           ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
           : ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
-      this.context.setColorMode(colorMode);
+      if (colorMode !== this.appliedColorMode) {
+        this.appliedColorMode = colorMode;
+        this.context.setColorMode(colorMode);
+      }
     } catch (e) {
       LogStore.addLog(`[app] 应用主题失败: ${e}`);
     }
@@ -162,7 +166,8 @@ export default class EntryAbility extends UIAbility {
   }
 
   onConfigurationUpdate(newConfig: Configuration): void {
-    this.applyAppearance();
+    // 禁止在此回调中调用 setColorMode（applyAppearance）：setColorMode 会再次触发
+    // onConfigurationUpdate，形成全 UI 重渲染死循环，曾导致整机卡顿无法使用。
     this.updateStatusBarAvoid();
     if (this.windowStage !== undefined) {
       this.applyStatusBarStyle(this.windowStage);

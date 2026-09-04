@@ -544,3 +544,11 @@ Existing notification files reviewed:
 - `entryability/EntryAbility.ets`:新增 `updateStatusBarAvoid()`(TYPE_SYSTEM/TYPE_CUTOUT 避让高度 px→vp 写入 AppStorage `statusBarHeightVp`,窗口创建与 windowSizeChange 时刷新);深浅色判定改为 显式偏好 → `config.colorMode` → 亮度推断 三级回退;新增 `onConfigurationUpdate` 重刷外观与状态栏样式。
 - 页面顶部避让(读取 `statusBarHeightVp` 顶部内边距,避让高度为 0 时自动无额外留白):`pages/Index.ets`(主内容 Column)、`pages/SettingsPage.ets`、`pages/ProfileEdit.ets`、`pages/RouteRulesPage.ets`、`pages/SubDetailPage.ets`(后三者顺带清理了 build 根重复的 width/height/backgroundColor 修饰链,仅冗余调用,无行为变化)。
 - 待真机验证:状态栏时钟/电量在深浅色模式下均清晰可见;页面内容不再与状态栏图标重叠;横竖屏切换与系统深浅色切换后状态栏样式正确。
+
+## 2026-09-04 构建机直修:整机严重卡顿回归修复(versionCode 1001909)
+
+- 真机反馈:1001907/1001908 起应用极度卡顿、启动缓慢,几乎无法使用。根因两项,均属构建机/上一轮引入的回归:
+  1. **onConfigurationUpdate 循环回调(主因,1001908 引入)**:构建机在该回调中调用了 `applyAppearance()`(内部 `setColorMode`),而 `setColorMode` 自身会再次触发 `onConfigurationUpdate`,形成"全 UI 重渲染 → 回调 → 再 setColorMode"死循环,应用自启动起持续满负荷重渲染。已移除该回调中的 `applyAppearance()`,只保留廉价的状态栏避让与前景色刷新;`applyAppearance()` 增加同值跳过保险。规则沉淀:**onConfigurationUpdate 内严禁调用 setColorMode**。
+  2. **Preferences 每次读写磁盘重开(放大器,1001907 引入)**:跨进程覆写修复把 requirePref 改为每次 removePreferencesFromCache+getPreferences,高频读取全部变成磁盘 I/O。已改为:仅 :vpn 扩展进程(initStore 第二参数 isVpnProcess=true,VpnExtAbility 传入)每次重开以保留跨进程覆写修复;UI 进程恢复缓存实例,恢复原有读取性能。
+- 改动文件:`entry/src/main/ets/entryability/EntryAbility.ets`、`entry/src/main/ets/model/Store.ets`、`entry/src/main/ets/vpnext/VpnExtAbility.ets`
+- 待真机验证:启动与页面响应恢复流畅;TCP DNS 持久化修复(1001907)不回归——保存后完全退出重进仍保留、:vpn 进程读到新值。

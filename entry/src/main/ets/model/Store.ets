@@ -13,21 +13,30 @@ const KEY_PENDING = 'pending_profile_id';
 export const LOG_EVENT_ID: number = 1001;
 
 let storeContext: common.Context | null = null;
+let prefInstance: dataPreferences.Preferences | null = null;
+let vpnProcessMode = false;
 
-export async function initStore(context: common.Context): Promise<void> {
+export async function initStore(context: common.Context, isVpnProcess: boolean = false): Promise<void> {
   storeContext = context;
-  await dataPreferences.removePreferencesFromCache(context, PREF_NAME);
-  await dataPreferences.getPreferences(context, PREF_NAME);
+  vpnProcessMode = isVpnProcess;
+  prefInstance = await dataPreferences.getPreferences(context, PREF_NAME);
 }
 
 async function requirePref(): Promise<dataPreferences.Preferences> {
   if (storeContext === null) {
     throw new Error('store not initialized');
   }
-  // UI 与 :vpn 是独立进程。每次读写前丢弃进程内缓存并重新打开，
-  // 避免任一进程用旧快照 flush 覆盖另一进程刚保存的设置或握手键。
-  await dataPreferences.removePreferencesFromCache(storeContext, PREF_NAME);
-  return await dataPreferences.getPreferences(storeContext, PREF_NAME);
+  // UI 与 :vpn 是独立进程。:vpn 进程内每次读写都从磁盘重开，避免其旧快照
+  // flush 覆盖 UI 进程刚保存的设置（跨进程覆写）；UI 进程保留缓存实例保证
+  // 高频读取性能——两进程缓存实例都重开曾是严重卡顿的来源之一。
+  if (vpnProcessMode) {
+    await dataPreferences.removePreferencesFromCache(storeContext, PREF_NAME);
+    return await dataPreferences.getPreferences(storeContext, PREF_NAME);
+  }
+  if (prefInstance === null) {
+    prefInstance = await dataPreferences.getPreferences(storeContext, PREF_NAME);
+  }
+  return prefInstance;
 }
 
 export async function loadProfiles(): Promise<Array<Profile>> {
