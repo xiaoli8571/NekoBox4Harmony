@@ -1307,6 +1307,26 @@
     {
       "name": "proxy_empty",
       "value": "该配置下暂无节点"
+    },
+    {
+      "name": "section_route",
+      "value": "路由"
+    },
+    {
+      "name": "section_dns",
+      "value": "DNS"
+    },
+    {
+      "name": "section_tun",
+      "value": "TUN"
+    },
+    {
+      "name": "section_ipv6",
+      "value": "IPv6"
+    },
+    {
+      "name": "section_about",
+      "value": "关于"
     }
   ]
 }

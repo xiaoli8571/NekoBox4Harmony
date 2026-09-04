@@ -1307,6 +1307,26 @@
     {
       "name": "proxy_empty",
       "value": "No nodes under this profile"
+    },
+    {
+      "name": "section_route",
+      "value": "Routing"
+    },
+    {
+      "name": "section_dns",
+      "value": "DNS"
+    },
+    {
+      "name": "section_tun",
+      "value": "TUN"
+    },
+    {
+      "name": "section_ipv6",
+      "value": "IPv6"
+    },
+    {
+      "name": "section_about",
+      "value": "About"
     }
   ]
 }
