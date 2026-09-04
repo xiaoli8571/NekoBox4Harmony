@@ -57,7 +57,6 @@ struct Index {
   @State activeDestination: MainDestination = 'home';
   @State subs: Array<SubInfo> = [];
   @State activeConfigUrl: string = '';
-  @State proxyGroupTab: string = 'all';
   @State updatingSubUrl: string = '';
   @State connectedAt: number = 0;
   @State protectedNow: number = 0;
@@ -414,7 +413,6 @@ struct Index {
   /** 点击节点:未运行则选中;运行中点其他节点 = 自动断开重连切换 */
   async onNodeTap(p: Profile): Promise<void> {
     this.selectedId = p.id;
-    this.proxyGroupTab = 'all';
     if (!this.isRunning) {
       return;
     }
@@ -520,7 +518,6 @@ struct Index {
         promptAction.showToast({ message: $r('app.string.imported_count', parsed.length) });
       }
       // 导入完成后立即刷新配置页与代理页数据(命名订阅即时归入 SubInfo.group 分组)
-      this.proxyGroupTab = 'all';
       await this.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
@@ -677,37 +674,16 @@ struct Index {
     return m === null ? '' : m[1].toUpperCase();
   }
 
-  /** 代理页顶部配置分组筛选：全部 + 订阅分组去重 + 未分组。 */
-  proxyGroupTabs(): Array<string> {
-    const tabs: Array<string> = ['all'];
-    for (const sub of this.subs) {
-      const group = sub.group.trim();
-      const key = group.length > 0 ? group : '__ungrouped__';
-      if (tabs.indexOf(key) < 0) {
-        tabs.push(key);
-      }
-    }
-    return tabs;
-  }
-
-  private profileSubscriptionGroup(profile: Profile): string {
-    const sub = this.subs.find((item: SubInfo) => item.url === profile.subUrl);
-    if (sub === undefined || sub.group.trim().length === 0) {
-      return '__ungrouped__';
-    }
-    return sub.group.trim();
-  }
-
+  /** 代理页只显示订阅页当前选中订阅的节点；无订阅配置时保留全部手动节点。 */
   visibleProxyProfiles(): Array<Profile> {
-    if (this.proxyGroupTab === 'all') {
+    if (this.activeConfigUrl.length === 0) {
       return this.sortedProfiles();
     }
-    return this.sortedProfiles().filter((p: Profile) => this.profileSubscriptionGroup(p) === this.proxyGroupTab);
+    return this.sortedProfiles().filter((p: Profile) => p.subUrl === this.activeConfigUrl);
   }
 
   async selectActiveConfig(sub: SubInfo): Promise<void> {
     this.activeConfigUrl = sub.url;
-    this.proxyGroupTab = sub.group.trim().length > 0 ? sub.group.trim() : '__ungrouped__';
     await writePrefString('active_config_url', sub.url);
     const profiles = this.profiles.filter((profile: Profile) => profile.subUrl === sub.url);
     if (!profiles.some((profile: Profile) => profile.id === this.selectedId)) {
@@ -751,7 +727,6 @@ struct Index {
       const r = await updateSubscription(sub.url);
       await markSubSuccess(sub.url);
       promptAction.showToast({ message: $r('app.string.sub_update_result', r.added, r.removed) });
-      this.proxyGroupTab = 'all';
       await this.refresh();
     } catch (e) {
       await markSubFailure(sub.url);
@@ -782,8 +757,7 @@ struct Index {
             this.activeConfigUrl = remainingSubs.length > 0 ? remainingSubs[0].url : '';
             await writePrefString('active_config_url', this.activeConfigUrl);
           }
-          this.proxyGroupTab = 'all';
-          await this.refresh();
+              await this.refresh();
         }
       }
     });
@@ -1169,34 +1143,6 @@ struct Index {
       }
       .width('100%')
       .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 12, bottom: 4 })
-
-      // 地区筛选 tabs:全部 + 当前配置下节点名前缀(如 HK / JP / SG)
-      Scroll() {
-        Row({ space: UiSpec.GAP_SM }) {
-          ForEach(this.proxyGroupTabs(), (tab: string) => {
-            Button(tab === 'all' ? $r('app.string.proxy_all')
-              : (tab === '__ungrouped__' ? $r('app.string.ungrouped') : tab))
-              .height(30)
-              .fontSize(12)
-              .borderRadius(UiSpec.CHIP_RADIUS)
-              .padding({ left: 14, right: 14 })
-              .backgroundColor(this.proxyGroupTab === tab ? $r('app.color.chip_on_bg_a') : $r('app.color.bg_glass_solid'))
-              .fontColor(this.proxyGroupTab === tab ? $r('app.color.text_primary') : $r('app.color.text_secondary'))
-              .border({
-                width: UiSpec.GLASS_BORDER_WIDTH,
-                color: this.proxyGroupTab === tab ? $r('app.color.chip_on_border') : $r('app.color.border_glass')
-              })
-              .onClick(() => {
-                this.proxyGroupTab = tab;
-              })
-          }, (tab: string) => tab)
-        }
-        .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 4, bottom: 8 })
-      }
-      .scrollable(ScrollDirection.Horizontal)
-      .scrollBar(BarState.Off)
-      .width('100%')
-      .height(48)
 
       Stack({ alignContent: Alignment.BottomEnd }) {
         Column() {
