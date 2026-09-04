@@ -4,6 +4,8 @@ import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
 import { BigPowerButton } from '../common/components/BigPowerButton';
 import { MiniStatCard } from '../common/components/MiniStatCard';
+import { Sidebar, SidebarDestination } from '../common/components/Sidebar';
+import { UiBreakpoint } from '../common/Breakpoint';
 import { Profile, ProfileGroup, AppSettings, profileTypeLabel } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, loadSettings, saveSettings, readPrefString, writePrefString, LogStore } from '../model/Store';
 import { VpnService } from '../core/VpnService';
@@ -26,6 +28,8 @@ struct Index {
   @State latencies: Record<string, number> = {};
   @State testing: boolean = false;
   @State settings: AppSettings = new AppSettings();
+  @State sidebarDestination: SidebarDestination = 'home';
+  @StorageLink('uiBreakpoint') uiBreakpoint: UiBreakpoint = 'compact';
   @StorageLink('vpnRunning') @Watch('onRunningChange') isRunning: boolean = false;
   @StorageLink('vpnStatus') statusText: string = 'disconnected';
   @StorageLink('vpnUpSpeed') upSpeed: number = 0;
@@ -49,6 +53,10 @@ struct Index {
   // 从编辑页 router.back() 回来时刷新列表(否则新保存的节点不显示)
   onPageShow(): void {
     this.refresh();
+  }
+
+  aboutToDisappear(): void {
+    this.stopSpeedPoller();
   }
 
   onRunningChange(): void {
@@ -267,6 +275,14 @@ struct Index {
       return $r('app.color.warning');
     }
     return $r('app.color.error');
+  }
+
+  latencyBarWidth(p: Profile): number {
+    const ms = this.latencies[p.id];
+    if (ms === undefined || ms < 0) {
+      return 0;
+    }
+    return Math.max(4, Math.min(64, Math.round(ms / 250 * 64)));
   }
 
   async connectTo(p: Profile): Promise<void> {
@@ -639,8 +655,22 @@ struct Index {
   }
 
   build() {
-    Column() {
-    Column() {
+    Row() {
+      if (this.uiBreakpoint !== 'compact') {
+        Sidebar({
+          panelWidth: this.uiBreakpoint === 'large' ? 180 : 150,
+          active: this.sidebarDestination,
+          onSelect: (destination: SidebarDestination) => {
+            this.sidebarDestination = destination;
+            if (destination === 'subscriptions' || destination === 'settings') {
+              router.pushUrl({ url: 'pages/SettingsPage' });
+            } else if (destination === 'rules') {
+              router.pushUrl({ url: 'pages/RouteRulesPage' });
+            }
+          }
+        })
+      }
+      Column() {
       // Android NekoBox 风格顶栏与快捷导航
       Row({ space: 4 }) {
         Column({ space: 2 }) {
@@ -692,6 +722,8 @@ struct Index {
       .width('100%')
       .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 12, bottom: 8 })
 
+      // medium/large 侧栏切到“代理”时聚焦节点栅格；compact 与首页保留完整 Hero。
+      if (this.uiBreakpoint === 'compact' || this.sidebarDestination === 'home') {
       // 鸿蒙原生 Hero 卡片：状态、主连接按钮与实时统计共用现有 VPN 状态链路
       Column({ space: UiSpec.GAP_LG }) {
         Row({ space: UiSpec.GAP_SM }) {
@@ -715,6 +747,7 @@ struct Index {
         BigPowerButton({
           running: this.isRunning,
           connecting: this.statusText === 'connecting' || this.statusText === 'switching',
+          orbSize: this.uiBreakpoint === 'compact' ? UiSpec.ORB_BUTTON_SIZE : 64,
           onToggle: () => {
             if (this.isRunning) {
               this.disconnect();
@@ -760,9 +793,19 @@ struct Index {
       .width('calc(100% - 32vp)')
       .margin({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, bottom: 10 })
       .padding(20)
-      .borderRadius(24)
-      .backgroundColor($r('app.color.surface'))
-      .shadow({ radius: 16, color: $r('app.color.shadow_color'), offsetX: 0, offsetY: 6 })
+      .borderRadius(UiSpec.GLASS_RADIUS)
+      .backgroundColor($r('app.color.bg_glass'))
+      .border({
+        width: UiSpec.GLASS_BORDER_WIDTH,
+        color: $r('app.color.border_glass')
+      })
+      .shadow({
+        radius: UiSpec.GLASS_SHADOW_RADIUS,
+        color: $r('app.color.sel_glow'),
+        offsetX: 0,
+        offsetY: UiSpec.GLASS_SHADOW_OFFSET
+      })
+      }
 
       // 按分组展示节点，分组头在折叠状态下仍显示测速汇总与操作
       List({ space: 8 }) {
@@ -831,10 +874,28 @@ struct Index {
                     })
 
                     if (this.latencies[p.id] !== undefined || this.testing) {
-                      Text(this.latencyText(p))
-                        .fontSize(12)
-                        .fontColor(this.latencyColor(p))
-                        .margin({ right: 4 })
+                      Column({ space: 4 }) {
+                        Stack({ alignContent: Alignment.Start }) {
+                          Row()
+                            .width(64)
+                            .height(5)
+                            .borderRadius(3)
+                            .backgroundColor($r('app.color.border_glass'))
+                          Row()
+                            .width(this.latencyBarWidth(p))
+                            .height(5)
+                            .borderRadius(3)
+                            .backgroundColor(this.latencyColor(p))
+                        }
+                        .width(64)
+                        .height(5)
+                        Text(this.latencyText(p))
+                          .fontSize(12)
+                          .fontWeight(FontWeight.Bold)
+                          .fontColor(this.latencyColor(p))
+                      }
+                      .alignItems(HorizontalAlign.End)
+                      .margin({ right: 4 })
                     }
 
                     Text('✏')
@@ -848,7 +909,17 @@ struct Index {
                   .width('100%')
                   .padding(12)
                   .borderRadius(UiSpec.CARD_RADIUS)
-                  .backgroundColor(this.selectedId === p.id ? $r('app.color.surface_selected') : $r('app.color.surface'))
+                  .backgroundColor($r('app.color.bg_glass_solid'))
+                  .border({
+                    width: UiSpec.GLASS_BORDER_WIDTH,
+                    color: this.selectedId === p.id ? $r('app.color.sel_border') : $r('app.color.border_glass')
+                  })
+                  .shadow({
+                    radius: this.selectedId === p.id ? UiSpec.GLASS_SHADOW_RADIUS : 0,
+                    color: $r('app.color.sel_glow'),
+                    offsetX: 0,
+                    offsetY: 0
+                  })
                   .hoverEffect(HoverEffect.Scale)
                   .bindContextMenu(this.profileContextMenu(p), ResponseType.LongPress)
                 }, (p: Profile) => p.id)
@@ -856,11 +927,16 @@ struct Index {
             }
             .width('100%')
             .padding(8)
-            .borderRadius(UiSpec.CARD_RADIUS)
-            .backgroundColor($r('app.color.surface'))
+            .borderRadius(UiSpec.GLASS_RADIUS)
+            .backgroundColor($r('app.color.bg_glass'))
+            .border({
+              width: UiSpec.GLASS_BORDER_WIDTH,
+              color: $r('app.color.border_glass')
+            })
           }
         }, (groupId: string) => groupId)
       }
+      .lanes(this.uiBreakpoint === 'large' ? 3 : (this.uiBreakpoint === 'medium' ? 2 : 1))
       .layoutWeight(1)
       .width('100%')
       .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
@@ -882,10 +958,7 @@ struct Index {
     }
     .width('100%')
     .height('100%')
-    .alignItems(HorizontalAlign.Center)
-    .backgroundColor($r('app.color.app_background'))
-    .width('100%')
-    .height('100%')
+    .alignItems(VerticalAlign.Center)
     .backgroundColor($r('app.color.app_background'))
   }
 }

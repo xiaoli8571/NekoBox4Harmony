@@ -2,7 +2,9 @@ import UIAbility from '@ohos.app.ability.UIAbility';
 import Want from '@ohos.app.ability.Want';
 import AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import window from '@ohos.window';
+import display from '@ohos.display';
 import { UiSpec } from '../common/UiSpec';
+import { resolveUiBreakpoint } from '../common/Breakpoint';
 import common from '@ohos.app.ability.common';
 import notificationManager from '@ohos.notificationManager';
 import BusinessError from '@ohos.base';
@@ -16,6 +18,21 @@ import { needAutoUpdate, updateSubscription, markSubSuccess, markSubFailure, set
 
 export default class EntryAbility extends UIAbility {
   private backgroundUpdating: boolean = false;
+  private windowStage?: window.WindowStage;
+  private mainWindow?: window.Window;
+  private readonly onWindowSizeChange = (size: window.Size): void => {
+    const density = display.getDefaultDisplaySync().densityPixels;
+    const shortestSideVp = Math.min(size.width, size.height) / density;
+    AppStorage.setOrCreate('uiBreakpoint', resolveUiBreakpoint(shortestSideVp));
+  };
+
+  private updateUiBreakpoint(windowStage: window.WindowStage): void {
+    windowStage.getMainWindow().then((mainWindow: window.Window) => {
+      this.onWindowSizeChange(mainWindow.getWindowProperties().windowRect);
+    }).catch((e: Object) => {
+      LogStore.addLog(`[app] 初始化窗口断点失败: ${e}`);
+    });
+  }
 
   private async updateDueSubscriptionsInBackground(): Promise<void> {
     if (this.backgroundUpdating) {
@@ -130,6 +147,14 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
+    this.windowStage = windowStage;
+    this.updateUiBreakpoint(windowStage);
+    windowStage.getMainWindow().then((mainWindow: window.Window) => {
+      this.mainWindow = mainWindow;
+      mainWindow.on('windowSizeChange', this.onWindowSizeChange);
+    }).catch((e: Object) => {
+      LogStore.addLog(`[app] 注册窗口尺寸监听失败: ${e}`);
+    });
     windowStage.loadContent('pages/Index', (err) => {
       if (err.code) {
         return;
@@ -168,6 +193,12 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageDestroy(): void {
+    if (this.windowStage !== undefined) {
+      if (this.mainWindow !== undefined) {
+        this.mainWindow.off('windowSizeChange', this.onWindowSizeChange);
+        this.mainWindow = undefined;
+      }
+    }
   }
 
   onForeground(): void {

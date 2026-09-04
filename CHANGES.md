@@ -364,20 +364,75 @@ Existing notification files reviewed:
 - 真机验证:通知两态显示、VPN 启动、cache_file 修复均已通过;G4(SRS 下载)与 G5(clash_api)运行时行为为已知风险点,详见 release notes。
 - 产物 dist/NekoBox4Harmony-1.6.0-unsigned.hap,签名由用户在 DevEco 完成。
 
-## 2026-09-03 U1 首页重构：已完成开发，待构建机验证
+## 2026-09-04 U1 首页重构（方案 C 玻璃拟态霓虹）：已完成开发，待构建机验证
 
-- 按方案 A「鸿蒙原生卡片流」重构首页视觉层级，连接状态继续只读 `AppStorage('vpnStatus')` 并通过 `Index.statusDisplay()` 显示映射，未改变既有机器键语义。
-- 新增并接入 `BigPowerButton`、`MiniStatCard`、`ToggleRow` 组件：主连接按钮直径 118vp，支持断开、连接中、已连接三态及 200ms 按压缩放；实时速率、流量和节点数量采用 2×2 小卡布局并使用等宽数字。
-- 首页快捷开关复用既有 `AppSettings` 与 `saveSettings()`，未新建状态层或 AppStorage 业务键。
-- 保留既有节点选择、VPN 启停、订阅导入、节点新增与编辑、测速、分组测速、分组折叠、手动排序、置顶、分享、per-app 设置入口，以及连接、日志、设置页面入口。
-- 扩展既有 `UiSpec` 与 base/dark 颜色资源，新增按钮 ring、glow 和图标颜色 token；新增中英文文案各 3 键，两侧资源键集合一致。
-- 改动文件：`entry/src/main/ets/common/UiSpec.ets`、`entry/src/main/ets/common/components/BigPowerButton.ets`、`entry/src/main/ets/common/components/MiniStatCard.ets`、`entry/src/main/ets/common/components/ToggleRow.ets`、`entry/src/main/ets/pages/Index.ets`、`entry/src/main/resources/base/element/color.json`、`entry/src/main/resources/dark/element/color.json`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
-- 已执行 JSON 语法校验、base/en_US 文案键一致性核对与 `git diff --check`；按约束未启动构建、打包或任何 Git 写操作。
-- 已知限制：构建状态为“待构建机验证”；连接时按钮当前以省略号表达 loading，旋转 loading 动效与呼吸状态点留待 U4 统一校核；首页仍保持现有单页节点管理结构，底部导航与完整页面拆分将在后续 U 阶段按既定顺序处理。
+- 将既有 F1 深色皮肤替换为方案 C「玻璃拟态霓虹」，浅色主题继续保持 F1 外观；C 主题 token 并入既有 `UiSpec.ets` 和 base/dark 颜色资源，未建立平行 token 系统。
+- 首页 Hero、连接能量球、统计卡和节点容器采用玻璃描边、霓虹强调及选中辉光；节点行使用实底玻璃降级，未逐行添加 blur，为 U3 的 `uiFxLevel` full/lite 切换保留统一接入路径。
+- 连接状态继续只读 `AppStorage('vpnStatus')` 并通过 `Index.statusDisplay()` 显示，未改变机器键、Store、Profile 或 VPN 核心链路。
+- 保留节点选择、VPN 启停、订阅导入、节点新增与编辑、测速、分组测速、分组折叠、手动排序、置顶、分享、per-app 设置入口，以及连接、日志和设置页面入口。
+- 改动文件：`entry/src/main/ets/common/UiSpec.ets`、`entry/src/main/ets/common/components/BigPowerButton.ets`、`entry/src/main/ets/common/components/MiniStatCard.ets`、`entry/src/main/ets/pages/Index.ets`、`entry/src/main/resources/base/element/color.json`、`entry/src/main/resources/dark/element/color.json`、`DEVPLAN.md`、`CHANGES.md`。
+- 静态检查：base/dark 颜色资源均为 48 键，集合一致且无重复；新增 ArkTS 无十六进制色值、无 `.stateEffect()`；`git diff --check` 通过。未新增文案，base/en_US 文案键数不受影响。
+- 已知限制：构建状态为“待构建机验证”；连接中旋转 loading、状态点呼吸动效及完整 blur/full-lite 动态切换留待 U3/U4 按既定顺序实现和审计；未构建、未打包、未执行 Git 写操作。
 
 
 > 构建机注(2026-09-03,UI 重构 + 订阅分组的):打包前检查确认无订阅分组功能,构建机已实现 —— SubInfo 新增 group 字段(Preferences JSON 与备份 schema 天然向后兼容,旧数据默认未分组);设置页订阅区按分组分节渲染(未分组在最前,组头显示数量),每条订阅新增"分组"操作(SubGroupDialog 弹窗改组);新增 4 组中英文案。另修复 Codex 重构组件在本机 SDK 的两个编译错误:MiniStatCard 移除 fontVariant(FontVariant 本机不存在)、ToggleRow 成员 enabled 为保留名改 controlEnabled。订阅分组实现:ets/core/Subscriptions.ets、ets/pages/SettingsPage.ets、resources 双份 string.json。versionCode 1001901。
 
+
+## 2026-09-04 U2 节点列表（方案 C 玻璃拟态霓虹）：已完成开发，待构建机验证
+
+- 节点列表沿用 U1 的单层玻璃容器，节点行使用实底玻璃降级，选中项以青色描边与辉光区分，未对列表逐行应用 blur。
+- 新增 64vp 延迟能量条，按 `latency / 250` 限幅显示，并复用既有测速结果及成功、警告、错误颜色语义；未测或失败时不绘制有效长度。
+- 保留 G1 手动排序及名称/延迟排序、置顶优先级、分组测速与折叠、二维码不可用时的纯文本分享降级、复制链接和订阅详情入口，未改变 `Profile`、`Store` 或排序持久化契约。
+- U2 代码改动集中于 `entry/src/main/ets/pages/Index.ets`；同步更新 `DEVPLAN.md` 与 `CHANGES.md`。
+- 静态检查已核对资源 JSON、功能引用、新增 ArkTS 十六进制色值、`.stateEffect()` 和 `git diff --check`；未构建、未打包、未执行 Git 写操作。构建状态：待构建机验证。
+
+## 2026-09-04 U5 桌面服务卡片 2×2 / 2×4（条件任务）：方案已完成，待用户解除 module.json5 冻结
+
+- 已按默认条件任务新增 `docs/U5-桌面服务卡片方案.md`，覆盖 2×2/2×4 视觉、`form_config.json` 草案、`VpnFormAbility`、快照契约、Preferences 冷启动兜底、10 秒节流发布及 `postCardAction` 回传链路。
+- 方案规定两张卡片的 `defaultColor` 均为 `#0B0F1A`，卡片进程内不开 blur，不 import 主应用 Store、VPN Service 或 core 模块。
+- 已定义 `toggle`、`select`、`open` 从卡片到 `EntryAbility` 并复用既有业务方法的完整设计，包含输入校验、一次性动作消费和错误降级。
+- 严格保持 `entry/src/main/module.json5` 冻结，未新增 FormExtensionAbility、FormWidget 或运行时代码。只有用户明确解除冻结后才进入实现。
+- 未构建、未打包、未执行 Git 写操作。U5 按交接要求完成方案阶段，运行时实现及真机验收待授权。
+
+## 2026-09-04 U4 token 审计、性能护栏与动效收口（方案 C）：已完成开发，待构建机验证
+
+- 完成 `entry/src/main/ets` 全目录色值审计：存量十六进制色值仅位于 `UiSpec.ets` 状态栏黑白常量和 `LogPage.ets` 既有固定色，本轮新增代码 0 命中，未改动存量项。
+- base/dark 颜色资源均为 48 个唯一键且集合一致；base/en_US 文案资源均为 315 个唯一键且集合一致，U4 未新增文案键。
+- 当前改造页面显式 blur 节点为 0，符合每屏不超过 6 个的预算；滚动列表未逐行添加 blur。
+- 首页新增 `aboutToDisappear()` 清理，离开页面时停止速率轮询并清除定时器，避免后台空转；连接状态变化时的原有启停逻辑保持不变。
+- `uiFxLevel` 继续使用 `full`/`lite` 二选一并默认 `full`；设置页切换即时更新。当前实现无显式 blur，lite 模式不存在透明底残影风险。
+- 已确认无新增 `.stateEffect()`，效果按钮使用 `layoutWeight(1)`；UI 白名单和冻结路径检查无异常。
+- 浅色 token 保持 F1 现有实色语义；深色对比度、快速滚动帧率与静置功耗标记为待构建机和 MatePad mini 真机复核。
+- 已完成资源 JSON、NUL、功能引用和 `git diff --check` 只读审计；未构建、未打包、未执行 Git 写操作。构建状态：待构建机验证。
+
+## 2026-09-04 U7 整体验收与收口（方案 C）：静态验收已完成，待构建机与真机验证
+
+- 已对 U1–U7 全量变更执行只读静态审计：`git diff --check` 通过；资源 JSON 可解析且无重复键；base/dark 颜色键 48=48，base/en_US 文案键 315=315；UI 白名单内未发现 TODO/FIXME、`$r()` 模板串混用、新增 `.stateEffect()` 或显式 blur。
+- 已逐项核对 `git diff --stat` 与未跟踪文件：运行时代码全部位于 UI 白名单，文档改动仅涉及 `CHANGES.md`、`DEVPLAN.md` 及 U5 条件任务方案；未触碰 `module.json5`、内核、`vpnext`、`utils`、`model`、`entry/libs`、`build-profile.json5` 或 `AppScope`。
+- 存量 ArkTS 十六进制色值仅位于 `LogPage.ets` 的刻意保留终端配色，以及 `UiSpec.ets` 的状态栏黑白内容色；本轮新增页面代码未增加硬编码色值。
+- U1–U4 已完成方案 C 首页、节点列表、订阅/设置页及 token/性能护栏改造；U5 因 `module.json5` 冻结仅完成设计方案；U6 已完成 compact/medium/large 响应式结构。
+- 静态功能链路核对覆盖节点选择/测速/排序/分享、订阅更新/导入/分享、规则页、连接页、日志页、设置页、深浅色、full/lite 与响应式分支；未移除既有入口或改变 Store/AppStorage 业务状态契约。
+- 严格遵守禁止构建要求，未执行 HAP 构建、打包或 Git 写操作。六种主题与断点组合视觉走查、全流程九步回归、断网/断连态、进程重启恢复、窗口旋转缩放、性能功耗及 HarmonyOS API 类型仍待构建机和真机验证。
+- U5 待确认：只有用户明确解除 `entry/src/main/module.json5` 冻结后，才能按 `docs/U5-桌面服务卡片方案.md` 实现 2×2/2×4 服务卡片及 FormExtensionAbility 注册。
+- 接真实数据源新增 TODO：无。当前 UI 所需数据继续复用既有 Store/AppStorage，未提出或写入新的内核、model 或 utils 接口。
+
+## 2026-09-04 U6 平板响应式布局（方案 C）：已完成开发，待构建机验证
+
+- 新增 `AppStorage('uiBreakpoint')`，由 `EntryAbility` 根据窗口短边 vp 划分 `compact`（<600vp）、`medium`（600–839vp）和 `large`（>=840vp）；窗口创建时初始化，注册 `windowSizeChange`，并在窗口舞台销毁时注销监听。
+- medium/large 布局新增方案 C 玻璃霓虹侧栏，宽度分别为 150vp/180vp，提供首页、代理、订阅、规则和设置入口；页面切换继续复用现有 Store、AppStorage 与业务页面，不重置 VPN、节点或订阅状态。
+- 节点列表在 compact/medium/large 下分别采用 1/2/3 列；medium/large Hero 电源按钮调整为 64vp，compact 保留既有尺寸和单栏布局。
+- 新增 `entry/src/main/ets/common/Breakpoint.ets` 和 `entry/src/main/ets/common/components/Sidebar.ets`；仅在白名单允许的 `EntryAbility.ets` 中增加最小化的窗口尺寸初始化及监听生命周期代码。
+- 未触碰 `module.json5`、内核及其他冻结路径；未构建、未打包、未执行 Git 写操作。
+- 已知限制：本机未找到可核对的 HarmonyOS SDK 声明，`window.Size`、`windowSizeChange` 及 px/vp 密度换算仍需构建机编译确认；响应式观感和旋转/窗口缩放行为尚未通过预览器或真机验证。
+
+## 2026-09-04 U3 订阅页与设置页（方案 C 玻璃拟态霓虹）：已完成开发，待构建机验证
+
+- 设置页订阅卡与订阅详情信息卡改为方案 C 玻璃描边样式；滚动列表内订阅卡使用实底玻璃降级，避免逐项 blur。
+- 设置页新增“视觉效果”完整/轻量二选一，使用新增 UI 专用 `AppStorage('uiFxLevel')`，默认 `full`，点击后即时更新当前页状态；现有主题三选一机制及 `AppSettings` 持久化契约保持不变。
+- 保留订阅更新、分组、删除、分享及详情入口，并保留出站模式、路由、Geo、自动更新、网络参数、排序、触感、连接统计、分应用代理、备份恢复和不安全 TLS 等既有设置链路。
+- 新增中英文资源键 `ui_fx_level`、`ui_fx_full`、`ui_fx_lite` 各 3 个，base/en_US 键集合一致；未新增 ArkTS 十六进制色值或 `.stateEffect()`。
+- U3 改动涉及 `entry/src/main/ets/pages/SettingsPage.ets`、`entry/src/main/ets/pages/SubDetailPage.ets`、base/en_US `string.json`、`DEVPLAN.md` 与 `CHANGES.md`。
+- 已完成资源 JSON、功能引用及 `git diff --check` 静态核对；未构建、未打包、未执行 Git 写操作。构建状态：待构建机验证。
 
 ## 2026-09-04 1.6.1 UI 全局统一与订阅入口重构：已完成开发，待构建机验证
 
@@ -396,3 +451,6 @@ Existing notification files reviewed:
 
 
 > 构建机注(2026-09-04,底部菜单栏轮):本交付 SettingsPage.ets 文件末尾带 7 个 NUL(0x00)字节,ArkTS 编译器报 Invalid character ×8(构建机已清除)。原因指向开发端的编辑器/传输管道——提交前请确保文件以干净换行结束、无 NUL/乱码尾。底部菜单栏单一「添加」入口与快捷开关卡移除均已合入,versionCode 1001903(构建机确认并沿用开发端自升的版本号)。
+
+
+> 构建机注(2026-09-04,U1~U7 方案 C 合入轮):一次修复后编译通过(1001904)。修复四处:①EntryAbility 的 windowSizeChange 误挂在 WindowStage 上(该对象仅支持 windowStageEvent),改为 getMainWindow 后在 Window 实例上挂/卸监听;②BigPowerButton 成员 size 为基类保留名,改 orbSize;③Sidebar 成员 width 为基类保留名,改 panelWidth(调用点同步);④Index 根容器现为 Row(适配 medium/large 侧边栏),尾部 alignItems 误用 HorizontalAlign 改 VerticalAlign,并清理重复修饰符。另:开发端以 tar 全量覆盖工作区会产生行尾幻影 diff,构建机以 git add 归一化后按真实改动 16 文件收编。

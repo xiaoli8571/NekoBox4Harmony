@@ -95,12 +95,67 @@
 
 > 通知栏占位符修复（2026-09-03）：本机 SDK 的 `resourceManager.getStringSync` 未展开带参数资源，真机原样显示 `%1$s.%2$s`。通知副标题现改为代码直接拼接 `${nodeName} · ${latencyText}`，避免占位符泄漏；待构建与真机验证。
 
-## U1 首页重构 —— 状态：已完成开发，待构建机验证
+## U1 首页重构（方案 C 玻璃拟态霓虹）—— 状态：已完成开发，待构建机验证
 
-- 已完成方案 A 鸿蒙原生卡片流首页改造，新增 `BigPowerButton`、`MiniStatCard`、`ToggleRow`，并复用既有 `AppStorage('vpnStatus')`、`Index.statusDisplay()`、`AppSettings` 与 `saveSettings()` 状态链路。
-- 保留节点选择、VPN 启停、导入、新增与编辑、测速、分组测速、折叠、手动排序、置顶、分享、per-app 入口，以及连接、日志和设置入口。
-- 已完成 JSON 语法、base/en_US 文案键一致性及 `git diff --check` 静态检查；未构建、未打包、未执行 Git 写操作。
-- 连接中旋转 loading、状态点呼吸动效及后续导航结构统一留待 U4 与后续里程碑校核。
+- 已将既有 F1 深色主题替换为方案 C 玻璃拟态霓虹视觉，浅色主题继续保持 F1 外观；C 主题 token 并入既有 `UiSpec.ets` 与 base/dark 颜色资源，没有建立平行 token 系统。
+- 首页 Hero、连接能量球、统计卡和节点容器已切换为玻璃描边、霓虹强调与选中辉光样式；列表行使用实底玻璃降级，避免逐行 blur，并保持后续 `uiFxLevel` full/lite 接入路径。
+- 继续复用 `AppStorage('vpnStatus')`、`Index.statusDisplay()` 与现有 VPN/Store/Profile 数据链路，保留节点选择、VPN 启停、订阅导入、节点新增与编辑、测速、分组测速、折叠、手动排序、置顶、分享、per-app 入口，以及连接、日志和设置入口。
+- base/dark 颜色资源均为 48 键且集合一致，无重复键；新增 ArkTS 代码无十六进制色值、无 `.stateEffect()`，`git diff --check` 通过。未构建、未打包、未执行 Git 写操作。
+- 连接中旋转 loading、状态点呼吸动效及完整 blur/full-lite 动态切换留待 U3/U4 按计划统一实现与审计。
+
+## U2 节点列表（方案 C 玻璃拟态霓虹）—— 状态：已完成开发，待构建机验证
+
+- 节点列表沿用 U1 的单层玻璃容器，节点行使用实底玻璃降级，选中项以青色描边与辉光区分，避免对每一行应用 blur。
+- 新增 64vp 延迟能量条，按 `latency / 250` 限幅显示，继续复用既有测速结果与成功、警告、错误颜色语义；未测或失败时不绘制有效长度。
+- 保留 G1 手动排序及名称/延迟排序、置顶优先级、分组测速与折叠、文本/二维码不可用时的分享降级、复制链接和订阅详情入口，未改变 `Profile`、`Store` 或排序持久化契约。
+- 已完成资源 JSON、功能引用、ArkTS 新增色值、`.stateEffect()` 与 `git diff --check` 静态核对；未构建、未打包、未执行 Git 写操作。
+
+## U7 整体验收与收口（方案 C）—— 状态：静态验收已完成，待构建机与真机验证
+
+- 已按 U1–U7 全量变更执行只读静态审计：`git diff --check` 通过，资源 JSON 可解析且无重复键，base/dark 颜色键 48=48，base/en_US 文案键 315=315，未发现 `$r()` 模板串混用、新增 `.stateEffect()`、显式 blur 或 UI 白名单内 TODO/FIXME。
+- 全量改动与未跟踪文件均已逐项核对：运行时代码仅位于 UI 白名单内，文档改动为 `CHANGES.md`、`DEVPLAN.md` 及 U5 条件任务方案；未触碰 `module.json5`、内核、`vpnext`、`utils`、`model`、`entry/libs`、`build-profile.json5` 或 `AppScope`。
+- 存量 ArkTS 十六进制色值仅位于 `LogPage.ets` 的刻意保留终端配色，以及 `UiSpec.ets` 的状态栏黑白内容色；本轮新增页面代码未增加硬编码色值。
+- U1–U4 已完成方案 C 首页、节点列表、订阅/设置页及 token/性能护栏改造；U5 已完成设计方案但因 `module.json5` 冻结未实现运行时；U6 已完成 compact/medium/large 响应式结构。
+- 静态功能链路核对覆盖节点选择/测速/排序/分享、订阅更新/导入/分享、规则页、连接页、日志页、设置页、深浅色、full/lite 与响应式分支；未因 U1–U6 改造移除既有入口或改变 Store/AppStorage 业务状态契约。
+- 严格遵守禁止构建要求，未执行 HAP 构建、打包或 Git 写操作。因此六种主题与断点组合的视觉走查、全流程九步回归、断网/断连态、进程重启恢复、窗口旋转缩放、性能功耗及 HarmonyOS API 类型均保留为构建机和真机验收项，不能标记为已验证。
+- U5 待确认事项：只有用户明确解除 `entry/src/main/module.json5` 冻结后，才能按 `docs/U5-桌面服务卡片方案.md` 实现 2×2/2×4 服务卡片及 FormExtensionAbility 注册。
+- 接真实数据源新增 TODO：无。当前 UI 所需数据均继续复用既有 Store/AppStorage；未提出或写入新的内核、model、utils 接口。
+
+## U6 平板响应式布局（方案 C）—— 状态：已完成开发，待构建机验证
+
+- 新增 `AppStorage('uiBreakpoint')`，由 `EntryAbility` 按窗口短边 vp 计算 `compact`（<600vp）、`medium`（600–839vp）与 `large`（>=840vp）；窗口创建时初始化，并注册 `windowSizeChange`，销毁时注销监听。
+- 中屏与大屏启用方案 C 玻璃霓虹侧栏，宽度分别为 150vp 与 180vp；保留首页、代理、订阅、规则和设置入口，并复用现有页面与业务状态，不迁移或重置 Store/AppStorage 数据。
+- 节点列表按 compact/medium/large 分别使用 1/2/3 列；中屏和大屏 Hero 电源按钮为 64vp，compact 继续沿用原尺寸与原布局，避免窄屏回归。
+- 新增 `common/Breakpoint.ets` 与 `common/components/Sidebar.ets`，并仅在白名单允许的 `EntryAbility.ets` 中加入最小窗口尺寸初始化和监听生命周期代码；未触碰 `module.json5`、内核及其他冻结路径。
+- 已完成结构标记、定界符、NUL、冻结路径及 `git diff --check` 只读审计；未构建、未打包、未执行 Git 写操作。
+- 已知限制：本机未找到可核对的 HarmonyOS SDK 声明，`window.Size`、`windowSizeChange` 和 px/vp 密度换算仍需构建机编译确认；响应式观感与旋转/窗口缩放行为未在预览器或真机验证。
+
+## U5 桌面服务卡片 2×2 / 2×4（条件任务）—— 状态：方案已完成，待用户解除 module.json5 冻结
+
+- 已按默认条件任务产出 `docs/U5-桌面服务卡片方案.md`，覆盖 2×2/2×4 视觉、`form_config.json` 草案、`VpnFormAbility`、快照契约、Preferences 冷启动兜底、10 秒节流发布及 `postCardAction` 回传链路。
+- 方案明确两张卡片的 `defaultColor` 均为 `#0B0F1A`，卡片进程内不开 blur，并禁止 import 主应用 Store、VPN Service 或 core 模块。
+- 已定义 `toggle`、`select`、`open` 从卡片到 `EntryAbility` 再复用既有业务方法的端到端设计，以及输入校验、一次性消费和错误降级要求。
+- 严格保持 `entry/src/main/module.json5` 冻结，未新增 FormExtensionAbility、FormWidget 或运行时代码；只有用户明确解除冻结后才进入实现。
+- 未构建、未打包、未执行 Git 写操作。U5 当前按交接要求完成方案阶段，运行时实现与真机验收待授权。
+
+## U4 token 审计、性能护栏与动效收口（方案 C）—— 状态：已完成开发，待构建机验证
+
+- 已完成 `entry/src/main/ets` 全目录十六进制色值检查：存量命中仅为 `UiSpec.ets` 状态栏黑白色与 `LogPage.ets` 既有固定色；本轮新增代码命中为 0，未改动存量项。
+- base/dark 颜色资源均为 48 个唯一键且键集合一致；base/en_US 文案资源均为 315 个唯一键且键集合一致，U4 未新增文案键。
+- 当前改造页面显式 blur 节点为 0，低于每屏 6 个预算；滚动列表继续采用容器玻璃或实底玻璃行，未逐行增加 blur。
+- 已补充首页 `aboutToDisappear()` 生命周期清理，页面离开时停止速率轮询并清除定时器，避免后台空转；现有连接状态变化时的启停逻辑保持不变。
+- `uiFxLevel` 保持 `full`/`lite` 二选一与默认 `full`，设置页切换即时更新；当前视觉实现不使用显式 blur，因此 lite 模式不存在透明底残影风险。
+- 已核对无新增 `.stateEffect()`，并排效果按钮继续使用 `layoutWeight(1)`；UI 白名单与冻结路径检查无异常。
+- 浅色主题 token 保持 F1 现有实色语义；深色对比度、快速滚动帧率与静置功耗仍需构建机及 MatePad mini 真机复核。
+- 已完成资源 JSON、NUL、功能引用及 `git diff --check` 只读审计；未构建、未打包、未执行 Git 写操作。
+
+## U3 订阅页与设置页（方案 C 玻璃拟态霓虹）—— 状态：已完成开发，待构建机验证
+
+- 设置页订阅卡与订阅详情信息卡已改为方案 C 玻璃描边样式，列表内订阅卡采用实底玻璃降级，避免滚动区域逐项 blur；更新、分组、删除、分享及订阅详情等既有入口保持可触达。
+- 设置页新增“视觉效果”完整/轻量二选一，使用新增 UI 专用 `AppStorage('uiFxLevel')`，默认 `full`，点击后即时更新当前页视觉状态；未改变现有主题三选一机制或 `AppSettings` 持久化契约。
+- 保留出站模式、路由、Geo 数据、订阅更新与分组、自动更新、网络参数、外观、排序、触感、连接统计、分应用代理、备份恢复和不安全 TLS 等现有设置链路。
+- 新增中英文资源键 `ui_fx_level`、`ui_fx_full`、`ui_fx_lite` 各 3 个，两侧资源键集合一致；未新增 ArkTS 十六进制色值或 `.stateEffect()`。
+- 已完成资源 JSON、功能引用与 `git diff --check` 静态核对；未构建、未打包、未执行 Git 写操作。
 
 ## 1.6.1 UI 全局统一与订阅入口重构 —— 状态：已完成开发，待构建机验证
 

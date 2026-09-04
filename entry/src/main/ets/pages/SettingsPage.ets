@@ -61,6 +61,7 @@ struct SettingsPage {
   @State appListError: ResourceStr = '';
   @State backupFileBusy: boolean = false;
   @State subGroupDraft: string = '';
+  @State uiFxLevel: string = 'full';
   private subGroupEditUrl: string = '';
   private subGroupDialog: CustomDialogController = new CustomDialogController({
     builder: SubGroupDialog({ draft: $subGroupDraft, onSaved: (t: string) => { void this.saveSubGroup(t); } }),
@@ -69,6 +70,8 @@ struct SettingsPage {
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear(): void {
+    this.uiFxLevel = AppStorage.get<string>('uiFxLevel') ?? 'full';
+    AppStorage.setOrCreate('uiFxLevel', this.uiFxLevel);
     this.load();
   }
 
@@ -128,6 +131,11 @@ struct SettingsPage {
     } catch (e) {
       promptAction.showToast({ message: $r('app.string.save_failed_reason', e instanceof Error ? e.message : `${e}`) });
     }
+  }
+
+  private setUiFxLevel(level: string): void {
+    this.uiFxLevel = level;
+    AppStorage.setOrCreate('uiFxLevel', level);
   }
 
   private async switchMode(mode: string, toast: Resource): Promise<void> {
@@ -561,8 +569,12 @@ struct SettingsPage {
                   }
                   .width('100%')
                   .padding(UiSpec.GAP_MD)
-                  .borderRadius(UiSpec.CARD_RADIUS)
-                  .backgroundColor($r('app.color.surface'))
+                  .borderRadius(UiSpec.GLASS_RADIUS)
+                  .backgroundColor($r('app.color.bg_glass_solid'))
+                  .border({
+                    width: UiSpec.GLASS_BORDER_WIDTH,
+                    color: $r('app.color.border_glass')
+                  })
                 }, (sub: SubInfo) => sub.url)
               }.width('100%')
             }, (bucket: SubGroupBucket) => bucket.name === '' ? '__none__' : bucket.name)
@@ -658,13 +670,20 @@ struct SettingsPage {
                   this.save(true);
                 })
             }.width('100%')
-            Row() {
-              Text($r('app.string.liquid_glass')).fontSize(14).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.liquidGlass })
-                .onChange((v: boolean) => {
-                  this.s.liquidGlass = v;
-                  this.save(true);
-                })
+            Text($r('app.string.ui_fx_level')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+            Row({ space: UiSpec.GAP_SM }) {
+              ForEach(['full', 'lite'], (level: string) => {
+                Button(level === 'full' ? $r('app.string.ui_fx_full') : $r('app.string.ui_fx_lite'))
+                  .layoutWeight(1)
+                  .borderRadius(UiSpec.CHIP_RADIUS)
+                  .backgroundColor(this.uiFxLevel === level ? $r('app.color.chip_on_bg_a') : $r('app.color.bg_glass_solid'))
+                  .fontColor(this.uiFxLevel === level ? $r('app.color.text_primary') : $r('app.color.text_secondary'))
+                  .border({
+                    width: UiSpec.GLASS_BORDER_WIDTH,
+                    color: this.uiFxLevel === level ? $r('app.color.chip_on_border') : $r('app.color.border_glass')
+                  })
+                  .onClick(() => this.setUiFxLevel(level))
+              }, (level: string) => level)
             }.width('100%')
             Text($r('app.string.settings_theme_note'))
               .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
