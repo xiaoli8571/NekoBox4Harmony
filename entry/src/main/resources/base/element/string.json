@@ -317,12 +317,8 @@
       "value": "日志"
     },
     {
-      "name": "import_link",
-      "value": "导入链接"
-    },
-    {
       "name": "import_link_subscription",
-      "value": "导入链接 / 订阅"
+      "value": "导入订阅"
     },
     {
       "name": "confirm_delete_route_rule",
@@ -554,7 +550,7 @@
     },
     {
       "name": "subscription_link_use_home",
-      "value": "这是订阅链接，请回主页使用“导入链接”"
+      "value": "这是订阅链接，请回主页使用“导入订阅”"
     },
     {
       "name": "unrecognized_profile_link",
@@ -854,7 +850,7 @@
     },
     {
       "name": "settings_subs_empty",
-      "value": "暂无订阅。在主页「导入链接」粘贴订阅地址后会自动记录到这里。"
+      "value": "暂无订阅。在主页「导入订阅」粘贴订阅地址后会自动记录到这里。"
     },
     {
       "name": "settings_sub_never_updated",
@@ -1225,10 +1221,6 @@
       "value": "流量"
     },
     {
-      "name": "sub_group_none",
-      "value": "未分组"
-    },
-    {
       "name": "sub_group_edit",
       "value": "分组"
     },
@@ -1239,6 +1231,18 @@
     {
       "name": "sub_group_hint",
       "value": "输入分组名称,留空为未分组"
+    },
+    {
+      "name": "subscription_name_optional",
+      "value": "订阅名称（可选）"
+    },
+    {
+      "name": "sub_group_none_count",
+      "value": "未分组 · %1$d"
+    },
+    {
+      "name": "sub_group_value",
+      "value": "分组：%1$s"
     }
   ]
 }

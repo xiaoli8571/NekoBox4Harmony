@@ -317,12 +317,8 @@
       "value": "Logs"
     },
     {
-      "name": "import_link",
-      "value": "Import link"
-    },
-    {
       "name": "import_link_subscription",
-      "value": "Import link / subscription"
+      "value": "Import subscription"
     },
     {
       "name": "confirm_delete_route_rule",
@@ -1225,10 +1221,6 @@
       "value": "Traffic"
     },
     {
-      "name": "sub_group_none",
-      "value": "Ungrouped"
-    },
-    {
       "name": "sub_group_edit",
       "value": "Group"
     },
@@ -1239,6 +1231,18 @@
     {
       "name": "sub_group_hint",
       "value": "Group name; leave empty for ungrouped"
+    },
+    {
+      "name": "subscription_name_optional",
+      "value": "Subscription name (optional)"
+    },
+    {
+      "name": "sub_group_none_count",
+      "value": "Ungrouped · %1$d"
+    },
+    {
+      "name": "sub_group_value",
+      "value": "Group: %1$s"
     }
   ]
 }

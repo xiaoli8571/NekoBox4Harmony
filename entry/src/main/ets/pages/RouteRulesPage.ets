@@ -241,9 +241,9 @@ struct RouteRulesPage {
               .onClick(() => this.removeRemoteRuleSet(index))
           }
           .width('100%')
-          .padding(12)
+          .padding(UiSpec.GAP_MD)
           .backgroundColor($r('app.color.surface'))
-          .borderRadius(12)
+          .borderRadius(UiSpec.CARD_RADIUS)
         }, (item: RemoteRuleSet) => item.id)
       }
       .width('100%')
@@ -292,9 +292,9 @@ struct RouteRulesPage {
                 .onClick(() => this.removeRule(index))
             }
             .width('100%')
-            .padding(12)
+            .padding(UiSpec.GAP_MD)
             .backgroundColor($r('app.color.surface'))
-            .borderRadius(12)
+            .borderRadius(UiSpec.CARD_RADIUS)
           }
         }, (rule: RouteRule, index: number) => `${index}_${rule.remark}_${rule.type}`)
       }

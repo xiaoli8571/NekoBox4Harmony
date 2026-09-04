@@ -259,8 +259,8 @@ struct ConnectionsPage {
             }
             .alignItems(HorizontalAlign.Start)
             .width('100%')
-            .padding(10)
-            .borderRadius(8)
+            .padding(UiSpec.GAP_MD)
+            .borderRadius(UiSpec.CARD_RADIUS)
             .backgroundColor($r('app.color.surface'))
           }
         }, (c: ConnItem) => c.id)

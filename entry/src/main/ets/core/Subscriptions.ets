@@ -78,13 +78,15 @@ export function subNameOf(url: string): string {
   return s;
 }
 
-export async function upsertSub(url: string, userinfo: string = ''): Promise<void> {
+export async function upsertSub(url: string, userinfo: string = '', requestedName: string = ''): Promise<void> {
   const list = await listSubs();
   const target = list.find(x => x.url === url);
+  const normalizedName = requestedName.trim();
   if (target === undefined) {
     const info = new SubInfo();
     info.url = url;
-    info.name = subNameOf(url);
+    info.name = normalizedName.length > 0 ? normalizedName : subNameOf(url);
+    info.group = normalizedName;
     info.lastUpdate = Date.now();
     if (userinfo.length > 0) {
       const parsed = parseSubUserInfo(userinfo);
@@ -96,13 +98,19 @@ export async function upsertSub(url: string, userinfo: string = ''): Promise<voi
       }
     }
     list.push(info);
-  } else if (userinfo.length > 0) {
-    const parsed = parseSubUserInfo(userinfo);
-    if (parsed !== null) {
-      target.upload = parsed.upload;
-      target.download = parsed.download;
-      target.total = parsed.total;
-      target.expire = parsed.expire;
+  } else {
+    if (normalizedName.length > 0) {
+      target.name = normalizedName;
+      target.group = normalizedName;
+    }
+    if (userinfo.length > 0) {
+      const parsed = parseSubUserInfo(userinfo);
+      if (parsed !== null) {
+        target.upload = parsed.upload;
+        target.download = parsed.download;
+        target.total = parsed.total;
+        target.expire = parsed.expire;
+      }
     }
   }
   await saveSubs(list);

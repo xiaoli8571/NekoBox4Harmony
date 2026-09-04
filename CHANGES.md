@@ -377,3 +377,19 @@ Existing notification files reviewed:
 
 
 > 构建机注(2026-09-03,UI 重构 + 订阅分组的):打包前检查确认无订阅分组功能,构建机已实现 —— SubInfo 新增 group 字段(Preferences JSON 与备份 schema 天然向后兼容,旧数据默认未分组);设置页订阅区按分组分节渲染(未分组在最前,组头显示数量),每条订阅新增"分组"操作(SubGroupDialog 弹窗改组);新增 4 组中英文案。另修复 Codex 重构组件在本机 SDK 的两个编译错误:MiniStatCard 移除 fontVariant(FontVariant 本机不存在)、ToggleRow 成员 enabled 为保留名改 controlEnabled。订阅分组实现:ets/core/Subscriptions.ets、ets/pages/SettingsPage.ets、resources 双份 string.json。versionCode 1001901。
+
+
+## 2026-09-04 1.6.1 UI 全局统一与订阅入口重构：已完成开发，待构建机验证
+
+- **统一添加入口**：首页底部「+」按钮改为打开新增 `AddEntryDialog`，提供「导入订阅」(主按钮)与「新建节点」两个入口；移除原底部「导入 / 启动 VPN / 新建」三连按钮，VPN 启停仅由 HeroCard 内 `BigPowerButton` 承担。
+- **订阅命名与分组**：`upsertSub(url, userinfo, requestedName)` 新增可选订阅名参数；非空时写入 `SubInfo.name` 与 `SubInfo.group`，为空时保持域名推断名称且未分组；已有订阅仅在提供非空名时更新，不清空既有分组；`Index.doImport` 透传名称。分享文本(非 URL)导入不创建订阅、不写分组。
+- **最近分组偏好**：新增 Preference 键 `recent_subscription_group`。导入订阅(非空名)与设置页改组(非空名)时写回；导入弹窗打开时默认带入；`ProfileEdit` 新建节点时按名称匹配 `loadGroups()`，命中则设 `Profile.groupId`，未命中保持未分组；编辑已有节点不覆盖原分组。
+- **设置页订阅区强化**：分组头对命名组与未分组均显示「名称 · 数量」(新增 `sub_group_none_count`)；每条订阅卡片化(`UiSpec.CARD_RADIUS`/`GAP_MD`/`surface`)，更新/分组/删除三按钮 `layoutWeight(1)` 等分；`saveSubGroup` 写回最近分组。
+- **五页面统一**：`ConnectionsPage` 连接项、`RouteRulesPage` 本地规则与远程规则集、`SubDetailPage` 信息卡(新增分组显示)与主/次/危险按钮、`ProfileEdit` 粘贴解析区与内容边距，统一到 `UiSpec` 令牌；日志页终端配色保持不变。
+- **文案**：「导入链接」全局改为「导入订阅」(import_link_subscription / subscription_link_use_home / settings_subs_empty)；删除已无引用的 `import_link` 键；新增 `subscription_name_optional`、`sub_group_none_count`、`sub_group_value`；删除死资源 `sub_group_none`。
+- 改动文件：`entry/src/main/ets/core/Subscriptions.ets`、`entry/src/main/ets/pages/Index.ets`、`entry/src/main/ets/pages/ProfileEdit.ets`、`entry/src/main/ets/pages/SettingsPage.ets`、`entry/src/main/ets/pages/ConnectionsPage.ets`、`entry/src/main/ets/pages/RouteRulesPage.ets`、`entry/src/main/ets/pages/SubDetailPage.ets`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
+- 静态检查：4 个资源 JSON 语法通过；base/en_US 字符串键 311=311 无缺失；base/dark 色值键 24=24 无缺失；`git diff --check` 干净；无 `$r()` 进模板串；十六进制色值仅存于日志页(刻意保留)；改动全部位于 `entry/src/main/ets` 与 `entry/src/main/resources` 白名单，未触碰内核 `core/`、`.so`、`module.json5`、`build-profile.json5`、`AppScope`。
+- 已知限制：构建状态为“待构建机验证”，未构建、未打包、未执行 Git 写操作；`ProfileEdit` 新建节点默认分组依赖存在同名 `ProfileGroup`(仅按名称匹配，不自动创建分组)；`AddEntryDialog` 与订阅卡片三按钮的窄屏实际观感、导入命名后设置页分组分节显示，均待真机验证。
+
+
+> 构建机注(2026-09-04,1.6.1 轮):一次编译通过(versionCode 1001902)。铁律核查:module.json5/内核/AppScope/签名配置零改动,${$r( 模板混用 0。真机验证点:首页单一添加入口(导入订阅/新建节点)、导入订阅命名即订阅分组、设置页订阅分组分节显示、五页面新风格与深浅色。

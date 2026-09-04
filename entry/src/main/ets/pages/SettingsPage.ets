@@ -9,7 +9,7 @@ import fs from '@ohos.file.fs';
 import util from '@ohos.util';
 import bundle from '@ohos.bundle';
 import { AppSettings } from '../model/Profile';
-import { initStore, loadSettings, saveSettings, LogStore } from '../model/Store';
+import { initStore, loadSettings, saveSettings, writePrefString, LogStore } from '../model/Store';
 import { SubInfo, listSubs, saveSubs, updateSubscription, removeSub, markSubSuccess, markSubFailure } from '../core/Subscriptions';
 import { formatBytes } from '../utils/TrafficStats';
 import { exportBackup, importBackup } from '../core/Backup';
@@ -222,11 +222,16 @@ struct SettingsPage {
     if (idx < 0) {
       return;
     }
+    const trimmed = name.trim();
     const updated = this.subs.slice();
-    updated[idx].group = name.trim();
+    updated[idx].group = trimmed;
     this.subGroupEditUrl = '';
     this.subs = updated;
     saveSubs(updated);
+    // 非空分组名记为最近使用,供新建节点/导入订阅默认带入
+    if (trimmed.length > 0) {
+      writePrefString('recent_subscription_group', trimmed);
+    }
   }
 
   openSubGroupDialog(sub: SubInfo): void {
@@ -501,42 +506,64 @@ struct SettingsPage {
                 .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
             }
             ForEach(this.subGroups(), (bucket: SubGroupBucket) => {
-              Column({ space: 8 }) {
-                Text(bucket.name === '' ? $r('app.string.sub_group_none') : `${bucket.name} · ${bucket.items.length}`)
-                  .fontSize(12).fontColor($r('app.color.primary')).width('100%')
+              Column({ space: UiSpec.GAP_SM }) {
+                Text(bucket.name === ''
+                  ? $r('app.string.sub_group_none_count', bucket.items.length)
+                  : `${bucket.name} · ${bucket.items.length}`)
+                  .fontSize(12)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor($r('app.color.primary'))
+                  .width('100%')
                 ForEach(bucket.items, (sub: SubInfo) => {
-              Row() {
-                Column() {
-                  Text(sub.name).fontSize(14).maxLines(1)
-                  if (sub.group !== '') {
-                    Text(sub.group).fontSize(10).fontColor($r('app.color.primary'))
-                  }
-                  Text(sub.lastUpdate === 0 ? $r('app.string.settings_sub_never_updated')
-                    : $r('app.string.settings_sub_updated_at', new Date(sub.lastUpdate).toLocaleString()))
-                    .fontSize(11).fontColor($r('app.color.text_secondary'))
-                  if (sub.total > 0) {
-                    Text($r('app.string.settings_sub_traffic', formatBytes(sub.upload + sub.download), formatBytes(sub.total)))
-                      .fontSize(11).fontColor(sub.upload + sub.download > sub.total ? $r('app.color.error') : $r('app.color.success'))
-                  }
-                  if (sub.expire > 0) {
-                    Text($r('app.string.settings_sub_expire', new Date(sub.expire * 1000).toLocaleDateString()))
-                      .fontSize(11).fontColor($r('app.color.text_secondary'))
-                  }
-                }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+                  Column({ space: UiSpec.GAP_SM }) {
+                    Row() {
+                      Column({ space: 2 }) {
+                        Text(sub.name).fontSize(14).fontWeight(FontWeight.Medium).maxLines(1)
+                          .textOverflow({ overflow: TextOverflow.Ellipsis })
+                        Text(sub.lastUpdate === 0 ? $r('app.string.settings_sub_never_updated')
+                          : $r('app.string.settings_sub_updated_at', new Date(sub.lastUpdate).toLocaleString()))
+                          .fontSize(11).fontColor($r('app.color.text_secondary'))
+                        if (sub.total > 0) {
+                          Text($r('app.string.settings_sub_traffic', formatBytes(sub.upload + sub.download), formatBytes(sub.total)))
+                            .fontSize(11).fontColor(sub.upload + sub.download > sub.total ? $r('app.color.error') : $r('app.color.success'))
+                        }
+                        if (sub.expire > 0) {
+                          Text($r('app.string.settings_sub_expire', new Date(sub.expire * 1000).toLocaleDateString()))
+                            .fontSize(11).fontColor($r('app.color.text_secondary'))
+                        }
+                      }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+                    }
+                    .width('100%')
 
-                Button($r('app.string.update_action'))
-                  .height(30)
-                  .constraintSize({ minWidth: 52 })
-                  .backgroundColor(this.updatingUrl === sub.url ? $r('app.color.control_disabled') : $r('app.color.primary'))
-                  .onClick(() => this.updateOne(sub))
-                Text($r('app.string.delete')).fontSize(13).fontColor($r('app.color.error')).padding(6)
-                  .onClick(() => {
-                    removeSub(sub.url);
-                    this.subs = this.subs.filter(x => x.url !== sub.url);
-                  })
-                Text($r('app.string.sub_group_edit')).fontSize(13).fontColor($r('app.color.primary')).padding(6)
-                  .onClick(() => this.openSubGroupDialog(sub))
-              }.width('100%')
+                    Row({ space: UiSpec.GAP_SM }) {
+                      Button(this.updatingUrl === sub.url ? $r('app.string.updating') : $r('app.string.update_action'))
+                        .layoutWeight(1)
+                        .height(UiSpec.BTN_HEIGHT)
+                        .backgroundColor(this.updatingUrl === sub.url ? $r('app.color.control_disabled') : $r('app.color.primary'))
+                        .fontColor($r('app.color.surface'))
+                        .onClick(() => this.updateOne(sub))
+                      Button($r('app.string.sub_group_edit'))
+                        .layoutWeight(1)
+                        .height(UiSpec.BTN_HEIGHT)
+                        .backgroundColor($r('app.color.surface'))
+                        .fontColor($r('app.color.text_primary'))
+                        .onClick(() => this.openSubGroupDialog(sub))
+                      Button($r('app.string.delete'))
+                        .layoutWeight(1)
+                        .height(UiSpec.BTN_HEIGHT)
+                        .backgroundColor($r('app.color.surface'))
+                        .fontColor($r('app.color.error'))
+                        .onClick(() => {
+                          removeSub(sub.url);
+                          this.subs = this.subs.filter(x => x.url !== sub.url);
+                        })
+                    }
+                    .width('100%')
+                  }
+                  .width('100%')
+                  .padding(UiSpec.GAP_MD)
+                  .borderRadius(UiSpec.CARD_RADIUS)
+                  .backgroundColor($r('app.color.surface'))
                 }, (sub: SubInfo) => sub.url)
               }.width('100%')
             }, (bucket: SubGroupBucket) => bucket.name === '' ? '__none__' : bucket.name)
