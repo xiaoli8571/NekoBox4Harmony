@@ -17,6 +17,7 @@ struct SubDetailPage {
   @State loadError: string = '';
   @State notFound: boolean = false;
   @State shareText: string = '';
+  @StorageProp('statusBarHeightVp') statusBarVp: number = 0;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   private shareDialog: CustomDialogController = new CustomDialogController({
     builder: SubscriptionShareDialog({
@@ -225,7 +226,8 @@ struct SubDetailPage {
     .width('100%')
     .height('100%')
     .alignItems(HorizontalAlign.Center)
-    .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
+    .backgroundColor($r('app.color.app_background'))
+    .padding({ top: this.statusBarVp })
   }
 }
 
