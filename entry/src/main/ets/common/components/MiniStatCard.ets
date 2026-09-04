@@ -21,8 +21,17 @@ export struct MiniStatCard {
     .alignItems(HorizontalAlign.Start)
     .width('100%')
     .padding({ left: 15, right: 15, top: 13, bottom: 13 })
-    .borderRadius(18)
-    .backgroundColor($r('app.color.surface'))
-    .shadow({ radius: 8, color: $r('app.color.shadow_color'), offsetX: 0, offsetY: 3 })
+    .borderRadius(UiSpec.GLASS_RADIUS)
+    .backgroundColor($r('app.color.bg_glass'))
+    .border({
+      width: UiSpec.GLASS_BORDER_WIDTH,
+      color: $r('app.color.border_glass')
+    })
+    .shadow({
+      radius: UiSpec.GLASS_SHADOW_RADIUS,
+      color: $r('app.color.sel_glow'),
+      offsetX: 0,
+      offsetY: UiSpec.GLASS_SHADOW_OFFSET
+    })
   }
 }

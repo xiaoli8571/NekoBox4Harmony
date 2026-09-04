@@ -1247,6 +1247,18 @@
     {
       "name": "add_entry",
       "value": "添加"
+    },
+    {
+      "name": "ui_fx_level",
+      "value": "视觉效果"
+    },
+    {
+      "name": "ui_fx_full",
+      "value": "完整"
+    },
+    {
+      "name": "ui_fx_lite",
+      "value": "轻量"
     }
   ]
 }

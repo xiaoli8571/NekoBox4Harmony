@@ -1247,6 +1247,18 @@
     {
       "name": "add_entry",
       "value": "Add"
+    },
+    {
+      "name": "ui_fx_level",
+      "value": "Visual effects"
+    },
+    {
+      "name": "ui_fx_full",
+      "value": "Full"
+    },
+    {
+      "name": "ui_fx_lite",
+      "value": "Lite"
     }
   ]
 }

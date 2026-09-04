@@ -6,6 +6,14 @@ export class UiSpec {
   static readonly GAP_MD: number = 12;
   static readonly GAP_LG: number = 16;
   static readonly BTN_HEIGHT: number = 40;
+  static readonly GLASS_RADIUS: number = 22;
+  static readonly GLASS_BORDER_WIDTH: number = 1;
+  static readonly GLASS_BLUR_RADIUS: number = 22;
+  static readonly GLASS_SHADOW_RADIUS: number = 22;
+  static readonly GLASS_SHADOW_OFFSET: number = 8;
+  static readonly CHIP_RADIUS: number = 14;
+  static readonly ORB_BUTTON_SIZE: number = 132;
+  static readonly ORB_BUTTON_RADIUS: number = 66;
   static readonly POWER_BUTTON_SIZE: number = 118;
   static readonly POWER_BUTTON_RADIUS: number = 59;
   static readonly POWER_ICON_SIZE: number = 44;

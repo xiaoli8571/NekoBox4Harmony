@@ -95,6 +95,102 @@
     {
       "name": "btn_glow",
       "value": "#660A59F7"
+    },
+    {
+      "name": "neon_indigo",
+      "value": "#3478F6"
+    },
+    {
+      "name": "neon_cyan",
+      "value": "#3478F6"
+    },
+    {
+      "name": "neon_indigo_hi",
+      "value": "#3478F6"
+    },
+    {
+      "name": "neon_text_grad_a",
+      "value": "#182230"
+    },
+    {
+      "name": "neon_text_grad_b",
+      "value": "#182230"
+    },
+    {
+      "name": "grad_neon_a",
+      "value": "#3478F6"
+    },
+    {
+      "name": "grad_neon_b",
+      "value": "#3478F6"
+    },
+    {
+      "name": "bg_glass",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "bg_glass_solid",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "border_glass",
+      "value": "#E4E7EC"
+    },
+    {
+      "name": "text_3",
+      "value": "#667085"
+    },
+    {
+      "name": "dot_live",
+      "value": "#12A150"
+    },
+    {
+      "name": "sel_border",
+      "value": "#3478F6"
+    },
+    {
+      "name": "sel_glow",
+      "value": "#00000000"
+    },
+    {
+      "name": "chip_on_bg_a",
+      "value": "#E8F1FF"
+    },
+    {
+      "name": "chip_on_bg_b",
+      "value": "#E8F1FF"
+    },
+    {
+      "name": "chip_on_border",
+      "value": "#3478F6"
+    },
+    {
+      "name": "orb_glow_1",
+      "value": "#660A59F7"
+    },
+    {
+      "name": "orb_glow_2",
+      "value": "#00000000"
+    },
+    {
+      "name": "pulse_ring_a",
+      "value": "#240A59F7"
+    },
+    {
+      "name": "pulse_ring_b",
+      "value": "#00000000"
+    },
+    {
+      "name": "hairline",
+      "value": "#E4E7EC"
+    },
+    {
+      "name": "hairline_2",
+      "value": "#E4E7EC"
+    },
+    {
+      "name": "form_bg_dark",
+      "value": "#FFFFFF"
     }
   ]
 }

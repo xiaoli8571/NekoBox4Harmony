@@ -186,8 +186,18 @@ struct SubDetailPage {
             .alignItems(HorizontalAlign.Start)
             .width('100%')
             .padding(UiSpec.GAP_MD)
-            .borderRadius(UiSpec.CARD_RADIUS)
-            .backgroundColor($r('app.color.surface'))
+            .borderRadius(UiSpec.GLASS_RADIUS)
+            .backgroundColor($r('app.color.bg_glass'))
+            .border({
+              width: UiSpec.GLASS_BORDER_WIDTH,
+              color: $r('app.color.border_glass')
+            })
+            .shadow({
+              radius: UiSpec.GLASS_SHADOW_RADIUS,
+              color: $r('app.color.sel_glow'),
+              offsetX: 0,
+              offsetY: UiSpec.GLASS_SHADOW_OFFSET
+            })
 
             // 操作按钮:主 / 次 / 危险
             Button(this.updating ? $r('app.string.updating') : $r('app.string.update_now'))
