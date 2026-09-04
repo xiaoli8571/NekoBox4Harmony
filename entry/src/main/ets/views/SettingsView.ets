@@ -14,15 +14,11 @@ import { initStore, loadSettings, saveSettings, LogStore } from '../model/Store'
 import { exportBackup, importBackup } from '../core/Backup';
 import { getClipboardText } from '../utils/ClipboardHelper';
 import { geoReady, downloadGeoAssets } from '../utils/GeoAssets';
-import { VpnService } from '../core/VpnService';
 
 const APP_MODES: Array<string> = ['off', 'exclude', 'include'];
 const APP_MODE_LABELS: Array<Resource> = [$r('app.string.per_app_off'), $r('app.string.per_app_exclude'), $r('app.string.per_app_include')];
 
 const STACKS: Array<string> = ['system'];
-const MODES: Array<string> = ['rule', 'global', 'direct'];
-const MODE_LABELS: Array<Resource> = [$r('app.string.mode_rule'), $r('app.string.mode_global'), $r('app.string.mode_direct')];
-const MODE_SWITCH_TOASTS: Array<Resource> = [$r('app.string.settings_mode_switched_rule'), $r('app.string.settings_mode_switched_global'), $r('app.string.settings_mode_switched_direct')];
 
 class InstalledAppItem {
   bundleName: string = '';
@@ -123,27 +119,6 @@ export struct SettingsView {
   private setUiFxLevel(level: string): void {
     this.uiFxLevel = level;
     AppStorage.setOrCreate('uiFxLevel', level);
-  }
-
-  private async switchMode(mode: string, toast: Resource): Promise<void> {
-    if (this.s.mode === mode) {
-      return;
-    }
-    this.s.mode = mode;
-    try {
-      await saveSettings(this.s);
-      promptAction.showToast({ message: toast });
-      const running: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
-      const profileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
-      if (running && profileId.length > 0) {
-        AppStorage.setOrCreate('vpnStatus', 'switching');
-        LogStore.addLog(`[ui] 出站模式切换为 ${mode}，自动重启 VPN`);
-        await VpnService.switchTo(this.context, profileId);
-      }
-    } catch (e) {
-      const message = e instanceof Error ? e.message : `${e}`;
-      promptAction.showToast({ message: $r('app.string.save_failed_reason', message) });
-    }
   }
 
   private selectedAppSet(): Set<string> {
@@ -370,27 +345,6 @@ export struct SettingsView {
 
       Scroll() {
         Column({ space: UiSpec.GAP_LG }) {
-          // 出站模式
-          Column({ space: 8 }) {
-            Text($r('app.string.outbound_mode'))
-              .fontSize(11).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary')).width('100%')
-            Row({ space: 8 }) {
-              ForEach(MODES, (m: string, idx: number) => {
-                Button(MODE_LABELS[idx])
-                  .layoutWeight(1)
-                  .height(40)
-                  .backgroundColor(this.s.mode === m ? $r('app.color.primary') : $r('app.color.surface'))
-                  .fontColor(this.s.mode === m ? $r('app.color.surface') : $r('app.color.text_primary'))
-                  .onClick(() => {
-                    this.switchMode(m, MODE_SWITCH_TOASTS[idx]);
-                  })
-              }, (m: string) => m)
-            }.width('100%')
-            Text(this.s.mode === 'direct' ? $r('app.string.settings_mode_desc_direct')
-              : this.s.mode === 'global' ? $r('app.string.settings_mode_desc_global') : $r('app.string.settings_mode_desc_rule'))
-              .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-          }.alignItems(HorizontalAlign.Start).width('100%')
-
           // 路由
           Column({ space: 8 }) {
             Text($r('app.string.section_route'))

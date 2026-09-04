@@ -193,3 +193,15 @@
 - 实际改动文件：`entry/src/main/ets/pages/Index.ets`、`entry/src/main/ets/pages/SettingsPage.ets`、`entry/src/main/ets/views/SettingsView.ets`、`entry/src/main/ets/core/VpnService.ets`、`entry/src/main/ets/utils/TrafficStats.ets`、`entry/src/main/resources/base/element/color.json`、`entry/src/main/resources/dark/element/color.json`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
 - 约束说明：因本轮真机反馈明确要求修复真实数据流，根因位于 `VpnService` 与 `TrafficStats`，故仅对这两个原冻结范围文件做必要的最小修复；未修改版本号、模块声明、VPN 扩展、模型、内核二进制或生成物；未构建、未打包、未执行 Git 写操作。
 - 待验证：ArkTS 类型检查、内嵌设置滚动与布局、分组筛选行为、配置持久化回退、导入弹窗深浅色观感，以及 CommonEvent 丢失场景下 Clash API 状态兜底和首页实时/累计流量均交由构建机与真机验证。
+
+## 2.0 第三轮真机问题修复与上轮收尾 —— 状态：已完成开发，待构建机与真机验证
+
+1. **设置页删除重复出站模式：已完成。** `SettingsView` 已删除出站模式整块 UI、专用切换方法和常量，并清理不再需要的 `VpnService` 引用；`AppSettings.mode` 与路由区规则模式判断保留，首页继续作为唯一出站模式入口。删除后设置区从路由、DNS、TUN、IPv6、外观与交互、per-app、备份到关于连续排布。
+2. **远程 DNS 默认改为 TCP：已完成。** `AppSettings.remoteDns` 默认值改为 `tcp://8.8.8.8`；`loadSettings` 仅将两个精确历史默认值 `https://8.8.8.8/dns-query` 和 `udp://8.8.8.8` 迁移到 TCP，其他用户自定义 UDP 地址保持不变；中英文提示同步说明 UDP 转发兼容性风险。
+3. **Preferences 跨进程旧快照覆写修复：已完成。** `Store.requirePref()` 每次读写前调用 `removePreferencesFromCache`，再以保存的 Context 重新 `getPreferences`，不再复用 UI 或 `:vpn` 进程内长生命周期实例。设置读取、设置保存以及 pending/running 握手键均沿用同一新鲜实例入口，避免旧快照 flush 覆盖另一进程刚写入的数据，并保证直接连接时读取最新 DNS。
+4. **代理页固定跟随当前订阅：已完成。** 删除代理分组状态、所有重置点、派生分组方法和 chips UI；`visibleProxyProfiles()` 在 `activeConfigUrl` 非空时仅返回该订阅节点，为空时返回全部手动节点。订阅页切换当前配置后代理列表自动跟随，延迟最佳值和空态继续使用同一过滤结果。
+5. **“我的”内嵌设置链路收尾：已完成代码自查。** `SettingsView({ embedded: true })` 仍由首页第四个 Tab 直接渲染；embedded 模式隐藏返回键，页头保存按钮仍调用共享 `save()`，旧 `SettingsPage` 继续作为兼容路由外壳。
+
+- 改动文件：`entry/src/main/ets/model/Profile.ets`、`entry/src/main/ets/model/Store.ets`、`entry/src/main/ets/pages/Index.ets`、`entry/src/main/ets/views/SettingsView.ets`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
+- 约束遵守：未修改 `core/`、`entry/libs/`、CGo 接口、`module.json5`、`AppScope/`、`build-profile.json5`、版本号或构建产物；未构建、未打包、未执行 Git 写操作。
+- 待验证：构建机使用 versionCode `1001907` 完成 ArkTS 编译；真机验证 TCP DNS 在完全退出重进后仍持久化、不退出直接连接时内核读取新值、pending→running 跨进程握手，以及订阅切换后代理列表自动跟随。

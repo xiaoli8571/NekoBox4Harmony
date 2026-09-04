@@ -514,3 +514,26 @@ Existing notification files reviewed:
 
 
 > 构建机注(2026-09-04,五项修复轮):编译通过(1001906)。构建机修复两处:①Index.ets type MainDestination 声明位置(import 之间,×10 报错);②saveSettings 缺 import;③SettingsPage 薄壳页 build 根改为 Column 包裹(@Entry 要求容器根,原直接挂 SettingsView)。事实核对:gpt 汇报"SettingsView 尚未生成"不属实——/worker 的 entry/src/main/ets/views/SettingsView.ets 已存在(730 行,结构平衡),Index 1560 行处已内嵌 SettingsView({embedded:true}),「我的」链路在代码层已闭合,运行时表现待真机验证。gpt 待续任务以其自报为准,在 1001906 基线上继续。
+
+## 2026-09-04 2.0 第三轮真机问题修复与上轮收尾：已完成开发，待构建机与真机验证
+
+- **删除重复出站模式**：设置页删除完整出站模式区域、专用 `switchMode()` 方法及 `MODES`、`MODE_LABELS`、`MODE_SWITCH_TOASTS` 常量，并清理不再需要的 `VpnService` import。`AppSettings.mode` 和规则模式路由配置保留，首页继续作为唯一出站模式入口。
+- **远程 DNS 默认改为 TCP**：`AppSettings.remoteDns` 默认值改为 `tcp://8.8.8.8`。`loadSettings` 仅将精确历史默认值 `https://8.8.8.8/dns-query` 和 `udp://8.8.8.8` 迁移为 TCP，不改动用户自定义 UDP 地址。中英文提示同步说明多数 SS 节点不支持 UDP 转发及其断网风险。
+- **修复 Preferences 跨进程旧快照覆写**：`Store.requirePref()` 不再复用进程内长生命周期 Preferences 实例。当前方案保存初始化 Context，并在每次读写前调用 `removePreferencesFromCache`，然后重新 `getPreferences`。采用该方案是为了让 UI 与 `:vpn` 进程的设置读写、pending/running 握手键读写均从最新磁盘状态开始，避免旧快照 flush 覆盖另一进程刚保存的 DNS，同时确保不退出应用直接连接时 VPN 进程能读到最新设置。
+- **代理页固定跟随当前订阅**：删除代理分组状态、重置逻辑、分组派生方法及 chips UI。`visibleProxyProfiles()` 在 `activeConfigUrl` 非空时只返回当前选中订阅的节点；无订阅配置时返回全部手动节点。订阅页切换当前配置后代理列表自动跟随，空态与最佳延迟计算继续复用同一过滤结果。
+- **设置页收尾自查**：删除出站模式后，设置区域从路由、DNS、TUN、IPv6、外观与交互、per-app、备份到关于连续排布。首页第四个 Tab 继续渲染 `SettingsView({ embedded: true })`；embedded 模式隐藏返回键，页头保存按钮继续调用共享 `save()`，`SettingsPage` 保留兼容路由外壳。
+
+改动文件：
+- `entry/src/main/ets/model/Profile.ets`
+- `entry/src/main/ets/model/Store.ets`
+- `entry/src/main/ets/pages/Index.ets`
+- `entry/src/main/ets/views/SettingsView.ets`
+- `entry/src/main/resources/base/element/string.json`
+- `entry/src/main/resources/en_US/element/string.json`
+- `DEVPLAN.md`
+- `CHANGES.md`
+
+约束与已知限制：
+- 未修改 `core/`、`entry/libs/`、CGo 接口、`module.json5`、`AppScope/`、`build-profile.json5`、版本号或构建产物。
+- 未构建、未打包、未执行 Git 写操作；构建机下一版使用 versionCode `1001907`。
+- ArkTS 编译、TCP DNS 完全退出后的持久化、不退出直接连接读取新值、pending→running 跨进程握手，以及订阅切换后的代理列表跟随仍需构建机和真机验证。

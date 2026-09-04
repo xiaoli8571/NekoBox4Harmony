@@ -12,17 +12,22 @@ const KEY_SETTINGS = 'settings';
 const KEY_PENDING = 'pending_profile_id';
 export const LOG_EVENT_ID: number = 1001;
 
-let prefInstance: dataPreferences.Preferences | null = null;
+let storeContext: common.Context | null = null;
 
 export async function initStore(context: common.Context): Promise<void> {
-  prefInstance = await dataPreferences.getPreferences(context, PREF_NAME);
+  storeContext = context;
+  await dataPreferences.removePreferencesFromCache(context, PREF_NAME);
+  await dataPreferences.getPreferences(context, PREF_NAME);
 }
 
 async function requirePref(): Promise<dataPreferences.Preferences> {
-  if (prefInstance === null) {
+  if (storeContext === null) {
     throw new Error('store not initialized');
   }
-  return prefInstance;
+  // UI 与 :vpn 是独立进程。每次读写前丢弃进程内缓存并重新打开，
+  // 避免任一进程用旧快照 flush 覆盖另一进程刚保存的设置或握手键。
+  await dataPreferences.removePreferencesFromCache(storeContext, PREF_NAME);
+  return await dataPreferences.getPreferences(storeContext, PREF_NAME);
 }
 
 export async function loadProfiles(): Promise<Array<Profile>> {
@@ -90,9 +95,10 @@ export async function loadSettings(): Promise<AppSettings> {
     await pref.put(KEY_SETTINGS, JSON.stringify(s));
     await pref.flush();
   }
-  // 迁移:旧默认的 DoH 远程 DNS 在全局模式下整体失效,迁到 UDP 经代理
-  if (s.remoteDns === 'https://8.8.8.8/dns-query') {
-    s.remoteDns = 'udp://8.8.8.8';
+  // 仅迁移两个历史默认值；用户自定义的 UDP DNS 保持不变。
+  // 默认使用 TCP，避免多数 SS 节点不支持 UDP 转发导致 DNS 全部超时。
+  if (s.remoteDns === 'https://8.8.8.8/dns-query' || s.remoteDns === 'udp://8.8.8.8') {
+    s.remoteDns = 'tcp://8.8.8.8';
   }
   return s;
 }

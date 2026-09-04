@@ -886,7 +886,7 @@
     },
     {
       "name": "settings_remote_dns_hint",
-      "value": "The host of the remote DNS must be an IP (e.g. https://8.8.8.8/dns-query) to avoid bootstrap resolution"
+      "value": "UDP requires proxy-node UDP forwarding; most SS nodes do not support it and may cause loss of connectivity. Recommended: tcp://8.8.8.8"
     },
     {
       "name": "settings_direct_dns",
