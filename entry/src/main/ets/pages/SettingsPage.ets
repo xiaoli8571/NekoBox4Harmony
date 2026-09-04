@@ -63,7 +63,7 @@ struct SettingsPage {
   @State subGroupDraft: string = '';
   private subGroupEditUrl: string = '';
   private subGroupDialog: CustomDialogController = new CustomDialogController({
-    builder: SubGroupDialog({ draft: $subGroupDraft, onSaved: (t: string) => this.saveSubGroup(t) }),
+    builder: SubGroupDialog({ draft: $subGroupDraft, onSaved: (t: string) => { void this.saveSubGroup(t); } }),
     autoCancel: true
   });
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
@@ -217,7 +217,7 @@ struct SettingsPage {
     }
   }
 
-  saveSubGroup(name: string): void {
+  async saveSubGroup(name: string): Promise<void> {
     const idx = this.subs.findIndex(x => x.url === this.subGroupEditUrl);
     if (idx < 0) {
       return;
@@ -225,13 +225,12 @@ struct SettingsPage {
     const trimmed = name.trim();
     const updated = this.subs.slice();
     updated[idx].group = trimmed;
+    await saveSubs(updated);
+    if (trimmed.length > 0) {
+      await writePrefString('recent_subscription_group', trimmed);
+    }
     this.subGroupEditUrl = '';
     this.subs = updated;
-    saveSubs(updated);
-    // 非空分组名记为最近使用,供新建节点/导入订阅默认带入
-    if (trimmed.length > 0) {
-      writePrefString('recent_subscription_group', trimmed);
-    }
   }
 
   openSubGroupDialog(sub: SubInfo): void {
@@ -874,7 +873,7 @@ struct SettingsPage {
 struct SubGroupDialog {
   controller?: CustomDialogController;
   @Link draft: string;
-  onSaved: (t: string) => void = (t: string) => {
+  onSaved: (t: string) => void = (_t: string) => {
   };
 
   build() {
