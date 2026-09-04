@@ -101,3 +101,14 @@
 - 保留节点选择、VPN 启停、导入、新增与编辑、测速、分组测速、折叠、手动排序、置顶、分享、per-app 入口，以及连接、日志和设置入口。
 - 已完成 JSON 语法、base/en_US 文案键一致性及 `git diff --check` 静态检查；未构建、未打包、未执行 Git 写操作。
 - 连接中旋转 loading、状态点呼吸动效及后续导航结构统一留待 U4 与后续里程碑校核。
+
+## 1.6.1 UI 全局统一与订阅入口重构 —— 状态：已完成开发，待构建机验证
+
+- **统一添加入口**：首页底部「+」改为打开 `AddEntryDialog`，提供「导入订阅」(主)与「新建节点」两个入口；移除原底部「导入 / 启动 VPN / 新建」三连按钮，VPN 启停仅由 HeroCard 内 `BigPowerButton` 承担。
+- **订阅命名与分组**：`upsertSub(url, userinfo, requestedName)` 支持可选订阅名；非空时写入 `SubInfo.name` 与 `SubInfo.group`，为空时保持域名推断名称且未分组；已有订阅仅在提供非空名时更新，不清空既有分组。`Index.doImport` 透传名称。
+- **最近分组偏好**：新增 Preference 键 `recent_subscription_group`。导入订阅(非空名)与设置页改组(非空名)时写回；导入弹窗打开时默认带入；`ProfileEdit` 新建节点时按名称匹配 `loadGroups()` 命中则设 `Profile.groupId`，未命中保持未分组；编辑已有节点不覆盖原分组。
+- **设置页订阅区强化**：分组头对命名组与未分组均显示「名称 · 数量」；每条订阅卡片化(`UiSpec.CARD_RADIUS`/`GAP_MD`/`surface`)，更新/分组/删除三按钮 `layoutWeight(1)` 等分。
+- **五页面统一**：`ConnectionsPage` 连接项、`RouteRulesPage` 本地规则与远程规则集、`SubDetailPage` 信息卡与主/次/危险按钮、`ProfileEdit` 粘贴解析区与内容边距，统一到 `UiSpec` 令牌；日志页终端配色保持不变。
+- **文案**：「导入链接」全局改为「导入订阅」(import_link_subscription / subscription_link_use_home / settings_subs_empty)；删除已无引用的 `import_link` 键；新增 `subscription_name_optional`、`sub_group_none_count`、`sub_group_value`；删除死资源 `sub_group_none`。
+- **静态检查**：4 个资源 JSON 语法通过；base/en_US 字符串键 311=311 无缺失；base/dark 色值键 24=24 无缺失；`git diff --check` 干净；无 `$r()` 进模板串；十六进制色值仅存于日志页(刻意保留)；改动全部位于 `entry/src/main/ets` 与 `entry/src/main/resources` 白名单，未触碰内核 `core/`、`.so`、`module.json5`、`build-profile.json5`、`AppScope`。
+- 未构建、未打包、未执行 Git 写操作；等待构建机编译与真机验证。

@@ -162,22 +162,50 @@ struct SubDetailPage {
         .justifyContent(FlexAlign.Center)
       } else {
         Scroll() {
-          Column({ space: 14 }) {
-            Text(this.sub.name.length > 0 ? this.sub.name : $r('app.string.unnamed_subscription'))
-              .fontSize(20).fontWeight(FontWeight.Bold).width('100%')
-            Text(this.sub.url).fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
-            Text($r('app.string.profile_count_value', this.profileCount)).width('100%')
-            Text($r('app.string.used_traffic_value', formatBytes(this.sub.upload + this.sub.download))).width('100%')
-            Text(this.sub.total > 0 ? $r('app.string.total_traffic_value', formatBytes(this.sub.total)) : $r('app.string.total_traffic_unknown')).width('100%')
-            Text($r('app.string.consecutive_failures_value', Number(this.sub.failCount)))
-              .fontColor(Number(this.sub.failCount) >= 3 ? $r('app.color.error') : $r('app.color.text_secondary')).width('100%')
+          Column({ space: UiSpec.GAP_MD }) {
+            // 订阅信息卡
+            Column({ space: UiSpec.GAP_SM }) {
+              Text(this.sub.name.length > 0 ? this.sub.name : $r('app.string.unnamed_subscription'))
+                .fontSize(18).fontWeight(FontWeight.Bold).width('100%')
+              Text(this.sub.url)
+                .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
+              if (this.sub.group !== '') {
+                Text($r('app.string.sub_group_value', this.sub.group))
+                  .fontSize(12).fontColor($r('app.color.primary')).width('100%')
+              }
+              Text($r('app.string.profile_count_value', this.profileCount))
+                .fontSize(13).width('100%')
+              Text($r('app.string.used_traffic_value', formatBytes(this.sub.upload + this.sub.download)))
+                .fontSize(13).width('100%')
+              Text(this.sub.total > 0 ? $r('app.string.total_traffic_value', formatBytes(this.sub.total)) : $r('app.string.total_traffic_unknown'))
+                .fontSize(13).width('100%')
+              Text($r('app.string.consecutive_failures_value', Number(this.sub.failCount)))
+                .fontSize(13)
+                .fontColor(Number(this.sub.failCount) >= 3 ? $r('app.color.error') : $r('app.color.text_secondary')).width('100%')
+            }
+            .alignItems(HorizontalAlign.Start)
+            .width('100%')
+            .padding(UiSpec.GAP_MD)
+            .borderRadius(UiSpec.CARD_RADIUS)
+            .backgroundColor($r('app.color.surface'))
+
+            // 操作按钮:主 / 次 / 危险
             Button(this.updating ? $r('app.string.updating') : $r('app.string.update_now'))
-              .width('100%').height(UiSpec.BTN_HEIGHT).enabled(!this.updating).onClick(() => this.updateNow())
+              .width('100%').height(UiSpec.BTN_HEIGHT)
+              .backgroundColor($r('app.color.primary')).fontColor($r('app.color.surface'))
+              .enabled(!this.updating).onClick(() => this.updateNow())
             Button($r('app.string.share_subscription'))
-              .width('100%').height(UiSpec.BTN_HEIGHT).onClick(() => this.openSubscriptionShare())
+              .width('100%').height(UiSpec.BTN_HEIGHT)
+              .backgroundColor($r('app.color.surface')).fontColor($r('app.color.text_primary'))
+              .onClick(() => this.openSubscriptionShare())
             Button($r('app.string.delete_subscription_profiles'))
-              .width('100%').height(UiSpec.BTN_HEIGHT).backgroundColor($r('app.color.error')).onClick(() => this.confirmDelete())
-          }.width('100%').padding(16).alignItems(HorizontalAlign.Start)
+              .width('100%').height(UiSpec.BTN_HEIGHT)
+              .backgroundColor($r('app.color.surface')).fontColor($r('app.color.error'))
+              .onClick(() => this.confirmDelete())
+          }
+          .width('100%')
+          .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: UiSpec.GAP_MD, bottom: UiSpec.GAP_MD })
+          .alignItems(HorizontalAlign.Start)
         }.layoutWeight(1).width('100%')
       }
     }

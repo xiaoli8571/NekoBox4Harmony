@@ -3,7 +3,7 @@ import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
 import common from '@ohos.app.ability.common';
 import { Profile, ProfileType, profileTypeLabel, supportsTransport, needsTlsByDefault } from '../model/Profile';
-import { initStore, loadProfiles, saveProfiles } from '../model/Store';
+import { initStore, loadProfiles, saveProfiles, loadGroups, readPrefString } from '../model/Store';
 import { getClipboardText } from '../utils/ClipboardHelper';
 import { parseSingleLink, parseShareText } from '../utils/LinkParser';
 
@@ -34,6 +34,15 @@ struct ProfileEdit {
         this.p = new Profile();
         this.p.id = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
         this.isNew = true;
+        // 新建节点默认带入最近使用的订阅分组(按名称匹配;无同名分组则保持未分组)
+        const recentGroupName = await readPrefString('recent_subscription_group', '');
+        if (recentGroupName.trim().length > 0) {
+          const groups = await loadGroups();
+          const matched = groups.find(g => g.name === recentGroupName.trim());
+          if (matched !== undefined) {
+            this.p.groupId = matched.id;
+          }
+        }
       }
     });
   }
@@ -167,7 +176,7 @@ struct ProfileEdit {
       Scroll() {
         Column({ space: 10 }) {
           // 快捷:手动粘贴节点链接解析(不依赖剪贴板权限)
-          Column({ space: 6 }) {
+          Column({ space: UiSpec.GAP_SM }) {
             TextArea({
               text: this.pasteText,
               placeholder: $r('app.string.profile_link_placeholder')
@@ -176,20 +185,27 @@ struct ProfileEdit {
               .onChange((v: string) => {
                 this.pasteText = v;
               })
-            Row({ space: 8 }) {
+            Row({ space: UiSpec.GAP_SM }) {
               Button($r('app.string.read_from_clipboard'))
+                .layoutWeight(1)
+                .height(UiSpec.BTN_HEIGHT)
                 .backgroundColor($r('app.color.surface'))
                 .fontColor($r('app.color.text_primary'))
                 .onClick(() => this.readClipboardIntoBox())
-              Blank()
               Button($r('app.string.parse_and_fill'))
+                .layoutWeight(1)
+                .height(UiSpec.BTN_HEIGHT)
                 .backgroundColor($r('app.color.primary'))
+                .fontColor($r('app.color.surface'))
                 .onClick(() => this.applyPasted())
             }
             .width('100%')
           }
           .alignItems(HorizontalAlign.Start)
           .width('100%')
+          .padding(UiSpec.GAP_MD)
+          .borderRadius(UiSpec.CARD_RADIUS)
+          .backgroundColor($r('app.color.surface'))
 
           // 协议类型
           Column() {
@@ -239,7 +255,7 @@ struct ProfileEdit {
           this.AdvancedFields()
         }
         .width('100%')
-        .padding(12)
+        .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: UiSpec.GAP_MD, bottom: UiSpec.GAP_MD })
       }
       .layoutWeight(1)
       .align(Alignment.Top)

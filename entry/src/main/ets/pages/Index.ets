@@ -6,7 +6,7 @@ import { BigPowerButton } from '../common/components/BigPowerButton';
 import { MiniStatCard } from '../common/components/MiniStatCard';
 import { ToggleRow } from '../common/components/ToggleRow';
 import { Profile, ProfileGroup, AppSettings, profileTypeLabel } from '../model/Profile';
-import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, loadSettings, saveSettings, LogStore } from '../model/Store';
+import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, loadSettings, saveSettings, readPrefString, writePrefString, LogStore } from '../model/Store';
 import { VpnService } from '../core/VpnService';
 import { parseShareText } from '../utils/LinkParser';
 import { getClipboardText, setClipboardText } from '../utils/ClipboardHelper';
@@ -335,11 +335,13 @@ struct Index {
 
   // ---- 导入弹窗(手动粘贴,不依赖剪贴板权限) ----
   @State importText: string = '';
+  @State importName: string = '';
   private importDialog: CustomDialogController = new CustomDialogController({
     builder: ImportDialog({
       text: $importText,
-      onImport: (t: string) => {
-        this.doImport(t);
+      name: $importName,
+      onImport: (t: string, name: string) => {
+        this.doImport(t, name);
       },
       onPickClipboard: () => {
         this.fillDialogFromClipboard();
@@ -348,8 +350,24 @@ struct Index {
     autoCancel: true
   });
 
-  openImportDialog(): void {
+  // ---- 统一添加入口:新建节点 / 导入订阅 ----
+  private addEntryDialog: CustomDialogController = new CustomDialogController({
+    builder: AddEntryDialog({
+      onNewProfile: () => {
+        AppStorage.setOrCreate('editProfileId', '');
+        router.pushUrl({ url: 'pages/ProfileEdit' });
+      },
+      onImportSubscription: () => {
+        this.openImportDialog();
+      }
+    }),
+    autoCancel: true
+  });
+
+  async openImportDialog(): Promise<void> {
     this.importText = '';
+    await initStore(this.context);
+    this.importName = await readPrefString('recent_subscription_group', '');
     this.importDialog.open();
   }
 
@@ -361,7 +379,7 @@ struct Index {
     }
   }
 
-  async doImport(raw: string): Promise<void> {
+  async doImport(raw: string, requestedName: string): Promise<void> {
     try {
       const text = raw === undefined || raw === null ? '' : raw;
       if (text.trim().length === 0) {
@@ -409,8 +427,13 @@ struct Index {
       await saveProfiles(profiles);
       this.profiles = profiles;
       if (subUrl.length > 0) {
-        await upsertSub(subUrl, subUserinfo);
-        promptAction.showToast({ message: $r('app.string.imported_from_sub', parsed.length, subNameOf(subUrl)) });
+        await upsertSub(subUrl, subUserinfo, requestedName);
+        const normalizedName = requestedName.trim();
+        if (normalizedName.length > 0) {
+          await writePrefString('recent_subscription_group', normalizedName);
+        }
+        const displayName = normalizedName.length > 0 ? normalizedName : subNameOf(subUrl);
+        promptAction.showToast({ message: $r('app.string.imported_from_sub', parsed.length, displayName) });
       } else {
         promptAction.showToast({ message: $r('app.string.imported_count', parsed.length) });
       }
@@ -883,30 +906,9 @@ struct Index {
       .width('100%')
       .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
 
-      // 底部主操作与独立悬浮按钮
-      Row({ space: 10 }) {
-        Button($r('app.string.import_link'))
-          .backgroundColor($r('app.color.surface'))
-          .fontColor($r('app.color.text_primary'))
-          .onClick(() => this.openImportDialog())
-
-        Button(this.isRunning ? $r('app.string.disconnect') : $r('app.string.start_vpn'))
-          .layoutWeight(1)
-          .height(46)
-          .backgroundColor(this.isRunning ? $r('app.color.error') : $r('app.color.primary'))
-          .onClick(() => {
-            if (this.isRunning) {
-              this.disconnect();
-            } else {
-              const target = this.profiles.find(x => x.id === this.selectedId);
-              if (target === undefined) {
-                promptAction.showToast({ message: $r('app.string.select_or_create_profile') });
-                return;
-              }
-              this.connectTo(target);
-            }
-          })
-
+      // 首页仅保留 HeroCard 内的主连接按钮；添加与导入统一由一个入口承载。
+      Row() {
+        Blank()
         Button('+')
           .width(52)
           .height(52)
@@ -915,14 +917,12 @@ struct Index {
           .backgroundColor($r('app.color.primary'))
           .borderRadius(26)
           .shadow({ radius: 8, color: $r('app.color.shadow_color'), offsetX: 0, offsetY: 3 })
-          .onClick(() => {
-            AppStorage.setOrCreate('editProfileId', '');
-            router.pushUrl({ url: 'pages/ProfileEdit' });
-          })
+          .hoverEffect(HoverEffect.Scale)
+          .onClick(() => this.addEntryDialog.open())
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
-      .padding({ left: 16, right: 16, top: 10, bottom: 20 })
+      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 10, bottom: 20 })
     }
     .width('100%')
     .height('100%')
@@ -982,7 +982,8 @@ struct ShareTextDialog {
 struct ImportDialog {
   controller?: CustomDialogController;
   @Link text: string;
-  onImport: (t: string) => void = (t: string) => {
+  @Link name: string;
+  onImport: (t: string, name: string) => void = (t: string, name: string) => {
   };
   onPickClipboard: () => void = () => {
   };
@@ -992,6 +993,14 @@ struct ImportDialog {
       Text($r('app.string.import_link_subscription'))
         .fontSize(16)
         .fontWeight(FontWeight.Bold)
+      TextInput({
+        text: this.name,
+        placeholder: $r('app.string.subscription_name_optional')
+      })
+        .height(UiSpec.BTN_HEIGHT)
+        .onChange((v: string) => {
+          this.name = v;
+        })
       TextArea({
         text: this.text,
         placeholder: $r('app.string.import_content_placeholder')
@@ -1021,12 +1030,51 @@ struct ImportDialog {
             if (this.controller !== undefined) {
               this.controller.close();
             }
-            this.onImport(t);
+            this.onImport(t, this.name);
           })
       }
       .width('100%')
     }
     .padding(16)
+    .width('100%')
+  }
+}
+
+/** 统一添加入口弹窗:新建节点 / 导入订阅 */
+@CustomDialog
+struct AddEntryDialog {
+  controller?: CustomDialogController;
+  onNewProfile: () => void = () => {
+  };
+  onImportSubscription: () => void = () => {
+  };
+
+  build() {
+    Column({ space: UiSpec.GAP_SM }) {
+      Button($r('app.string.import_link_subscription'))
+        .width('100%')
+        .height(UiSpec.BTN_HEIGHT)
+        .backgroundColor($r('app.color.primary'))
+        .fontColor($r('app.color.surface'))
+        .onClick(() => {
+          if (this.controller !== undefined) {
+            this.controller.close();
+          }
+          this.onImportSubscription();
+        })
+      Button($r('app.string.profile_new_title'))
+        .width('100%')
+        .height(UiSpec.BTN_HEIGHT)
+        .backgroundColor($r('app.color.surface'))
+        .fontColor($r('app.color.text_primary'))
+        .onClick(() => {
+          if (this.controller !== undefined) {
+            this.controller.close();
+          }
+          this.onNewProfile();
+        })
+    }
+    .padding(UiSpec.PAGE_PADDING)
     .width('100%')
   }
 }
