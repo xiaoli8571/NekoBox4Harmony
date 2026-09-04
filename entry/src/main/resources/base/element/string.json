@@ -1243,6 +1243,10 @@
     {
       "name": "sub_group_value",
       "value": "分组：%1$s"
+    },
+    {
+      "name": "add_entry",
+      "value": "添加"
     }
   ]
 }

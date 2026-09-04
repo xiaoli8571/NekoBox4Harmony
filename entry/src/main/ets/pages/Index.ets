@@ -4,7 +4,6 @@ import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
 import { BigPowerButton } from '../common/components/BigPowerButton';
 import { MiniStatCard } from '../common/components/MiniStatCard';
-import { ToggleRow } from '../common/components/ToggleRow';
 import { Profile, ProfileGroup, AppSettings, profileTypeLabel } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, loadSettings, saveSettings, readPrefString, writePrefString, LogStore } from '../model/Store';
 import { VpnService } from '../core/VpnService';
@@ -765,46 +764,6 @@ struct Index {
       .backgroundColor($r('app.color.surface'))
       .shadow({ radius: 16, color: $r('app.color.shadow_color'), offsetX: 0, offsetY: 6 })
 
-      // 现有设置状态的快捷开关，不引入新的业务状态或改变既有键语义
-      Column() {
-        ToggleRow({
-          title: $r('app.string.settings_auto_update_subs'),
-          description: $r('app.string.settings_auto_update_subs'),
-          checked: this.settings.autoUpdateSubs,
-          onChange: (checked: boolean) => {
-            this.settings.autoUpdateSubs = checked;
-            this.settings = this.settings;
-            saveSettings(this.settings);
-          }
-        })
-        Divider().color($r('app.color.divider'))
-        ToggleRow({
-          title: $r('app.string.settings_enable_ipv6'),
-          description: $r('app.string.settings_enable_ipv6'),
-          checked: this.settings.ipv6,
-          onChange: (checked: boolean) => {
-            this.settings.ipv6 = checked;
-            this.settings = this.settings;
-            saveSettings(this.settings);
-          }
-        })
-        Divider().color($r('app.color.divider'))
-        ToggleRow({
-          title: $r('app.string.haptic_feedback'),
-          description: $r('app.string.haptic_feedback'),
-          checked: this.settings.hapticFeedback,
-          onChange: (checked: boolean) => {
-            this.settings.hapticFeedback = checked;
-            this.settings = this.settings;
-            saveSettings(this.settings);
-          }
-        })
-      }
-      .width('calc(100% - 32vp)')
-      .margin({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, bottom: 10 })
-      .borderRadius(20)
-      .backgroundColor($r('app.color.surface'))
-
       // 按分组展示节点，分组头在折叠状态下仍显示测速汇总与操作
       List({ space: 8 }) {
         ForEach(this.sortedGroupIds(), (groupId: string) => {
@@ -906,22 +865,16 @@ struct Index {
       .width('100%')
       .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
 
-      // 首页仅保留 HeroCard 内的主连接按钮；添加与导入统一由一个入口承载。
+      // 底部菜单栏:添加(导入订阅 / 新建节点)统一入口
       Row() {
-        Blank()
-        Button('+')
-          .width(52)
-          .height(52)
-          .fontSize(28)
-          .fontColor($r('app.color.surface'))
+        Button($r('app.string.add_entry'), { type: ButtonType.Capsule })
+          .layoutWeight(1)
+          .height(UiSpec.BTN_HEIGHT)
           .backgroundColor($r('app.color.primary'))
-          .borderRadius(26)
-          .shadow({ radius: 8, color: $r('app.color.shadow_color'), offsetX: 0, offsetY: 3 })
-          .hoverEffect(HoverEffect.Scale)
+          .fontColor($r('app.color.surface'))
           .onClick(() => this.addEntryDialog.open())
       }
       .width('100%')
-      .alignItems(VerticalAlign.Center)
       .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 10, bottom: 20 })
     }
     .width('100%')
