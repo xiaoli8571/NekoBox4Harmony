@@ -205,3 +205,15 @@
 - 改动文件：`entry/src/main/ets/model/Profile.ets`、`entry/src/main/ets/model/Store.ets`、`entry/src/main/ets/pages/Index.ets`、`entry/src/main/ets/views/SettingsView.ets`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
 - 约束遵守：未修改 `core/`、`entry/libs/`、CGo 接口、`module.json5`、`AppScope/`、`build-profile.json5`、版本号或构建产物；未构建、未打包、未执行 Git 写操作。
 - 待验证：构建机使用 versionCode `1001907` 完成 ArkTS 编译；真机验证 TCP DNS 在完全退出重进后仍持久化、不退出直接连接时内核读取新值、pending→running 跨进程握手，以及订阅切换后代理列表自动跟随。
+
+## 2.0 第四轮设置页统一与视觉收尾（五项修复） —— 状态：已完成开发，待构建机与真机验证
+
+1. **Store 同进程实例复用与诊断：已完成。** `initStore` 在 UI 进程已有 Preferences 实例时直接复用，仅 `:vpn` 进程重新 `getPreferences`，避免同文件多实例旧快照 flush 回滚新保存的设置；`loadSettings` 增加 appearance/mode/remoteDns 诊断日志。
+2. **设置页分区卡片化：已完成。** DNS、TUN（Clash API 与 IPv6 两项并入 TUN 卡片，未删除）、分应用代理、备份与恢复、关于统一为 11px 分区标题 + 单张圆角玻璃卡片（`UiSpec.GLASS_RADIUS`、`bg_glass_solid`、`border_glass`、14px 内边距，行间 0.5px Divider margin left 14）；全部业务项、回调与保存链路保留，外观区块确认仅一份；视觉顺序为 外观与交互、路由、DNS、TUN、per-app、备份、关于。当前设置页无订阅业务控件，未渲染空订阅分区。
+3. **文案：已完成。** base/en_US 的 `tab_mine` 分别为 设置/Settings，`settings_title` 为 设置/Settings；未新增资源键。
+4. **代理页 FAB 与 bottomNav：已完成。** FAB 保持 Stack `BottomEnd` + 52 圆形，margin 修正为 right `PAGE_PADDING+16`、bottom 94（bottomNav 顶 78 之上 16），`runProxySpeedTest` onClick 未改；bottomNav 维持非整宽贴底、半透明 glassBg、border、shadow、左右 `PAGE_PADDING` 与 bottom 12 安全距离。
+5. **静态审计：已完成。** `git diff --check` 通过；`Store.ets` 相对基线 30aec48 仅两处指定变化；base/en_US 资源 JSON 可解析、键集合一致（各 332 项）；改动文本均 LF、无 NUL；Index.ets 与 SettingsView.ets 三类定界符配平；无 `${$r(` 混拼、无 tab_mine 旧值残留。
+
+- 改动文件：`entry/src/main/ets/model/Store.ets`、`entry/src/main/ets/views/SettingsView.ets`、`entry/src/main/ets/pages/Index.ets`、`entry/src/main/resources/base/element/string.json`、`entry/src/main/resources/en_US/element/string.json`、`DEVPLAN.md`、`CHANGES.md`。
+- 约束遵守：未修改 `core/`、`entry/libs/`、CGo、`module.json5`、`AppScope/`、`build-profile.json5`、版本号或构建产物；未构建、未打包、未执行 Git 写操作。
+- 待验证：构建机使用 versionCode `1001910` 完成 ArkTS 编译；真机验证设置页各卡片深浅色观感与滚动、TUN 卡片内 Clash API/IPv6 交互、FAB 与悬浮底部导航避让，以及 Store 实例复用在 UI/:vpn 两进程下的设置持久化。

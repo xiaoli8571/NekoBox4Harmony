@@ -345,329 +345,385 @@ export struct SettingsView {
 
       Scroll() {
         Column({ space: UiSpec.GAP_LG }) {
+          // 外观与交互
+          Column({ space: 8 }) {
+            Text($r('app.string.appearance_and_interaction'))
+              .fontSize(11).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary')).width('100%')
+            Column({ space: 8 }) {
+              Row({ space: 8 }) {
+                ForEach(['system', 'light', 'dark'], (mode: string) => {
+                  Button(mode === 'system' ? $r('app.string.appearance_follow_system') : (mode === 'light' ? $r('app.string.appearance_light') : $r('app.string.appearance_dark')))
+                    .layoutWeight(1)
+                    .height(40)
+                    .backgroundColor(this.s.appearance === mode ? $r('app.color.primary') : $r('app.color.surface'))
+                    .fontColor(this.s.appearance === mode ? $r('app.color.surface') : $r('app.color.text_primary'))
+                    .onClick(() => {
+                      this.s.appearance = mode;
+                      this.applyAppearance();
+                      this.save(true);
+                    })
+                }, (mode: string) => mode)
+              }.width('100%')
+              Divider().strokeWidth(0.5).color($r('app.color.border_glass')).margin({ left: 14 })
+              Text($r('app.string.profile_sort_mode')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              Row({ space: 8 }) {
+                ForEach(['manual', 'latency', 'name'], (mode: string) => {
+                  Button(mode === 'manual' ? $r('app.string.sort_manual') : (mode === 'latency' ? $r('app.string.sort_latency') : $r('app.string.sort_name')))
+                    .layoutWeight(1)
+                    .height(40)
+                    .backgroundColor(this.s.profileSortMode === mode ? $r('app.color.primary') : $r('app.color.surface'))
+                    .fontColor(this.s.profileSortMode === mode ? $r('app.color.surface') : $r('app.color.text_primary'))
+                    .onClick(() => {
+                      this.s.profileSortMode = mode;
+                      this.save(true);
+                    })
+                }, (mode: string) => mode)
+              }.width('100%')
+              Divider().strokeWidth(0.5).color($r('app.color.border_glass')).margin({ left: 14 })
+              Row() {
+                Text($r('app.string.haptic_feedback')).fontSize(14).layoutWeight(1)
+                Toggle({ type: ToggleType.Switch, isOn: this.s.hapticFeedback })
+                  .onChange((v: boolean) => {
+                    this.s.hapticFeedback = v;
+                    this.save(true);
+                  })
+              }.width('100%').height(44)
+              Divider().strokeWidth(0.5).color($r('app.color.border_glass')).margin({ left: 14 })
+              Text($r('app.string.ui_fx_level')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              Row({ space: UiSpec.GAP_SM }) {
+                ForEach(['full', 'lite'], (level: string) => {
+                  Button(level === 'full' ? $r('app.string.ui_fx_full') : $r('app.string.ui_fx_lite'))
+                    .layoutWeight(1)
+                    .height(40)
+                    .borderRadius(UiSpec.CHIP_RADIUS)
+                    .backgroundColor(this.uiFxLevel === level ? $r('app.color.chip_on_bg_a') : $r('app.color.bg_glass_solid'))
+                    .fontColor(this.uiFxLevel === level ? $r('app.color.text_primary') : $r('app.color.text_secondary'))
+                    .border({
+                      width: UiSpec.GLASS_BORDER_WIDTH,
+                      color: this.uiFxLevel === level ? $r('app.color.chip_on_border') : $r('app.color.border_glass')
+                    })
+                    .onClick(() => this.setUiFxLevel(level))
+                }, (level: string) => level)
+              }.width('100%')
+              Text($r('app.string.settings_theme_note'))
+                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+            }
+            .width('100%')
+            .padding(14)
+            .borderRadius(UiSpec.GLASS_RADIUS)
+            .backgroundColor($r('app.color.bg_glass_solid'))
+            .border({ width: UiSpec.GLASS_BORDER_WIDTH, color: $r('app.color.border_glass') })
+          }.alignItems(HorizontalAlign.Start).width('100%')
+
           // 路由
           Column({ space: 8 }) {
             Text($r('app.string.section_route'))
               .fontSize(11).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary')).width('100%')
-            Row() {
-              Column() {
-                Text($r('app.string.settings_custom_routes_title')).fontSize(14)
-                Text($r('app.string.route_rules_description')).fontSize(11).fontColor($r('app.color.text_secondary'))
-              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-              Text($r('app.string.enter')).fontSize(14).fontColor($r('app.color.primary'))
+            Column({ space: 8 }) {
+              Row() {
+                Column() {
+                  Text($r('app.string.settings_custom_routes_title')).fontSize(14)
+                  Text($r('app.string.route_rules_description')).fontSize(11).fontColor($r('app.color.text_secondary'))
+                }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+                Text($r('app.string.enter')).fontSize(14).fontColor($r('app.color.primary'))
+              }
+              .width('100%')
+              .height(44)
+              .onClick(() => router.pushUrl({ url: 'pages/RouteRulesPage' }))
+              if (this.s.mode === 'rule') {
+                Divider().strokeWidth(0.5).color($r('app.color.border_glass')).margin({ left: 14 })
+                Text($r('app.string.settings_direct_domain_suffix')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+                TextInput({ text: this.s.directDomains, placeholder: 'baidu.com,qq.com,163.com' })
+                  .width('100%').height(40)
+                  .onChange((v: string) => { this.s.directDomains = v; })
+                Divider().strokeWidth(0.5).color($r('app.color.border_glass')).margin({ left: 14 })
+                Text($r('app.string.settings_direct_cidr')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+                TextInput({ text: this.s.directIpCidrs, placeholder: '114.114.114.114/32' })
+                  .width('100%').height(40)
+                  .onChange((v: string) => { this.s.directIpCidrs = v; })
+                Divider().strokeWidth(0.5).color($r('app.color.border_glass')).margin({ left: 14 })
+                Row({ space: 8 }) {
+                  Text(this.geoOk ? $r('app.string.settings_geo_ready')
+                    : $r('app.string.settings_geo_missing'))
+                    .fontSize(12).fontColor(this.geoOk ? $r('app.color.success') : $r('app.color.text_secondary')).layoutWeight(1)
+                  Button(this.geoLoading ? $r('app.string.settings_geo_downloading') : (this.geoOk ? $r('app.string.settings_geo_redownload') : $r('app.string.settings_geo_download')))
+                    .height(30)
+                    .backgroundColor(this.geoLoading ? $r('app.color.control_disabled') : $r('app.color.primary'))
+                    .onClick(() => this.downloadGeo())
+                }.width('100%').height(44)
+              }
             }
             .width('100%')
-            .height(44)
-            .onClick(() => router.pushUrl({ url: 'pages/RouteRulesPage' }))
-            if (this.s.mode === 'rule') {
-              Text($r('app.string.settings_direct_domain_suffix')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              TextInput({ text: this.s.directDomains, placeholder: 'baidu.com,qq.com,163.com' })
-                .width('100%').height(40)
-                .onChange((v: string) => { this.s.directDomains = v; })
-              Text($r('app.string.settings_direct_cidr')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              TextInput({ text: this.s.directIpCidrs, placeholder: '114.114.114.114/32' })
-                .width('100%').height(40)
-                .onChange((v: string) => { this.s.directIpCidrs = v; })
-              Row({ space: 8 }) {
-                Text(this.geoOk ? $r('app.string.settings_geo_ready')
-                  : $r('app.string.settings_geo_missing'))
-                  .fontSize(12).fontColor(this.geoOk ? $r('app.color.success') : $r('app.color.text_secondary')).layoutWeight(1)
-                Button(this.geoLoading ? $r('app.string.settings_geo_downloading') : (this.geoOk ? $r('app.string.settings_geo_redownload') : $r('app.string.settings_geo_download')))
-                  .height(30)
-                  .backgroundColor(this.geoLoading ? $r('app.color.control_disabled') : $r('app.color.primary'))
-                  .onClick(() => this.downloadGeo())
-              }.width('100%')
-            }
+            .padding(14)
+            .borderRadius(UiSpec.GLASS_RADIUS)
+            .backgroundColor($r('app.color.bg_glass_solid'))
+            .border({ width: UiSpec.GLASS_BORDER_WIDTH, color: $r('app.color.border_glass') })
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           // DNS
           Column({ space: 8 }) {
             Text($r('app.string.section_dns'))
               .fontSize(11).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary')).width('100%')
-            Text($r('app.string.settings_remote_dns')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            TextInput({ text: this.s.remoteDns })
-              .width('100%').height(40)
-              .onChange((v: string) => { this.s.remoteDns = v; })
-            Text($r('app.string.settings_remote_dns_hint'))
-              .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-            Text($r('app.string.settings_direct_dns')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            TextInput({ text: this.s.directDns })
-              .width('100%').height(40)
-              .onChange((v: string) => { this.s.directDns = v; })
+            Column({ space: 8 }) {
+              Text($r('app.string.settings_remote_dns')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              TextInput({ text: this.s.remoteDns })
+                .width('100%').height(40)
+                .onChange((v: string) => { this.s.remoteDns = v; })
+              Text($r('app.string.settings_remote_dns_hint'))
+                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+              Divider().strokeWidth(0.5).color($r('app.color.border_glass')).margin({ left: 14 })
+              Text($r('app.string.settings_direct_dns')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              TextInput({ text: this.s.directDns })
+                .width('100%').height(40)
+                .onChange((v: string) => { this.s.directDns = v; })
+            }
+            .width('100%')
+            .padding(14)
+            .borderRadius(UiSpec.GLASS_RADIUS)
+            .backgroundColor($r('app.color.bg_glass_solid'))
+            .border({ width: UiSpec.GLASS_BORDER_WIDTH, color: $r('app.color.border_glass') })
           }.alignItems(HorizontalAlign.Start).width('100%')
 
-          // TUN
+          // TUN(含 Clash API 与 IPv6)
           Column({ space: 8 }) {
             Text($r('app.string.section_tun'))
               .fontSize(11).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary')).width('100%')
-            Text('TUN MTU').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            TextInput({ text: `${this.s.mtu}`, placeholder: '9000' })
-              .type(InputType.Number).width('100%').height(40)
-              .onChange((v: string) => {
-                const n = parseInt(v);
-                this.s.mtu = isNaN(n) ? 9000 : n;
-              })
-            Text($r('app.string.settings_tun_stack')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            Select(STACKS.map((t: string) => ({ value: t } as SelectOption)))
-              .selected(STACKS.indexOf(this.s.stack) < 0 ? 0 : STACKS.indexOf(this.s.stack))
-              .value(this.s.stack)
-              .height(40)
-              .onSelect((index: number) => { this.s.stack = STACKS[index]; })
-            Row() {
-              Column() {
-                Text($r('app.string.settings_insecure_tls')).fontSize(14)
-                Text($r('app.string.settings_insecure_tls_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
-              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.allowInsecureAll })
-                .onChange((v: boolean) => { this.s.allowInsecureAll = v; })
-            }.width('100%').height(44)
-          }.alignItems(HorizontalAlign.Start).width('100%')
-
-          // Clash API 连接统计
-          Column({ space: 8 }) {
-            Text($r('app.string.clash_api_settings'))
-              .fontSize(11).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary')).width('100%')
-            Row() {
-              Text($r('app.string.clash_api_enabled')).fontSize(14).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.clashApiEnabled })
-                .onChange((value: boolean) => {
-                  this.s.clashApiEnabled = value;
-                  this.save(true);
+            Column({ space: 8 }) {
+              Text('TUN MTU').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              TextInput({ text: `${this.s.mtu}`, placeholder: '9000' })
+                .type(InputType.Number).width('100%').height(40)
+                .onChange((v: string) => {
+                  const n = parseInt(v);
+                  this.s.mtu = isNaN(n) ? 9000 : n;
                 })
-            }.width('100%').height(44)
-            Text($r('app.string.clash_api_port')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            TextInput({ text: `${this.s.clashApiPort}` })
-              .width('100%')
-              .height(40)
-              .type(InputType.Number)
-              .onChange((value: string) => {
-                const port = parseInt(value);
-                if (!isNaN(port)) {
-                  this.s.clashApiPort = Math.max(1024, Math.min(65535, port));
-                  this.save(true);
-                }
-              })
-            Text($r('app.string.clash_api_secret')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            TextInput({ text: this.s.clashApiSecret })
-              .width('100%')
-              .height(40)
-              .type(InputType.Password)
-              .onChange((value: string) => {
-                this.s.clashApiSecret = value;
-                this.save(true);
-              })
-            Text($r('app.string.clash_api_reconnect_hint'))
-              .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-          }.alignItems(HorizontalAlign.Start).width('100%')
-
-          // IPv6
-          Column({ space: 8 }) {
-            Text($r('app.string.section_ipv6'))
-              .fontSize(11).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary')).width('100%')
-            Row() {
-              Text($r('app.string.settings_enable_ipv6')).fontSize(14).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.ipv6 })
-                .onChange((v: boolean) => { this.s.ipv6 = v; })
-            }.width('100%').height(44)
-          }.alignItems(HorizontalAlign.Start).width('100%')
-
-          // 外观与交互
-          Column({ space: 8 }) {
-            Text($r('app.string.appearance_and_interaction'))
-              .fontSize(11).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary')).width('100%')
-            Row({ space: 8 }) {
-              ForEach(['system', 'light', 'dark'], (mode: string) => {
-                Button(mode === 'system' ? $r('app.string.appearance_follow_system') : (mode === 'light' ? $r('app.string.appearance_light') : $r('app.string.appearance_dark')))
-                  .layoutWeight(1)
-                  .height(40)
-                  .backgroundColor(this.s.appearance === mode ? $r('app.color.primary') : $r('app.color.surface'))
-                  .fontColor(this.s.appearance === mode ? $r('app.color.surface') : $r('app.color.text_primary'))
-                  .onClick(() => {
-                    this.s.appearance = mode;
-                    this.applyAppearance();
+              Divider().strokeWidth(0.5).color($r('app.color.border_glass')).margin({ left: 14 })
+              Text($r('app.string.settings_tun_stack')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              Select(STACKS.map((t: string) => ({ value: t } as SelectOption)))
+                .selected(STACKS.indexOf(this.s.stack) < 0 ? 0 : STACKS.indexOf(this.s.stack))
+                .value(this.s.stack)
+                .height(40)
+                .onSelect((index: number) => { this.s.stack = STACKS[index]; })
+              Divider().strokeWidth(0.5).color($r('app.color.border_glass')).margin({ left: 14 })
+              Row() {
+                Column() {
+                  Text($r('app.string.settings_insecure_tls')).fontSize(14)
+                  Text($r('app.string.settings_insecure_tls_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
+                }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+                Toggle({ type: ToggleType.Switch, isOn: this.s.allowInsecureAll })
+                  .onChange((v: boolean) => { this.s.allowInsecureAll = v; })
+              }.width('100%').height(44)
+              Divider().strokeWidth(0.5).color($r('app.color.border_glass')).margin({ left: 14 })
+              Text($r('app.string.clash_api_settings'))
+                .fontSize(11).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary')).width('100%')
+              Row() {
+                Text($r('app.string.clash_api_enabled')).fontSize(14).layoutWeight(1)
+                Toggle({ type: ToggleType.Switch, isOn: this.s.clashApiEnabled })
+                  .onChange((value: boolean) => {
+                    this.s.clashApiEnabled = value;
                     this.save(true);
                   })
-              }, (mode: string) => mode)
-            }.width('100%')
-            Text($r('app.string.profile_sort_mode')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            Row({ space: 8 }) {
-              ForEach(['manual', 'latency', 'name'], (mode: string) => {
-                Button(mode === 'manual' ? $r('app.string.sort_manual') : (mode === 'latency' ? $r('app.string.sort_latency') : $r('app.string.sort_name')))
-                  .layoutWeight(1)
-                  .height(40)
-                  .backgroundColor(this.s.profileSortMode === mode ? $r('app.color.primary') : $r('app.color.surface'))
-                  .fontColor(this.s.profileSortMode === mode ? $r('app.color.surface') : $r('app.color.text_primary'))
-                  .onClick(() => {
-                    this.s.profileSortMode = mode;
+              }.width('100%').height(44)
+              Text($r('app.string.clash_api_port')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              TextInput({ text: `${this.s.clashApiPort}` })
+                .width('100%')
+                .height(40)
+                .type(InputType.Number)
+                .onChange((value: string) => {
+                  const port = parseInt(value);
+                  if (!isNaN(port)) {
+                    this.s.clashApiPort = Math.max(1024, Math.min(65535, port));
                     this.save(true);
-                  })
-              }, (mode: string) => mode)
-            }.width('100%')
-            Row() {
-              Text($r('app.string.haptic_feedback')).fontSize(14).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.hapticFeedback })
-                .onChange((v: boolean) => {
-                  this.s.hapticFeedback = v;
+                  }
+                })
+              Divider().strokeWidth(0.5).color($r('app.color.border_glass')).margin({ left: 14 })
+              Text($r('app.string.clash_api_secret')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              TextInput({ text: this.s.clashApiSecret })
+                .width('100%')
+                .height(40)
+                .type(InputType.Password)
+                .onChange((value: string) => {
+                  this.s.clashApiSecret = value;
                   this.save(true);
                 })
-            }.width('100%').height(44)
-            Text($r('app.string.ui_fx_level')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            Row({ space: UiSpec.GAP_SM }) {
-              ForEach(['full', 'lite'], (level: string) => {
-                Button(level === 'full' ? $r('app.string.ui_fx_full') : $r('app.string.ui_fx_lite'))
-                  .layoutWeight(1)
-                  .height(40)
-                  .borderRadius(UiSpec.CHIP_RADIUS)
-                  .backgroundColor(this.uiFxLevel === level ? $r('app.color.chip_on_bg_a') : $r('app.color.bg_glass_solid'))
-                  .fontColor(this.uiFxLevel === level ? $r('app.color.text_primary') : $r('app.color.text_secondary'))
-                  .border({
-                    width: UiSpec.GLASS_BORDER_WIDTH,
-                    color: this.uiFxLevel === level ? $r('app.color.chip_on_border') : $r('app.color.border_glass')
-                  })
-                  .onClick(() => this.setUiFxLevel(level))
-              }, (level: string) => level)
-            }.width('100%')
-            Text($r('app.string.settings_theme_note'))
-              .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+              Text($r('app.string.clash_api_reconnect_hint'))
+                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+              Divider().strokeWidth(0.5).color($r('app.color.border_glass')).margin({ left: 14 })
+              Text($r('app.string.section_ipv6'))
+                .fontSize(11).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary')).width('100%')
+              Row() {
+                Text($r('app.string.settings_enable_ipv6')).fontSize(14).layoutWeight(1)
+                Toggle({ type: ToggleType.Switch, isOn: this.s.ipv6 })
+                  .onChange((v: boolean) => { this.s.ipv6 = v; })
+              }.width('100%').height(44)
+            }
+            .width('100%')
+            .padding(14)
+            .borderRadius(UiSpec.GLASS_RADIUS)
+            .backgroundColor($r('app.color.bg_glass_solid'))
+            .border({ width: UiSpec.GLASS_BORDER_WIDTH, color: $r('app.color.border_glass') })
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           // 分应用代理
           Column({ space: 8 }) {
             Text($r('app.string.per_app_proxy'))
               .fontSize(11).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary')).width('100%')
-            Row({ space: 8 }) {
-              ForEach(APP_MODES, (m: string, idx: number) => {
-                Button(APP_MODE_LABELS[idx])
-                  .layoutWeight(1)
-                  .height(40)
-                  .backgroundColor(this.s.perAppMode === m ? $r('app.color.primary') : $r('app.color.surface'))
-                  .fontColor(this.s.perAppMode === m ? $r('app.color.surface') : $r('app.color.text_primary'))
-                  .onClick(() => {
-                    this.s.perAppMode = m;
-                    this.save(true);
-                  })
-              }, (m: string) => m)
-            }.width('100%')
-            if (this.s.perAppMode !== 'off') {
+            Column({ space: 8 }) {
               Row({ space: 8 }) {
-                TextInput({ text: this.appSearch, placeholder: $r('app.string.search_apps') })
-                  .layoutWeight(1).height(40)
-                  .onChange((value: string) => { this.appSearch = value; })
-                Button(this.appListLoading ? $r('app.string.reading_apps') : $r('app.string.read_apps'))
-                  .height(40)
-                  .enabled(!this.appListLoading)
-                  .onClick(() => this.loadInstalledApps())
+                ForEach(APP_MODES, (m: string, idx: number) => {
+                  Button(APP_MODE_LABELS[idx])
+                    .layoutWeight(1)
+                    .height(40)
+                    .backgroundColor(this.s.perAppMode === m ? $r('app.color.primary') : $r('app.color.surface'))
+                    .fontColor(this.s.perAppMode === m ? $r('app.color.surface') : $r('app.color.text_primary'))
+                    .onClick(() => {
+                      this.s.perAppMode = m;
+                      this.save(true);
+                    })
+                }, (m: string) => m)
               }.width('100%')
+              if (this.s.perAppMode !== 'off') {
+                Divider().strokeWidth(0.5).color($r('app.color.border_glass')).margin({ left: 14 })
+                Row({ space: 8 }) {
+                  TextInput({ text: this.appSearch, placeholder: $r('app.string.search_apps') })
+                    .layoutWeight(1).height(40)
+                    .onChange((value: string) => { this.appSearch = value; })
+                  Button(this.appListLoading ? $r('app.string.reading_apps') : $r('app.string.read_apps'))
+                    .height(40)
+                    .enabled(!this.appListLoading)
+                    .onClick(() => this.loadInstalledApps())
+                }.width('100%')
 
-              if (this.appListError !== '') {
-                Text(this.appListError)
-                  .fontSize(11).fontColor($r('app.color.error')).width('100%')
+                if (this.appListError !== '') {
+                  Text(this.appListError)
+                    .fontSize(11).fontColor($r('app.color.error')).width('100%')
+                }
+
+                if (this.installedApps.length > 0) {
+                  List({ space: 4 }) {
+                    ForEach(this.filteredInstalledApps(), (item: InstalledAppItem) => {
+                      ListItem() {
+                        Row({ space: 8 }) {
+                          Column({ space: 2 }) {
+                            Text(item.label).fontSize(14).width('100%')
+                            Text(item.bundleName)
+                              .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+                          }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+                          Toggle({ type: ToggleType.Checkbox, isOn: this.isAppSelected(item.bundleName) })
+                            .onChange((selected: boolean) => {
+                              this.toggleInstalledApp(item.bundleName, selected);
+                            })
+                        }.width('100%').padding({ top: 6, bottom: 6 })
+                      }
+                    }, (item: InstalledAppItem) => item.bundleName)
+                  }.width('100%').height(240)
+                }
+
+                Divider().strokeWidth(0.5).color($r('app.color.border_glass')).margin({ left: 14 })
+                TextInput({
+                  text: this.s.perAppList,
+                  placeholder: this.s.perAppMode === 'exclude'
+                    ? $r('app.string.settings_per_app_hint_exclude')
+                    : $r('app.string.settings_per_app_hint_include')
+                })
+                  .width('100%').height(40)
+                  .onChange((value: string) => { this.s.perAppList = value; })
+                Text($r('app.string.settings_per_app_manual_note'))
+                  .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
               }
-
-              if (this.installedApps.length > 0) {
-                List({ space: 4 }) {
-                  ForEach(this.filteredInstalledApps(), (item: InstalledAppItem) => {
-                    ListItem() {
-                      Row({ space: 8 }) {
-                        Column({ space: 2 }) {
-                          Text(item.label).fontSize(14).width('100%')
-                          Text(item.bundleName)
-                            .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-                        }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-                        Toggle({ type: ToggleType.Checkbox, isOn: this.isAppSelected(item.bundleName) })
-                          .onChange((selected: boolean) => {
-                            this.toggleInstalledApp(item.bundleName, selected);
-                          })
-                      }.width('100%').padding({ top: 6, bottom: 6 })
-                    }
-                  }, (item: InstalledAppItem) => item.bundleName)
-                }.width('100%').height(240)
-              }
-
-              TextInput({
-                text: this.s.perAppList,
-                placeholder: this.s.perAppMode === 'exclude'
-                  ? $r('app.string.settings_per_app_hint_exclude')
-                  : $r('app.string.settings_per_app_hint_include')
-              })
-                .width('100%').height(40)
-                .onChange((value: string) => { this.s.perAppList = value; })
-              Text($r('app.string.settings_per_app_manual_note'))
-                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
             }
+            .width('100%')
+            .padding(14)
+            .borderRadius(UiSpec.GLASS_RADIUS)
+            .backgroundColor($r('app.color.bg_glass_solid'))
+            .border({ width: UiSpec.GLASS_BORDER_WIDTH, color: $r('app.color.border_glass') })
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           // 备份与恢复
           Column({ space: 8 }) {
             Text($r('app.string.backup_restore'))
               .fontSize(11).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary')).width('100%')
-            Row({ space: 8 }) {
-              Button(this.backupFileBusy ? $r('app.string.processing') : $r('app.string.export_backup_file'))
-                .layoutWeight(1)
-                .height(UiSpec.BTN_HEIGHT)
-                .enabled(!this.backupFileBusy)
-                .backgroundColor($r('app.color.primary'))
-                .fontColor($r('app.color.surface'))
-                .onClick(() => this.exportBackupFile())
-              Button($r('app.string.restore_from_file'))
-                .layoutWeight(1)
-                .height(UiSpec.BTN_HEIGHT)
-                .enabled(!this.backupFileBusy)
-                .backgroundColor($r('app.color.surface'))
-                .fontColor($r('app.color.text_primary'))
-                .onClick(() => this.importBackupFile())
-            }.width('100%')
-            Row({ space: 8 }) {
-              Button($r('app.string.backup_to_clipboard'))
-                .layoutWeight(1)
-                .height(UiSpec.BTN_HEIGHT)
-                .backgroundColor($r('app.color.surface'))
-                .fontColor($r('app.color.text_primary'))
-                .onClick(async () => {
-                  try {
-                    const data = await exportBackup(this.context);
-                    const pasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, data);
-                    await pasteboard.getSystemPasteboard().setData(pasteData);
-                    promptAction.showToast({ message: $r('app.string.settings_clipboard_backup_done') });
-                  } catch (e) {
-                    promptAction.showToast({ message: $r('app.string.settings_clipboard_backup_failed', e instanceof Error ? e.message : `${e}`) });
-                  }
-                })
-              Button($r('app.string.restore_from_clipboard'))
-                .layoutWeight(1)
-                .height(UiSpec.BTN_HEIGHT)
-                .backgroundColor($r('app.color.surface'))
-                .fontColor($r('app.color.text_primary'))
-                .onClick(async () => {
-                  try {
-                    const text = await getClipboardText();
-                    if (text.trim().length === 0) {
-                      promptAction.showToast({ message: $r('app.string.settings_clipboard_empty') });
-                      return;
+            Column({ space: 8 }) {
+              Row({ space: 8 }) {
+                Button(this.backupFileBusy ? $r('app.string.processing') : $r('app.string.export_backup_file'))
+                  .layoutWeight(1)
+                  .height(UiSpec.BTN_HEIGHT)
+                  .enabled(!this.backupFileBusy)
+                  .backgroundColor($r('app.color.primary'))
+                  .fontColor($r('app.color.surface'))
+                  .onClick(() => this.exportBackupFile())
+                Button($r('app.string.restore_from_file'))
+                  .layoutWeight(1)
+                  .height(UiSpec.BTN_HEIGHT)
+                  .enabled(!this.backupFileBusy)
+                  .backgroundColor($r('app.color.surface'))
+                  .fontColor($r('app.color.text_primary'))
+                  .onClick(() => this.importBackupFile())
+              }.width('100%')
+              Divider().strokeWidth(0.5).color($r('app.color.border_glass')).margin({ left: 14 })
+              Row({ space: 8 }) {
+                Button($r('app.string.backup_to_clipboard'))
+                  .layoutWeight(1)
+                  .height(UiSpec.BTN_HEIGHT)
+                  .backgroundColor($r('app.color.surface'))
+                  .fontColor($r('app.color.text_primary'))
+                  .onClick(async () => {
+                    try {
+                      const data = await exportBackup(this.context);
+                      const pasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, data);
+                      await pasteboard.getSystemPasteboard().setData(pasteData);
+                      promptAction.showToast({ message: $r('app.string.settings_clipboard_backup_done') });
+                    } catch (e) {
+                      promptAction.showToast({ message: $r('app.string.settings_clipboard_backup_failed', e instanceof Error ? e.message : `${e}`) });
                     }
-                    const msg = await importBackup(this.context, text.trim());
-                    this.s = await loadSettings();
-                    promptAction.showToast({ message: msg });
-                  } catch (e) {
-                    promptAction.showToast({ message: this.backupErrorText(e instanceof Error ? e.message : `${e}`) });
-                  }
-                })
-            }.width('100%')
-            Text($r('app.string.settings_backup_desc'))
-              .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+                  })
+                Button($r('app.string.restore_from_clipboard'))
+                  .layoutWeight(1)
+                  .height(UiSpec.BTN_HEIGHT)
+                  .backgroundColor($r('app.color.surface'))
+                  .fontColor($r('app.color.text_primary'))
+                  .onClick(async () => {
+                    try {
+                      const text = await getClipboardText();
+                      if (text.trim().length === 0) {
+                        promptAction.showToast({ message: $r('app.string.settings_clipboard_empty') });
+                        return;
+                      }
+                      const msg = await importBackup(this.context, text.trim());
+                      this.s = await loadSettings();
+                      promptAction.showToast({ message: msg });
+                    } catch (e) {
+                      promptAction.showToast({ message: this.backupErrorText(e instanceof Error ? e.message : `${e}`) });
+                    }
+                  })
+              }.width('100%')
+              Text($r('app.string.settings_backup_desc'))
+                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+            }
+            .width('100%')
+            .padding(14)
+            .borderRadius(UiSpec.GLASS_RADIUS)
+            .backgroundColor($r('app.color.bg_glass_solid'))
+            .border({ width: UiSpec.GLASS_BORDER_WIDTH, color: $r('app.color.border_glass') })
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           Text($r('app.string.settings_reconnect_note'))
             .fontSize(12).fontColor($r('app.color.error')).width('100%')
 
           // 关于
-          Column({ space: 4 }) {
+          Column({ space: 8 }) {
             Text($r('app.string.section_about'))
               .fontSize(11).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary')).width('100%')
-            Text($r('app.string.app_name')).fontSize(14).fontWeight(FontWeight.Medium)
-            if (this.appVersion.length > 0) {
-              Text(`v${this.appVersion}`).fontSize(11).fontColor($r('app.color.text_secondary'))
+            Column({ space: 4 }) {
+              Text($r('app.string.app_name')).fontSize(14).fontWeight(FontWeight.Medium)
+              if (this.appVersion.length > 0) {
+                Text(`v${this.appVersion}`).fontSize(11).fontColor($r('app.color.text_secondary'))
+              }
             }
+            .width('100%')
+            .padding(14)
+            .borderRadius(UiSpec.GLASS_RADIUS)
+            .backgroundColor($r('app.color.bg_glass_solid'))
+            .border({ width: UiSpec.GLASS_BORDER_WIDTH, color: $r('app.color.border_glass') })
           }.alignItems(HorizontalAlign.Start).width('100%')
         }
         .width('100%')
