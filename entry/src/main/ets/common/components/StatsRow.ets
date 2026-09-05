@@ -2,9 +2,9 @@ import { UiSpec } from '../UiSpec';
 
 @Component
 export struct StatsRow {
-  upload: ResourceStr = '—';
-  download: ResourceStr = '—';
-  traffic: ResourceStr = '—';
+  @Prop upload: string = '—';
+  @Prop download: string = '—';
+  @Prop traffic: string = '—';
 
   @Builder
   private item(label: ResourceStr, value: ResourceStr) {

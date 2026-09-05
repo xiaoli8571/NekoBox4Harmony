@@ -1,12 +1,12 @@
 @Component
 export struct BottomNavText {
   label: ResourceStr = '';
-  selected: boolean = false;
+  @Prop selected: boolean = false;
   onSelect: () => void = () => {};
 
   build() {
     Text(this.label)
-      .fontSize(12)
+      .fontSize(16)
       .fontWeight(this.selected ? 800 : FontWeight.Regular)
       .fontColor(this.selected ? $r('app.color.mono') : $r('app.color.text_3'))
       .letterSpacing(2)
