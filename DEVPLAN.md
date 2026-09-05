@@ -95,7 +95,7 @@
 
 > 通知栏占位符修复（2026-09-03）：本机 SDK 的 `resourceManager.getStringSync` 未展开带参数资源，真机原样显示 `%1$s.%2$s`。通知副标题现改为代码直接拼接 `${nodeName} · ${latencyText}`，避免占位符泄漏；待构建与真机验证。
 
-## U1 首页重构 —— 状态：已完成开发，待构建机验证
+## U1 首页重构 —— 状态：B 方案已完成静态交付，待构建机验证
 
 - 已完成方案 A 鸿蒙原生卡片流首页改造，新增 `BigPowerButton`、`MiniStatCard`、`ToggleRow`，并复用既有 `AppStorage('vpnStatus')`、`Index.statusDisplay()`、`AppSettings` 与 `saveSettings()` 状态链路。
 - 保留节点选择、VPN 启停、导入、新增与编辑、测速、分组测速、折叠、手动排序、置顶、分享、per-app 入口，以及连接、日志和设置入口。
@@ -112,3 +112,19 @@
 - **文案**：「导入链接」全局改为「导入订阅」(import_link_subscription / subscription_link_use_home / settings_subs_empty)；删除已无引用的 `import_link` 键；新增 `subscription_name_optional`、`sub_group_none_count`、`sub_group_value`；删除死资源 `sub_group_none`。
 - **静态检查**：4 个资源 JSON 语法通过；base/en_US 字符串键 311=311 无缺失；base/dark 色值键 24=24 无缺失；`git diff --check` 干净；无 `$r()` 进模板串；十六进制色值仅存于日志页(刻意保留)；改动全部位于 `entry/src/main/ets` 与 `entry/src/main/resources` 白名单，未触碰内核 `core/`、`.so`、`module.json5`、`build-profile.json5`、`AppScope`。
 - 未构建、未打包、未执行 Git 写操作；等待构建机编译与真机验证。
+
+## U2 订阅管理与节点操作 —— 状态：B 方案已完成静态交付，待构建机验证
+
+- 订阅管理作为第二导航目的地，集中展示订阅纯行、所有节点分组、搜索、订阅详情、分组编辑、更新、删除及节点上下文操作。
+
+## U3 设置导航与既有能力保留 —— 状态：B 方案已完成静态交付，待构建机验证
+
+## U4 响应式导航与连接状态 —— 状态：B 方案已完成静态交付，待构建机验证
+
+## U5 桌面服务卡片方案 —— 状态：方案文档已完成，未修改 module.json5
+
+## U6 B 方案纯行视觉与资源化 —— 状态：已完成静态交付，待构建机验证
+
+## U7 静态验收与交付记录 —— 状态：B 方案静态验收已完成，待构建机验证
+
+- AppStorage UI 键统一为 `uiBreakpoint`、`uiUptime`、`uiUptimeStart`；构建与真机验证按本轮约束留给构建机执行。

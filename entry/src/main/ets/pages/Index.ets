@@ -3,7 +3,9 @@ import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
 import { BigPowerButton } from '../common/components/BigPowerButton';
-import { MiniStatCard } from '../common/components/MiniStatCard';
+import { StatsRow } from '../common/components/StatsRow';
+import { BottomNavText } from '../common/components/BottomNavText';
+
 import { Profile, ProfileGroup, AppSettings, profileTypeLabel } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, loadSettings, saveSettings, readPrefString, writePrefString, LogStore } from '../model/Store';
 import { VpnService } from '../core/VpnService';
@@ -11,7 +13,7 @@ import { parseShareText } from '../utils/LinkParser';
 import { getClipboardText, setClipboardText } from '../utils/ClipboardHelper';
 import { fetchSubscriptionWithInfo, fetchSubscription, looksLikeClashYaml, parseClashProxies, ClashParseResult } from '../utils/Subscription';
 import { testProfiles, tcpPing } from '../utils/LatencyTester';
-import { upsertSub, needAutoUpdate, updateSubscription, setAppContext, subNameOf, markSubSuccess, markSubFailure } from '../core/Subscriptions';
+import { SubInfo, listSubs, saveSubs, removeSub, upsertSub, needAutoUpdate, updateSubscription, setAppContext, subNameOf, markSubSuccess, markSubFailure } from '../core/Subscriptions';
 import { fetchTrafficTotals, formatSpeed, formatBytes } from '../utils/TrafficStats';
 import { fetchCurrentProxyDelay } from '../utils/ClashApi';
 import { exportProfileLink } from '../utils/LinkExporter';
@@ -26,6 +28,13 @@ struct Index {
   @State latencies: Record<string, number> = {};
   @State testing: boolean = false;
   @State settings: AppSettings = new AppSettings();
+  @State subscriptions: Array<SubInfo> = [];
+  @State activeTab: number = 0;
+  @State uiUptime: number = 0;
+  @State nodeSearch: string = '';
+  @State subNameDraft: string = '';
+  @State subGroupDraft: string = '';
+  @StorageLink('uiBreakpoint') uiBreakpoint: string = 'compact';
   @StorageLink('vpnRunning') @Watch('onRunningChange') isRunning: boolean = false;
   @StorageLink('vpnStatus') statusText: string = 'disconnected';
   @StorageLink('vpnUpSpeed') upSpeed: number = 0;
@@ -39,11 +48,497 @@ struct Index {
   private lastUp: number = 0;
   private lastDown: number = 0;
   private lastTrafficAt: number = 0;
+  private uptimeTimer: number = -1;
+  private subEditUrl: string = '';
+  private subEditDialog: CustomDialogController = new CustomDialogController({
+    builder: SubscriptionGroupDialog({
+      name: $subNameDraft,
+      group: $subGroupDraft,
+      onSaved: (name: string, group: string) => { void this.saveSubscriptionGroup(name, group); }
+    }),
+    autoCancel: true
+  });
 
   aboutToAppear(): void {
     setAppContext(this.context);
     this.refresh();
     this.autoUpdateSubs();
+    if (this.isRunning) {
+      this.startSpeedPoller();
+      this.startUptimeTimer();
+    }
+  }
+
+  private subscriptionExpiryText(sub: SubInfo): ResourceStr {
+    if (sub.expire <= 0) {
+      return $r('app.string.subscription_no_expiry');
+    }
+    const days = Math.max(0, Math.ceil((sub.expire * 1000 - Date.now()) / 86400000));
+    return $r('app.string.subscription_days_remaining', days);
+  }
+
+  async updateOneSubscription(sub: SubInfo): Promise<void> {
+    if (this.testing) {
+      return;
+    }
+    this.testing = true;
+    try {
+      const result = await updateSubscription(sub.url);
+      await markSubSuccess(sub.url);
+      this.subscriptions = await listSubs();
+      this.profiles = await loadProfiles();
+      promptAction.showToast({ message: $r('app.string.sub_update_result', result.added, result.removed) });
+    } catch (e) {
+      await markSubFailure(sub.url);
+      this.subscriptions = await listSubs();
+      const message = e instanceof Error ? e.message : `${e}`;
+      promptAction.showToast({ message: $r('app.string.update_failed_reason', message) });
+    } finally {
+      this.testing = false;
+    }
+  }
+
+  async openSubscriptionGroup(sub: SubInfo): Promise<void> {
+    this.subEditUrl = sub.url;
+    this.subNameDraft = sub.name;
+    this.subGroupDraft = sub.group.length > 0
+      ? sub.group
+      : await readPrefString('recent_subscription_group', '');
+    this.subEditDialog.open();
+  }
+
+  async saveSubscriptionGroup(name: string, group: string): Promise<void> {
+    const index = this.subscriptions.findIndex((item: SubInfo) => item.url === this.subEditUrl);
+    if (index < 0) {
+      return;
+    }
+    const next = this.subscriptions.slice();
+    next[index].name = name.trim().length > 0 ? name.trim() : subNameOf(next[index].url);
+    next[index].group = group.trim();
+    await saveSubs(next);
+    if (next[index].group.length > 0) {
+      await writePrefString('recent_subscription_group', next[index].group);
+    }
+    this.subscriptions = next;
+    this.subEditUrl = '';
+  }
+  deleteSubscription(sub: SubInfo): void {
+    const count = this.profiles.filter((profile: Profile) => profile.subUrl === sub.url).length;
+    AlertDialog.show({
+      message: $r('app.string.confirm_delete_sub_name', sub.name, count),
+      primaryButton: { value: $r('app.string.cancel'), action: () => {} },
+      secondaryButton: {
+        value: $r('app.string.delete'),
+        fontColor: $r('app.color.error'),
+        action: async () => {
+          await removeSub(sub.url);
+          this.profiles = this.profiles.filter((profile: Profile) => profile.subUrl !== sub.url);
+          await saveProfiles(this.profiles);
+          this.subscriptions = this.subscriptions.filter((item: SubInfo) => item.url !== sub.url);
+        }
+      }
+    });
+  }
+
+
+
+
+
+
+  @Builder
+  private subscriptionsTab() {
+    Column() {
+      Row() {
+        Text($r('app.string.subscription_management'))
+          .fontSize(16)
+          .fontWeight(800)
+          .fontColor($r('app.color.text_1'))
+          .layoutWeight(1)
+        Text($r('app.string.add_entry'))
+          .fontSize(13.5)
+          .fontWeight(600)
+          .fontColor($r('app.color.mono'))
+          .padding(8)
+          .onClick(() => this.addEntryDialog.open())
+      }
+      .width('100%')
+      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 26 })
+
+      TextInput({ text: this.nodeSearch, placeholder: $r('app.string.search_nodes') })
+        .fontSize(14.5)
+        .fontColor($r('app.color.text_1'))
+        .placeholderColor($r('app.color.text_3'))
+        .backgroundColor(Color.Transparent)
+        .height(UiSpec.ROW_HEIGHT)
+        .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
+        .margin({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
+        .onChange((value: string) => { this.nodeSearch = value; })
+      Row() {
+        Text($r('app.string.settings_auto_update_subs'))
+          .fontSize(13.5)
+          .fontColor($r('app.color.text_2'))
+          .layoutWeight(1)
+        Text(this.testing ? $r('app.string.speed_testing') : $r('app.string.speed_test'))
+          .fontSize(13.5)
+          .fontWeight(600)
+          .fontColor($r('app.color.mono'))
+          .padding(8)
+          .onClick(() => this.runSpeedTest())
+        Toggle({ type: ToggleType.Switch, isOn: this.settings.autoUpdateSubs })
+          .onChange((value: boolean) => {
+            this.settings.autoUpdateSubs = value;
+            saveSettings(this.settings);
+          })
+      }
+      .width('100%')
+      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
+
+      List() {
+        if (this.subscriptions.length === 0) {
+          ListItem() {
+            Text($r('app.string.settings_subs_empty'))
+              .fontSize(13)
+              .fontColor($r('app.color.text_3'))
+              .width('100%')
+              .padding({ top: 30, bottom: 30 })
+          }
+        }
+        ForEach(this.subscriptions, (sub: SubInfo) => {
+          ListItem() {
+            Row({ space: 12 }) {
+              Column({ space: 3 }) {
+                Text(sub.name)
+                  .fontSize(14.5)
+                  .fontWeight(600)
+                  .fontColor($r('app.color.text_1'))
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .width('100%')
+                Text(sub.url)
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_3'))
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .width('100%')
+                Text(this.subscriptionExpiryText(sub))
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_2'))
+                  .width('100%')
+              }
+              .alignItems(HorizontalAlign.Start)
+              .layoutWeight(1)
+              .onClick(() => router.pushUrl({ url: 'pages/SubDetailPage', params: { url: sub.url } }))
+              Text($r('app.string.sub_group_edit'))
+                .fontSize(12.5)
+                .fontWeight(600)
+                .fontColor($r('app.color.text_2'))
+                .padding({ left: 8, top: 12, bottom: 12 })
+                .onClick(() => this.openSubscriptionGroup(sub))
+
+              Text(this.testing ? $r('app.string.updating') : $r('app.string.update_action'))
+                .fontSize(12.5)
+                .fontWeight(600)
+                .fontColor($r('app.color.mono'))
+                .padding({ left: 8, top: 12, bottom: 12 })
+                .onClick(() => this.updateOneSubscription(sub))
+              Text($r('app.string.delete'))
+                .fontSize(12.5)
+                .fontWeight(600)
+                .fontColor($r('app.color.error'))
+                .padding({ left: 8, top: 12, bottom: 12 })
+                .onClick(() => this.deleteSubscription(sub))
+
+            }
+            .width('100%')
+            .padding({ top: 12, bottom: 12 })
+            .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
+          }
+        }, (sub: SubInfo) => sub.url)
+        ForEach(this.sortedGroupIds(), (groupId: string) => {
+          ListItem() {
+            Column() {
+              Row() {
+                Text(this.groupName(groupId))
+                  .fontSize(11)
+                  .fontWeight(FontWeight.Bold)
+                  .fontColor($r('app.color.text_3'))
+                  .letterSpacing(2)
+                  .layoutWeight(1)
+                Text(this.groupLatencyText(groupId))
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_3'))
+                Text(this.testing ? $r('app.string.speed_testing') : $r('app.string.test_group'))
+                  .fontSize(11)
+                  .fontColor($r('app.color.mono'))
+                  .padding({ left: 10, top: 8, bottom: 8 })
+                  .onClick(() => this.runGroupSpeedTest(groupId))
+              }
+              .width('100%')
+              .padding({ top: 14, bottom: 4 })
+              .onClick(() => {
+                if (groupId.length > 0) {
+                  const group = this.groups.find((item: ProfileGroup) => item.id === groupId);
+                  if (group !== undefined) {
+                    void this.toggleGroupCollapsed(group);
+                  }
+                }
+              })
+
+
+              if (!this.isGroupCollapsed(groupId)) {
+                ForEach(this.visibleProfiles(groupId), (profile: Profile) => {
+                Row({ space: 10 }) {
+                  Text('●')
+                    .fontSize(9)
+                    .fontColor($r('app.color.text_3'))
+                  Text(profile.name)
+                    .fontSize(14.5)
+                    .fontWeight(this.selectedId === profile.id ? 800 : 600)
+                    .fontColor($r('app.color.text_1'))
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .layoutWeight(1)
+                  Text(this.latencyText(profile).toString().length === 0 ? '—' : this.latencyText(profile))
+                    .fontSize(12.5)
+                    .fontColor($r('app.color.text_2'))
+                  if (this.selectedId === profile.id) {
+                    Text('✓')
+                      .fontSize(15)
+                      .fontWeight(800)
+                      .fontColor($r('app.color.success'))
+                  }
+                }
+                .width('100%')
+                .height(UiSpec.ROW_HEIGHT)
+                .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
+                .onClick(() => this.onNodeTap(profile))
+                .bindContextMenu(this.profileContextMenu(profile), ResponseType.LongPress)
+                }, (profile: Profile) => profile.id)
+              }
+            }
+            .width('100%')
+          }
+        }, (groupId: string) => groupId)
+      }
+      .layoutWeight(1)
+      .width('100%')
+      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
+      this.bottomNavigation()
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  private uptimeText(): string {
+    const hours = Math.floor(this.uiUptime / 3600);
+    const minutes = Math.floor((this.uiUptime % 3600) / 60);
+    const seconds = this.uiUptime % 60;
+    const pad = (value: number): string => value < 10 ? `0${value}` : `${value}`;
+    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+  }
+
+  private selectedProfile(): Profile | undefined {
+    return this.profiles.find((profile: Profile) => profile.id === this.selectedId);
+  }
+
+  private visibleProfiles(groupId: string): Array<Profile> {
+    const query = this.nodeSearch.trim().toLowerCase();
+    const profiles = this.profilesInGroup(groupId);
+    if (query.length === 0) {
+      return profiles;
+    }
+    return profiles.filter((profile: Profile) =>
+      profile.name.toLowerCase().includes(query)
+      || profile.server.toLowerCase().includes(query));
+  }
+
+  @Builder
+  private bottomNavigation() {
+    if (this.uiBreakpoint === 'compact') {
+    Row() {
+      BottomNavText({
+        label: $r('app.string.home'),
+        selected: this.activeTab === 0,
+        onSelect: () => { this.activeTab = 0; }
+      })
+      BottomNavText({
+        label: $r('app.string.subscription_management'),
+        selected: this.activeTab === 1,
+        onSelect: () => { this.activeTab = 1; }
+      })
+      BottomNavText({
+        label: $r('app.string.settings_title'),
+        selected: this.activeTab === 2,
+        onSelect: () => { router.pushUrl({ url: 'pages/SettingsPage' }); }
+      })
+    }
+    .width('100%')
+    .justifyContent(FlexAlign.Center)
+    }
+  }
+
+  @Builder
+  private wideNavigation() {
+    Column({ space: 24 }) {
+      Text($r('app.string.brand_name'))
+        .fontSize(12)
+        .fontWeight(800)
+        .fontColor($r('app.color.text_1'))
+        .letterSpacing(3)
+        .width('100%')
+      Text($r('app.string.home'))
+        .fontSize(14)
+        .fontWeight(this.activeTab === 0 ? 800 : FontWeight.Regular)
+        .fontColor(this.activeTab === 0 ? $r('app.color.mono') : $r('app.color.text_3'))
+        .width('100%')
+        .onClick(() => { this.activeTab = 0; })
+      Text($r('app.string.subscription_management'))
+        .fontSize(14)
+        .fontWeight(this.activeTab === 1 ? 800 : FontWeight.Regular)
+        .fontColor(this.activeTab === 1 ? $r('app.color.mono') : $r('app.color.text_3'))
+        .width('100%')
+        .onClick(() => { this.activeTab = 1; })
+      Text($r('app.string.settings_title'))
+        .fontSize(14)
+        .fontColor($r('app.color.text_3'))
+        .width('100%')
+        .onClick(() => router.pushUrl({ url: 'pages/SettingsPage' }))
+      Blank()
+    }
+    .width(this.uiBreakpoint === 'large' ? UiSpec.SIDEBAR_WIDTH_LARGE : UiSpec.SIDEBAR_WIDTH_MEDIUM)
+    .height('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 24, right: 18, top: 30, bottom: 24 })
+    .border({ width: { right: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
+  }
+
+  @Builder
+  private activeContent() {
+    if (this.activeTab === 0) {
+      this.homeTab()
+    } else {
+      this.subscriptionsTab()
+    }
+  }
+
+  @Builder
+  private homeTab() {
+    Column() {
+      Row() {
+        Text($r('app.string.brand_name'))
+          .fontSize(12)
+          .fontWeight(800)
+          .fontColor($r('app.color.text_1'))
+          .letterSpacing(3)
+          .layoutWeight(1)
+        Text($r('app.string.speed_test'))
+          .fontSize(13.5)
+          .fontWeight(600)
+          .fontColor($r('app.color.text_3'))
+          .padding(8)
+          .onClick(() => this.runSpeedTest())
+        Text($r('app.string.connect'))
+          .fontSize(13.5)
+          .fontWeight(600)
+          .fontColor($r('app.color.text_3'))
+          .padding(8)
+          .onClick(() => router.pushUrl({ url: 'pages/ConnectionsPage' }))
+        Text($r('app.string.logs'))
+          .fontSize(13.5)
+          .fontWeight(600)
+          .fontColor($r('app.color.text_3'))
+          .padding(8)
+          .onClick(() => router.pushUrl({ url: 'pages/LogPage' }))
+      }
+      .width('100%')
+      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 26 })
+
+      Text(this.isRunning ? this.uptimeText() : '00:00:00')
+        .fontSize(UiSpec.CLOCK_SIZE)
+        .fontWeight(FontWeight.Lighter)
+        .fontColor($r('app.color.text_1'))
+        .fontFamily('monospace')
+        .letterSpacing(2)
+        .margin({ top: 44 })
+
+      Row({ space: 8 }) {
+        Circle()
+          .width(8)
+          .height(8)
+          .fill(this.isRunning ? $r('app.color.dot_live') : $r('app.color.text_3'))
+        Text(this.statusDisplay())
+          .fontSize(13.5)
+          .fontColor($r('app.color.text_2'))
+        Text('·')
+          .fontSize(13.5)
+          .fontColor($r('app.color.text_3'))
+        Text(this.modeLabel())
+          .fontSize(13.5)
+          .fontColor($r('app.color.text_2'))
+      }
+      .margin({ top: 10 })
+
+      BigPowerButton({
+        running: this.isRunning,
+        connecting: this.statusText === 'connecting' || this.statusText === 'switching',
+        breakpoint: this.uiBreakpoint,
+        onToggle: () => {
+          if (this.isRunning) {
+            this.disconnect();
+            return;
+          }
+          const target = this.selectedProfile();
+          if (target === undefined) {
+            promptAction.showToast({ message: $r('app.string.select_or_create_profile') });
+            return;
+          }
+          this.connectTo(target);
+        }
+      })
+        .margin({ top: 38 })
+
+      if (this.selectedProfile() !== undefined) {
+        Row({ space: 6 }) {
+          Text('●')
+            .fontSize(10)
+            .fontColor($r('app.color.text_3'))
+          Text(this.selectedProfile()?.name ?? '')
+            .fontSize(13.5)
+            .fontWeight(600)
+            .fontColor($r('app.color.text_1'))
+          Text(this.latencyText(this.selectedProfile() as Profile))
+            .fontSize(13.5)
+            .fontColor($r('app.color.text_2'))
+        }
+        .margin({ top: 34 })
+        .onClick(() => { this.activeTab = 1; })
+      }
+
+      Blank()
+
+      StatsRow({
+        upload: this.isRunning ? formatSpeed(this.upSpeed) : '—',
+        download: this.isRunning ? formatSpeed(this.downSpeed) : '—',
+        traffic: this.isRunning ? formatBytes(this.totalUp + this.totalDown) : '—'
+      })
+        .margin({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
+      this.bottomNavigation()
+    }
+    .width('100%')
+    .height('100%')
+    .alignItems(HorizontalAlign.Center)
+  }
+
+
+  aboutToDisappear(): void {
+    if (this.speedTimer >= 0) {
+      clearInterval(this.speedTimer);
+      this.speedTimer = -1;
+    }
+    if (this.uptimeTimer >= 0) {
+      clearInterval(this.uptimeTimer);
+      this.uptimeTimer = -1;
+    }
   }
 
   // 从编辑页 router.back() 回来时刷新列表(否则新保存的节点不显示)
@@ -54,8 +549,10 @@ struct Index {
   onRunningChange(): void {
     if (this.isRunning) {
       this.startSpeedPoller();
+      this.startUptimeTimer();
     } else {
       this.stopSpeedPoller();
+      this.stopUptimeTimer();
     }
     this.refresh();
   }
@@ -84,6 +581,29 @@ struct Index {
     }, 1000);
   }
 
+  private startUptimeTimer(): void {
+    this.stopUptimeTimer();
+    const stored: number = AppStorage.get<number>('uiUptimeStart') ?? 0;
+    const startedAt = stored > 0 ? stored : Date.now();
+    AppStorage.setOrCreate('uiUptimeStart', startedAt);
+    this.uiUptime = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+    AppStorage.setOrCreate('uiUptime', this.uiUptime);
+    this.uptimeTimer = setInterval(() => {
+      this.uiUptime = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+      AppStorage.setOrCreate('uiUptime', this.uiUptime);
+    }, 1000);
+  }
+
+  private stopUptimeTimer(): void {
+    if (this.uptimeTimer >= 0) {
+      clearInterval(this.uptimeTimer);
+      this.uptimeTimer = -1;
+    }
+    this.uiUptime = 0;
+    AppStorage.setOrCreate('uiUptime', 0);
+    AppStorage.setOrCreate('uiUptimeStart', 0);
+  }
+
   private stopSpeedPoller(): void {
     if (this.speedTimer >= 0) {
       clearInterval(this.speedTimer);
@@ -109,6 +629,7 @@ struct Index {
       this.profiles = await loadProfiles();
       this.groups = await loadGroups();
       this.settings = await loadSettings();
+      this.subscriptions = await listSubs();
       if (this.selectedId.length === 0 && this.profiles.length > 0) {
         this.selectedId = this.profiles[0].id;
       }
@@ -589,7 +1110,7 @@ struct Index {
       }
       next[p.id] = delay;
       this.latencies = next;
-      promptAction.showToast({ message: `URL Test: ${delay}ms` });
+      promptAction.showToast({ message: $r('app.string.url_test_result', delay) });
     } catch (e) {
       const message = e instanceof Error ? e.message : `${e}`;
       promptAction.showToast({ message });
@@ -623,12 +1144,17 @@ struct Index {
         MenuItem({ content: $r('app.string.move_down') })
           .onClick(() => this.moveProfile(p, 1))
       }
-      MenuItem({ content: 'URL Test' })
+      MenuItem({ content: $r('app.string.url_test') })
         .onClick(() => this.runUrlTest(p))
       MenuItem({ content: $r('app.string.copy_share_link') })
         .onClick(() => this.copyProfileLink(p))
       MenuItem({ content: $r('app.string.share_profile') })
         .onClick(() => this.openProfileShare(p))
+      MenuItem({ content: $r('app.string.profile_edit_title') })
+        .onClick(() => {
+          AppStorage.setOrCreate('editProfileId', p.id);
+          router.pushUrl({ url: 'pages/ProfileEdit' });
+        })
       if (p.subUrl.length > 0) {
         MenuItem({ content: $r('app.string.view_subscription') })
           .onClick(() => router.pushUrl({ url: 'pages/SubDetailPage', params: { url: p.subUrl } }))
@@ -640,257 +1166,71 @@ struct Index {
 
   build() {
     Column() {
-    Column() {
-      // Android NekoBox 风格顶栏与快捷导航
-      Row({ space: 4 }) {
-        Column({ space: 2 }) {
-          Text('NekoBox')
-            .fontSize(22)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.text_primary'))
-          Text(this.modeLabel())
-            .fontSize(12)
-            .fontColor($r('app.color.primary'))
-            .onClick(() => {
-              router.pushUrl({ url: 'pages/SettingsPage' });
-            })
-        }
-        .alignItems(HorizontalAlign.Start)
-        .layoutWeight(1)
-
-        Button(this.testing ? $r('app.string.speed_testing') : $r('app.string.speed_test'))
-          .height(34)
-          .fontSize(12)
-          .fontColor($r('app.color.primary'))
-          .backgroundColor($r('app.color.surface_selected'))
-          .onClick(() => this.runSpeedTest())
-        Button($r('app.string.connect'))
-          .height(34)
-          .fontSize(12)
-          .fontColor($r('app.color.text_secondary'))
-          .backgroundColor($r('app.color.surface'))
-          .onClick(() => {
-            router.pushUrl({ url: 'pages/ConnectionsPage' });
-          })
-        Button($r('app.string.logs'))
-          .height(34)
-          .fontSize(12)
-          .fontColor($r('app.color.text_secondary'))
-          .backgroundColor($r('app.color.surface'))
-          .onClick(() => {
-            router.pushUrl({ url: 'pages/LogPage' });
-          })
-        Button($r('app.string.settings_title'))
-          .height(34)
-          .fontSize(12)
-          .fontColor($r('app.color.text_secondary'))
-          .backgroundColor($r('app.color.surface'))
-          .onClick(() => {
-            router.pushUrl({ url: 'pages/SettingsPage' });
-          })
-      }
-      .width('100%')
-      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 12, bottom: 8 })
-
-      // 鸿蒙原生 Hero 卡片：状态、主连接按钮与实时统计共用现有 VPN 状态链路
-      Column({ space: UiSpec.GAP_LG }) {
-        Row({ space: UiSpec.GAP_SM }) {
-          Text(this.isRunning ? '●' : '○')
-            .fontSize(16)
-            .fontColor(this.isRunning ? $r('app.color.success') : $r('app.color.text_disabled'))
-          Text(this.statusDisplay())
-            .fontSize(15)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(this.isRunning ? $r('app.color.success') : $r('app.color.text_secondary'))
-            .layoutWeight(1)
-          Text(this.modeLabel())
-            .fontSize(11)
-            .fontColor($r('app.color.primary'))
-            .backgroundColor($r('app.color.surface_selected'))
-            .borderRadius(10)
-            .padding({ left: 8, right: 8, top: 3, bottom: 3 })
-        }
-        .width('100%')
-
-        BigPowerButton({
-          running: this.isRunning,
-          connecting: this.statusText === 'connecting' || this.statusText === 'switching',
-          onToggle: () => {
-            if (this.isRunning) {
-              this.disconnect();
-              return;
-            }
-            const target = this.profiles.find((profile: Profile) => profile.id === this.selectedId);
-            if (target === undefined) {
-              promptAction.showToast({ message: $r('app.string.select_or_create_profile') });
-              return;
-            }
-            this.connectTo(target);
+      if (this.uiBreakpoint === 'compact') {
+        this.activeContent()
+      } else {
+        Row() {
+          this.wideNavigation()
+          Column() {
+            this.activeContent()
           }
-        })
-
-        Row({ space: 10 }) {
-          MiniStatCard({
-            label: $r('app.string.upload'),
-            value: this.isRunning ? formatSpeed(this.upSpeed) : '—'
-          })
-            .layoutWeight(1)
-          MiniStatCard({
-            label: $r('app.string.download'),
-            value: this.isRunning ? formatSpeed(this.downSpeed) : '—'
-          })
-            .layoutWeight(1)
-        }
-        .width('100%')
-
-        Row({ space: 10 }) {
-          MiniStatCard({
-            label: $r('app.string.traffic'),
-            value: this.isRunning ? formatBytes(this.totalUp + this.totalDown) : '—'
-          })
-            .layoutWeight(1)
-          MiniStatCard({
-            label: $r('app.string.proxy'),
-            value: `${this.profiles.length}`
-          })
-            .layoutWeight(1)
-        }
-        .width('100%')
-      }
-      .width('calc(100% - 32vp)')
-      .margin({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, bottom: 10 })
-      .padding(20)
-      .borderRadius(24)
-      .backgroundColor($r('app.color.surface'))
-      .shadow({ radius: 16, color: $r('app.color.shadow_color'), offsetX: 0, offsetY: 6 })
-
-      // 按分组展示节点，分组头在折叠状态下仍显示测速汇总与操作
-      List({ space: 8 }) {
-        ForEach(this.sortedGroupIds(), (groupId: string) => {
-          ListItem() {
-            Column({ space: 8 }) {
-              Row({ space: 8 }) {
-                Text(this.isGroupCollapsed(groupId) ? '▶' : '▼')
-                  .fontSize(12)
-                  .fontColor($r('app.color.text_secondary'))
-                Text(this.groupName(groupId))
-                  .fontSize(14)
-                  .fontWeight(FontWeight.Medium)
-                  .layoutWeight(1)
-                Text(this.groupLatencyText(groupId))
-                  .fontSize(11)
-                  .fontColor($r('app.color.primary'))
-                  .backgroundColor($r('app.color.surface_selected'))
-                  .borderRadius(10)
-                  .padding({ left: 8, right: 8, top: 3, bottom: 3 })
-                Button(this.testing ? $r('app.string.speed_testing') : $r('app.string.test_group'))
-                  .height(30)
-                  .fontSize(11)
-                  .backgroundColor($r('app.color.surface_selected'))
-                  .fontColor($r('app.color.primary'))
-                  .onClick(() => this.runGroupSpeedTest(groupId))
-              }
-              .width('100%')
-              .padding({ left: 8, right: 8, top: 6, bottom: 6 })
-              .onClick(() => {
-                if (groupId.length > 0) {
-                  const group = this.groups.find((item: ProfileGroup) => item.id === groupId);
-                  if (group !== undefined) {
-                    this.toggleGroupCollapsed(group);
-                  }
-                }
-              })
-
-              if (!this.isGroupCollapsed(groupId)) {
-                ForEach(this.profilesInGroup(groupId), (p: Profile) => {
-                  Row() {
-                    Radio({ value: p.id, group: 'profiles' })
-                      .checked(this.selectedId === p.id)
-                      .onChange((checked: boolean) => {
-                        if (checked) {
-                          this.onNodeTap(p);
-                        }
-                      })
-                    Column() {
-                      Text(p.name)
-                        .fontSize(16)
-                        .fontWeight(FontWeight.Medium)
-                        .maxLines(1)
-                        .textOverflow({ overflow: TextOverflow.Ellipsis })
-                      Text(`${profileTypeLabel(p.type)} · ${p.server}:${p.serverPort}`)
-                        .fontSize(12)
-                        .fontColor($r('app.color.text_secondary'))
-                        .maxLines(1)
-                        .textOverflow({ overflow: TextOverflow.Ellipsis })
-                    }
-                    .alignItems(HorizontalAlign.Start)
-                    .layoutWeight(1)
-                    .margin({ left: 4 })
-                    .onClick(() => {
-                      this.onNodeTap(p);
-                    })
-
-                    if (this.latencies[p.id] !== undefined || this.testing) {
-                      Text(this.latencyText(p))
-                        .fontSize(12)
-                        .fontColor(this.latencyColor(p))
-                        .margin({ right: 4 })
-                    }
-
-                    Text('✏')
-                      .fontSize(18)
-                      .padding(8)
-                      .onClick(() => {
-                        AppStorage.setOrCreate('editProfileId', p.id);
-                        router.pushUrl({ url: 'pages/ProfileEdit' });
-                      })
-                  }
-                  .width('100%')
-                  .padding(12)
-                  .borderRadius(UiSpec.CARD_RADIUS)
-                  .backgroundColor(this.selectedId === p.id ? $r('app.color.surface_selected') : $r('app.color.surface'))
-                  .hoverEffect(HoverEffect.Scale)
-                  .bindContextMenu(this.profileContextMenu(p), ResponseType.LongPress)
-                }, (p: Profile) => p.id)
-              }
-            }
-            .width('100%')
-            .padding(8)
-            .borderRadius(UiSpec.CARD_RADIUS)
-            .backgroundColor($r('app.color.surface'))
-          }
-        }, (groupId: string) => groupId)
-      }
-      .layoutWeight(1)
-      .width('100%')
-      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
-
-      // 底部菜单栏:添加(导入订阅 / 新建节点)统一入口
-      Row() {
-        Button($r('app.string.add_entry'), { type: ButtonType.Capsule })
           .layoutWeight(1)
-          .height(UiSpec.BTN_HEIGHT)
-          .backgroundColor($r('app.color.primary'))
-          .fontColor($r('app.color.surface'))
-          .onClick(() => this.addEntryDialog.open())
+          .height('100%')
+        }
+        .width('100%')
+        .height('100%')
       }
-      .width('100%')
-      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 10, bottom: 20 })
     }
     .width('100%')
     .height('100%')
-    }
-    .width('100%')
-    .height('100%')
-    .alignItems(HorizontalAlign.Center)
-    .backgroundColor($r('app.color.app_background'))
-    .width('100%')
-    .height('100%')
-    .backgroundColor($r('app.color.app_background'))
+    .backgroundColor($r('app.color.bg_page'))
   }
 }
 
 /** 分享降级弹窗:SDK 未提供 generateBarcode 时展示 URI 并支持复制。 */
+
+@CustomDialog
+struct SubscriptionGroupDialog {
+  controller?: CustomDialogController;
+  @Link name: string;
+  @Link group: string;
+  onSaved: (name: string, group: string) => void = (_name: string, _group: string) => {};
+
+  build() {
+    Column({ space: 12 }) {
+      Text($r('app.string.sub_group_dialog_title'))
+        .fontSize(16)
+        .fontWeight(600)
+        .width('100%')
+      TextInput({ text: this.name, placeholder: $r('app.string.subscription_name_optional') })
+        .width('100%')
+        .onChange((value: string) => { this.name = value; })
+      TextInput({ text: this.group, placeholder: $r('app.string.sub_group_hint') })
+        .width('100%')
+        .onChange((value: string) => { this.group = value; })
+      Row({ space: 8 }) {
+        Button($r('app.string.cancel'))
+          .layoutWeight(1)
+          .onClick(() => {
+            if (this.controller !== undefined) {
+              this.controller.close();
+            }
+          })
+        Button($r('app.string.save'))
+          .layoutWeight(1)
+          .onClick(() => {
+            this.onSaved(this.name, this.group);
+            if (this.controller !== undefined) {
+              this.controller.close();
+            }
+          })
+      }
+      .width('100%')
+    }
+    .padding(UiSpec.PAGE_PADDING)
+    .width('100%')
+  }
+}
 @CustomDialog
 struct ShareTextDialog {
   controller?: CustomDialogController;

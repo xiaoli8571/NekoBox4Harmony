@@ -86,7 +86,7 @@
     },
     {
       "name": "power_icon",
-      "value": "#FFFFFF"
+      "value": "#17181A"
     },
     {
       "name": "btn_ring",
@@ -95,6 +95,46 @@
     {
       "name": "btn_glow",
       "value": "#663D82FF"
+    },
+    {
+      "name": "bg_page",
+      "value": "#101318"
+    },
+    {
+      "name": "mono",
+      "value": "#F2F3F5"
+    },
+    {
+      "name": "text_1",
+      "value": "#ECEDEF"
+    },
+    {
+      "name": "text_2",
+      "value": "#9AA1AC"
+    },
+    {
+      "name": "text_3",
+      "value": "#565D68"
+    },
+    {
+      "name": "hairline",
+      "value": "#1E232B"
+    },
+    {
+      "name": "hairline_2",
+      "value": "#22272F"
+    },
+    {
+      "name": "dot_live",
+      "value": "#34D399"
+    },
+    {
+      "name": "ring_live",
+      "value": "#6634D399"
+    },
+    {
+      "name": "warn_fg",
+      "value": "#D6A15C"
     }
   ]
 }

@@ -16,6 +16,17 @@ import { needAutoUpdate, updateSubscription, markSubSuccess, markSubFailure, set
 
 export default class EntryAbility extends UIAbility {
   private backgroundUpdating: boolean = false;
+  private mainWindow?: window.Window;
+  private readonly windowSizeListener = (size: window.Size): void => {
+    this.publishBreakpoint(size.width);
+  };
+
+  private publishBreakpoint(width: number): void {
+    const breakpoint = width < UiSpec.BREAKPOINT_MEDIUM
+      ? 'compact'
+      : (width < UiSpec.BREAKPOINT_LARGE ? 'medium' : 'large');
+    AppStorage.setOrCreate('uiBreakpoint', breakpoint);
+  }
 
   private async updateDueSubscriptionsInBackground(): Promise<void> {
     if (this.backgroundUpdating) {
@@ -135,6 +146,13 @@ export default class EntryAbility extends UIAbility {
         return;
       }
       this.applyStatusBarStyle(windowStage);
+      windowStage.getMainWindow().then((win: window.Window) => {
+        this.mainWindow = win;
+        this.publishBreakpoint(win.getWindowProperties().windowRect.width);
+        win.on('windowSizeChange', this.windowSizeListener);
+      }).catch((e: Object) => {
+        LogStore.addLog(`[ui] 初始化窗口断点失败: ${e}`);
+      });
     });
   }
 
@@ -168,6 +186,10 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageDestroy(): void {
+    if (this.mainWindow !== undefined) {
+      this.mainWindow.off('windowSizeChange', this.windowSizeListener);
+      this.mainWindow = undefined;
+    }
   }
 
   onForeground(): void {

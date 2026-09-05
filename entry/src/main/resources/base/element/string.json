@@ -5,6 +5,18 @@
       "value": "NekoBox"
     },
     {
+      "name": "brand_name",
+      "value": "NEKOBOX"
+    },
+    {
+      "name": "subscription_management",
+      "value": "订阅管理"
+    },
+    {
+      "name": "search_nodes",
+      "value": "搜索节点"
+    },
+    {
       "name": "module_desc",
       "value": "sing-box VPN client"
     },
@@ -1247,6 +1259,30 @@
     {
       "name": "add_entry",
       "value": "添加"
+    },
+    {
+      "name": "subscription_no_expiry",
+      "value": "未提供到期时间"
+    },
+    {
+      "name": "subscription_days_remaining",
+      "value": "剩余 %1$d 天"
+    },
+    {
+      "name": "home",
+      "value": "首页"
+    },
+    {
+      "name": "nodes",
+      "value": "节点"
+    },
+    {
+      "name": "url_test",
+      "value": "URL 测试"
+    },
+    {
+      "name": "url_test_result",
+      "value": "URL 测试：%1$d 毫秒"
     }
   ]
 }

@@ -5,6 +5,18 @@
       "value": "NekoBox"
     },
     {
+      "name": "brand_name",
+      "value": "NEKOBOX"
+    },
+    {
+      "name": "subscription_management",
+      "value": "Subscription management"
+    },
+    {
+      "name": "search_nodes",
+      "value": "Search profiles"
+    },
+    {
       "name": "module_desc",
       "value": "sing-box VPN client"
     },
@@ -1247,6 +1259,30 @@
     {
       "name": "add_entry",
       "value": "Add"
+    },
+    {
+      "name": "subscription_no_expiry",
+      "value": "No expiry information"
+    },
+    {
+      "name": "subscription_days_remaining",
+      "value": "%1$d days remaining"
+    },
+    {
+      "name": "home",
+      "value": "Home"
+    },
+    {
+      "name": "nodes",
+      "value": "Nodes"
+    },
+    {
+      "name": "url_test",
+      "value": "URL Test"
+    },
+    {
+      "name": "url_test_result",
+      "value": "URL Test: %1$d ms"
     }
   ]
 }
