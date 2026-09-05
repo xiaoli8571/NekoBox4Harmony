@@ -95,6 +95,46 @@
     {
       "name": "btn_glow",
       "value": "#660A59F7"
+    },
+    {
+      "name": "bg_page",
+      "value": "#FAFAF9"
+    },
+    {
+      "name": "mono",
+      "value": "#17181A"
+    },
+    {
+      "name": "text_1",
+      "value": "#17181A"
+    },
+    {
+      "name": "text_2",
+      "value": "#6D7278"
+    },
+    {
+      "name": "text_3",
+      "value": "#B3B0A9"
+    },
+    {
+      "name": "hairline",
+      "value": "#ECEAE5"
+    },
+    {
+      "name": "hairline_2",
+      "value": "#E7E5E0"
+    },
+    {
+      "name": "dot_live",
+      "value": "#22C55E"
+    },
+    {
+      "name": "ring_live",
+      "value": "#6616A34A"
+    },
+    {
+      "name": "warn_fg",
+      "value": "#B45309"
     }
   ]
 }

@@ -396,3 +396,17 @@ Existing notification files reviewed:
 
 
 > 构建机注(2026-09-04,底部菜单栏轮):本交付 SettingsPage.ets 文件末尾带 7 个 NUL(0x00)字节,ArkTS 编译器报 Invalid character ×8(构建机已清除)。原因指向开发端的编辑器/传输管道——提交前请确保文件以干净换行结束、无 NUL/乱码尾。底部菜单栏单一「添加」入口与快捷开关卡移除均已合入,versionCode 1001903(构建机确认并沿用开发端自升的版本号)。
+
+## 2026-09-05 B 方案 U1-U7 静态交付
+
+- 底部与宽屏导航统一为首页、订阅管理、设置三个目的地；首页保留测速、连接、日志文字入口。
+- 订阅管理页以纯行和 hairline 组织订阅、节点分组及节点操作，支持搜索、详情、分组编辑、更新与删除；删除订阅时仅在 UI 层通过既有存储能力同步过滤 `subUrl` 关联节点，未修改 `core` 或 `model`。
+- 新增订阅名称与分组编辑 `CustomDialog`，保存 `SubInfo.name`、`SubInfo.group` 并复用 `recent_subscription_group`。
+- 节点分组标题支持折叠和展开；本组测速保留独立点击行为。
+- URL Test 菜单与结果迁移到 base/en_US 字符串资源；新增导航、搜索和空态文案同步资源化。
+- 响应式 UI 状态键统一为 `uiBreakpoint`、`uiUptime`、`uiUptimeStart`：`uiBreakpoint` 保存 compact/medium/large 窗口断点，`uiUptimeStart` 保存当前连接起点毫秒时间戳，`uiUptime` 保存展示用累计秒数，断开时后两者归零。
+- `PowerButton` 保持 150vp 外环、116vp 核心、42vp 图标、180ms 动画与运行细环，按压比例调整为 0.94。
+- 设置页移除重复订阅区，保留订阅区以外既有设置能力；B 方案采用纯行、hairline、无卡片阴影和无渐变视觉。
+- 新增 `docs/U5-desktop-service-card.md`，仅记录桌面服务卡片方案，未修改 `module.json5`。
+- 新增 `BottomNavText.ets` 与 `StatsRow.ets` 组件；EntryAbility 仅增加窗口断点初始化和监听。
+- 本轮按约束不构建、不打包、不执行 commit/add/reset/checkout 等 Git 写操作。

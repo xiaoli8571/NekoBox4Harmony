@@ -9,9 +9,7 @@ import fs from '@ohos.file.fs';
 import util from '@ohos.util';
 import bundle from '@ohos.bundle';
 import { AppSettings } from '../model/Profile';
-import { initStore, loadSettings, saveSettings, writePrefString, LogStore } from '../model/Store';
-import { SubInfo, listSubs, saveSubs, updateSubscription, removeSub, markSubSuccess, markSubFailure } from '../core/Subscriptions';
-import { formatBytes } from '../utils/TrafficStats';
+import { initStore, loadSettings, saveSettings, LogStore } from '../model/Store';
 import { exportBackup, importBackup } from '../core/Backup';
 import { getClipboardText } from '../utils/ClipboardHelper';
 import { geoReady, downloadGeoAssets } from '../utils/GeoAssets';
@@ -35,22 +33,10 @@ class InstalledAppItem {
   }
 }
 
-class SubGroupBucket {
-  name: string;
-  items: Array<SubInfo>;
-
-  constructor(name: string) {
-    this.name = name;
-    this.items = [];
-  }
-}
-
 @Entry
 @Component
 struct SettingsPage {
   @State s: AppSettings = new AppSettings();
-  @State subs: Array<SubInfo> = [];
-  @State updatingUrl: string = '';
   @State geoOk: boolean = false;
   @State geoLoading: boolean = false;
   @State loading: boolean = true;
@@ -60,12 +46,6 @@ struct SettingsPage {
   @State appListLoading: boolean = false;
   @State appListError: ResourceStr = '';
   @State backupFileBusy: boolean = false;
-  @State subGroupDraft: string = '';
-  private subGroupEditUrl: string = '';
-  private subGroupDialog: CustomDialogController = new CustomDialogController({
-    builder: SubGroupDialog({ draft: $subGroupDraft, onSaved: (t: string) => { void this.saveSubGroup(t); } }),
-    autoCancel: true
-  });
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear(): void {
@@ -78,7 +58,6 @@ struct SettingsPage {
     try {
       await initStore(this.context);
       this.s = await loadSettings();
-      this.subs = await listSubs();
       this.geoOk = geoReady(this.context);
     } catch (e) {
       this.loadError = e instanceof Error ? e.message : `${e}`;
@@ -217,52 +196,6 @@ struct SettingsPage {
     }
   }
 
-  async saveSubGroup(name: string): Promise<void> {
-    const idx = this.subs.findIndex(x => x.url === this.subGroupEditUrl);
-    if (idx < 0) {
-      return;
-    }
-    const trimmed = name.trim();
-    const updated = this.subs.slice();
-    updated[idx].group = trimmed;
-    await saveSubs(updated);
-    if (trimmed.length > 0) {
-      await writePrefString('recent_subscription_group', trimmed);
-    }
-    this.subGroupEditUrl = '';
-    this.subs = updated;
-  }
-
-  openSubGroupDialog(sub: SubInfo): void {
-    this.subGroupEditUrl = sub.url;
-    this.subGroupDraft = sub.group;
-    this.subGroupDialog.open();
-  }
-
-  subGroups(): Array<SubGroupBucket> {
-    const buckets: Array<SubGroupBucket> = [];
-    const indexOf: Map<string, number> = new Map();
-    for (const sub of this.subs) {
-      const name = sub.group.trim();
-      if (!indexOf.has(name)) {
-        indexOf.set(name, buckets.length);
-        buckets.push(new SubGroupBucket(name));
-      }
-      const at = indexOf.get(name) as number;
-      buckets[at].items.push(sub);
-    }
-    buckets.sort((a: SubGroupBucket, b: SubGroupBucket) => {
-      if (a.name === '') {
-        return -1;
-      }
-      if (b.name === '') {
-        return 1;
-      }
-      return a.name.localeCompare(b.name);
-    });
-    return buckets;
-  }
-
   private backupErrorText(msg: string): ResourceStr {
     if (msg === 'backup_invalid_json') {
       return $r('app.string.backup_invalid_json');
@@ -366,7 +299,6 @@ struct SettingsPage {
       const text = this.readTextFileUri(uris[0]).trim();
       const message = await importBackup(this.context, text);
       this.s = await loadSettings();
-      this.subs = await listSubs();
       promptAction.showToast({ message: message });
     } catch (e) {
       const message = e instanceof Error ? e.message : `${e}`;
@@ -376,29 +308,7 @@ struct SettingsPage {
     }
   }
 
-  async updateOne(sub: SubInfo): Promise<void> {
-    if (this.updatingUrl.length > 0) {
-      return;
-    }
-    this.updatingUrl = sub.url;
-    promptAction.showToast({ message: $r('app.string.updating_subscription') });
-    try {
-      const r = await updateSubscription(sub.url);
-      await markSubSuccess(sub.url);
-      promptAction.showToast({ message: $r('app.string.sub_update_result', r.added, r.removed) });
-      this.subs = await listSubs();
-    } catch (e) {
-      await markSubFailure(sub.url);
-      this.subs = await listSubs();
-      const msg = e instanceof Error ? e.message : `${e}`;
-      promptAction.showToast({ message: $r('app.string.update_failed_reason', msg) });
-    } finally {
-      this.updatingUrl = '';
-    }
-  }
-
   build() {
-    Column() {
     Column() {
       Row() {
         Text('←').fontSize(22).onClick(() => {
@@ -494,88 +404,6 @@ struct SettingsPage {
               }.width('100%').margin({ top: 6 })
             }.alignItems(HorizontalAlign.Start).width('100%')
           }
-
-          Blank().height(2)
-
-          // 订阅
-          Column({ space: 8 }) {
-            Text($r('app.string.subscriptions')).fontSize(14).fontWeight(FontWeight.Medium).width('100%')
-            if (this.subs.length === 0) {
-              Text($r('app.string.settings_subs_empty'))
-                .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
-            }
-            ForEach(this.subGroups(), (bucket: SubGroupBucket) => {
-              Column({ space: UiSpec.GAP_SM }) {
-                Text(bucket.name === ''
-                  ? $r('app.string.sub_group_none_count', bucket.items.length)
-                  : `${bucket.name} · ${bucket.items.length}`)
-                  .fontSize(12)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor($r('app.color.primary'))
-                  .width('100%')
-                ForEach(bucket.items, (sub: SubInfo) => {
-                  Column({ space: UiSpec.GAP_SM }) {
-                    Row() {
-                      Column({ space: 2 }) {
-                        Text(sub.name).fontSize(14).fontWeight(FontWeight.Medium).maxLines(1)
-                          .textOverflow({ overflow: TextOverflow.Ellipsis })
-                        Text(sub.lastUpdate === 0 ? $r('app.string.settings_sub_never_updated')
-                          : $r('app.string.settings_sub_updated_at', new Date(sub.lastUpdate).toLocaleString()))
-                          .fontSize(11).fontColor($r('app.color.text_secondary'))
-                        if (sub.total > 0) {
-                          Text($r('app.string.settings_sub_traffic', formatBytes(sub.upload + sub.download), formatBytes(sub.total)))
-                            .fontSize(11).fontColor(sub.upload + sub.download > sub.total ? $r('app.color.error') : $r('app.color.success'))
-                        }
-                        if (sub.expire > 0) {
-                          Text($r('app.string.settings_sub_expire', new Date(sub.expire * 1000).toLocaleDateString()))
-                            .fontSize(11).fontColor($r('app.color.text_secondary'))
-                        }
-                      }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-                    }
-                    .width('100%')
-
-                    Row({ space: UiSpec.GAP_SM }) {
-                      Button(this.updatingUrl === sub.url ? $r('app.string.updating') : $r('app.string.update_action'))
-                        .layoutWeight(1)
-                        .height(UiSpec.BTN_HEIGHT)
-                        .backgroundColor(this.updatingUrl === sub.url ? $r('app.color.control_disabled') : $r('app.color.primary'))
-                        .fontColor($r('app.color.surface'))
-                        .onClick(() => this.updateOne(sub))
-                      Button($r('app.string.sub_group_edit'))
-                        .layoutWeight(1)
-                        .height(UiSpec.BTN_HEIGHT)
-                        .backgroundColor($r('app.color.surface'))
-                        .fontColor($r('app.color.text_primary'))
-                        .onClick(() => this.openSubGroupDialog(sub))
-                      Button($r('app.string.delete'))
-                        .layoutWeight(1)
-                        .height(UiSpec.BTN_HEIGHT)
-                        .backgroundColor($r('app.color.surface'))
-                        .fontColor($r('app.color.error'))
-                        .onClick(() => {
-                          removeSub(sub.url);
-                          this.subs = this.subs.filter(x => x.url !== sub.url);
-                        })
-                    }
-                    .width('100%')
-                  }
-                  .width('100%')
-                  .padding(UiSpec.GAP_MD)
-                  .borderRadius(UiSpec.CARD_RADIUS)
-                  .backgroundColor($r('app.color.surface'))
-                }, (sub: SubInfo) => sub.url)
-              }.width('100%')
-            }, (bucket: SubGroupBucket) => bucket.name === '' ? '__none__' : bucket.name)
-
-            Row() {
-              Text($r('app.string.settings_auto_update_subs')).fontSize(14).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.autoUpdateSubs })
-                .onChange((v: boolean) => {
-                  this.s.autoUpdateSubs = v;
-                  this.save(true);
-                })
-            }.width('100%')
-          }.alignItems(HorizontalAlign.Start).width('100%')
 
           Blank().height(2)
 
@@ -860,44 +688,5 @@ struct SettingsPage {
     }
     .width('100%')
     .height('100%')
-    }
-    .width('100%')
-    .height('100%')
-    .alignItems(HorizontalAlign.Center)
-    .backgroundColor($r('app.color.app_background'))
-    .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
-  }
-}
-
-@CustomDialog
-struct SubGroupDialog {
-  controller?: CustomDialogController;
-  @Link draft: string;
-  onSaved: (t: string) => void = (_t: string) => {
-  };
-
-  build() {
-    Column({ space: 12 }) {
-      Text($r('app.string.sub_group_dialog_title')).fontSize(16).fontWeight(FontWeight.Medium).width('100%')
-      TextInput({ text: this.draft, placeholder: $r('app.string.sub_group_hint') })
-        .height(40).width('100%')
-        .onChange((v: string) => { this.draft = v; })
-      Row({ space: 8 }) {
-        Button($r('app.string.cancel'))
-          .layoutWeight(1).height(UiSpec.BTN_HEIGHT)
-          .backgroundColor($r('app.color.surface')).fontColor($r('app.color.text_primary'))
-          .onClick(() => this.controller?.close())
-        Button($r('app.string.save'))
-          .layoutWeight(1).height(UiSpec.BTN_HEIGHT)
-          .backgroundColor($r('app.color.primary')).fontColor($r('app.color.surface'))
-          .onClick(() => {
-            this.onSaved(this.draft);
-            this.controller?.close();
-          })
-      }.width('100%')
-    }
-    .padding(UiSpec.PAGE_PADDING)
-    .backgroundColor($r('app.color.surface'))
-    .borderRadius(UiSpec.CARD_RADIUS)
   }
 }
