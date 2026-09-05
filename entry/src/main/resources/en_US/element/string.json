@@ -1283,6 +1283,18 @@
     {
       "name": "url_test_result",
       "value": "URL Test: %1$d ms"
+    },
+    {
+      "name": "nav_layout",
+      "value": "Navigation position"
+    },
+    {
+      "name": "nav_layout_side",
+      "value": "Sidebar"
+    },
+    {
+      "name": "nav_layout_bottom",
+      "value": "Bottom menu bar"
     }
   ]
 }

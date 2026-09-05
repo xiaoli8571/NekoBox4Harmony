@@ -128,3 +128,13 @@
 ## U7 静态验收与交付记录 —— 状态：B 方案静态验收已完成，待构建机验证
 
 - AppStorage UI 键统一为 `uiBreakpoint`、`uiUptime`、`uiUptimeStart`；构建与真机验证按本轮约束留给构建机执行。
+
+
+## B 方案第二轮（2026-09-05，静态交付）
+
+- [x] SettingsPage 作为 Index 设置 Tab 原位内容。
+- [x] navLayout 底部菜单栏/侧边栏持久化与白名单校验。
+- [x] 首页移除测速入口，订阅管理保留测速能力。
+- [x] active_config_url 订阅选中、过滤及导入后自动选中。
+- [x] base/en_US 文案同步。
+- [x] 仅静态审查，不构建、不提交、不远程操作。
