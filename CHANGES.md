@@ -418,6 +418,8 @@ Existing notification files reviewed:
 - AppSettings 新增 navLayout(bottom/side)，Store.loadSettings 将非 side 值钳制为 bottom，导航可选择底部菜单栏或侧边栏。
 - 首页移除测速入口；订阅管理保留全量测速、分组测速与节点菜单测速。
 - 新增 active_config_url 偏好：点击订阅即选中并持久化，仅显示该订阅节点；导入订阅后自动选中。
+- 复核补齐订阅切换一致性：点击订阅后同步选中该订阅的首个节点，避免首页仍引用被过滤的旧节点。
 - Index 与 SettingsPage 本轮涉及的 fontWeight 全部使用数字。
 - 中英文资源同步新增导航布局文案。
-- 按约束未构建、未打包、未提交、未 SSH，未修改冻结内核、module.json5、build-profile.json5、AppScope 或依赖清单。
+- 静态审查通过：改动文件无 NUL、统一 LF，base/en_US 文案键各 324 个且完全一致；未修改冻结内核、module.json5、build-profile.json5、AppScope 或依赖清单。
+- 任务 8 待补日志：本机 `/root/bkui` 未发现可用的应用日志、hilog 或崩溃日志，暂不能开展应用层归因；收到复现时段的 hilog/崩溃栈后继续排查。
