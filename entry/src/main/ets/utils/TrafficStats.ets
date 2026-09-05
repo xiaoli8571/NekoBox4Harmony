@@ -2,6 +2,9 @@ import http from '@ohos.net.http';
 
 /** 通过内核 clash API(/connections)轮询流量累计值,差分得到实时速率。 */
 
+/** 历史缺省端口:ConfigBuilder/ClashApi 仍在引用,真实端口以设置页 clashApiPort 为准。 */
+export const CLASH_API_PORT: number = 19290;
+
 export interface TrafficTotals {
   up: number;
   down: number;
