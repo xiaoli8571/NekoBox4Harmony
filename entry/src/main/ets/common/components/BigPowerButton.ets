@@ -2,8 +2,8 @@ import { UiSpec } from '../UiSpec';
 
 @Component
 export struct BigPowerButton {
-  running: boolean = false;
-  connecting: boolean = false;
+  @Prop running: boolean = false;
+  @Prop connecting: boolean = false;
   onToggle: () => void = () => {};
   breakpoint: string = 'compact';
   @State private pressed: boolean = false;
