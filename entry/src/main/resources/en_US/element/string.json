@@ -1307,6 +1307,18 @@
     {
       "name": "settings_about_version",
       "value": "Version"
+    },
+    {
+      "name": "notification_upload",
+      "value": "Up"
+    },
+    {
+      "name": "notification_download",
+      "value": "Down"
+    },
+    {
+      "name": "notification_total",
+      "value": "Total"
     }
   ]
 }
