@@ -1,4 +1,5 @@
 import common from '@ohos.app.ability.common';
+import bundleManager from '@ohos.bundle.bundleManager';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
@@ -45,11 +46,22 @@ export struct SettingsPage {
   @State appListLoading: boolean = false;
   @State appListError: ResourceStr = '';
   @State backupFileBusy: boolean = false;
+  @State appVersion: string = '';
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   onSettingsChanged: (settings: AppSettings) => void = (_settings: AppSettings) => {};
 
   aboutToAppear(): void {
+    this.loadAppVersion();
     this.load();
+  }
+
+  private loadAppVersion(): void {
+    try {
+      const info = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
+      this.appVersion = info.versionName;
+    } catch (e) {
+      this.appVersion = '';
+    }
   }
 
   async load(): Promise<void> {
@@ -309,6 +321,27 @@ export struct SettingsPage {
     }
   }
 
+  /** FlClash 式分组章节头:图标 + 小标题(字距 2)+ 下缘 hairline */
+  @Builder
+  private sectionHeader(icon: string, title: ResourceStr) {
+    Row({ space: 10 }) {
+      Text(icon)
+        .fontSize(15)
+        .fontColor($r('app.color.mono'))
+        .width(24)
+        .textAlign(TextAlign.Center)
+      Text(title)
+        .fontSize(12)
+        .fontWeight(700)
+        .fontColor($r('app.color.text_3'))
+        .letterSpacing(2)
+        .layoutWeight(1)
+    }
+    .width('100%')
+    .padding({ top: 14, bottom: 6 })
+    .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
+  }
+
   build() {
     Column() {
       Text($r('app.string.settings_title'))
@@ -348,9 +381,9 @@ export struct SettingsPage {
 
       Scroll() {
         Column({ space: 14 }) {
-          // 出站模式
+          // 代理
+          this.sectionHeader('▶', $r('app.string.outbound_mode'))
           Column() {
-            Text($r('app.string.outbound_mode')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
             Row({ space: 8 }) {
               ForEach(MODES, (m: string, idx: number) => {
                 Button(MODE_LABELS[idx])
@@ -367,6 +400,8 @@ export struct SettingsPage {
               .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
 
+          // 网络
+          this.sectionHeader('▤', $r('app.string.settings_network'))
           Row() {
             Column() {
               Text($r('app.string.settings_custom_routes_title')).fontSize(14)
@@ -446,8 +481,8 @@ export struct SettingsPage {
           Blank().height(2)
 
           // 外观与交互
+          this.sectionHeader('◐', $r('app.string.appearance_and_interaction'))
           Column({ space: 8 }) {
-            Text($r('app.string.appearance_and_interaction')).fontSize(14).fontWeight(500).width('100%')
             Row({ space: 8 }) {
               ForEach(['system', 'light', 'dark'], (mode: string) => {
                 Button(mode === 'system' ? $r('app.string.appearance_follow_system') : (mode === 'light' ? $r('app.string.appearance_light') : $r('app.string.appearance_dark')))
@@ -511,8 +546,8 @@ export struct SettingsPage {
           Blank().height(2)
 
           // Clash API 连接统计
+          this.sectionHeader('☰', $r('app.string.clash_api_settings'))
           Column({ space: 8 }) {
-            Text($r('app.string.clash_api_settings')).fontSize(14).fontWeight(500).width('100%')
             Row() {
               Text($r('app.string.clash_api_enabled')).fontSize(14).layoutWeight(1)
               Toggle({ type: ToggleType.Switch, isOn: this.s.clashApiEnabled })
@@ -553,8 +588,8 @@ export struct SettingsPage {
           Blank().height(2)
 
           // 分应用代理
+          this.sectionHeader('▦', $r('app.string.per_app_proxy'))
           Column({ space: 8 }) {
-            Text($r('app.string.per_app_proxy')).fontSize(14).fontWeight(500).width('100%')
             Row({ space: 8 }) {
               ForEach(APP_MODES, (m: string, idx: number) => {
                 Button(APP_MODE_LABELS[idx])
@@ -618,8 +653,8 @@ export struct SettingsPage {
           Blank().height(2)
 
           // 备份与恢复
+          this.sectionHeader('✓', $r('app.string.backup_restore'))
           Column({ space: 8 }) {
-            Text($r('app.string.backup_restore')).fontSize(14).fontWeight(500).width('100%')
             Row({ space: 8 }) {
               Button(this.backupFileBusy ? $r('app.string.processing') : $r('app.string.export_backup_file'))
                 .layoutWeight(1)
@@ -689,6 +724,25 @@ export struct SettingsPage {
 
           Text($r('app.string.settings_reconnect_note'))
             .fontSize(12).fontColor($r('app.color.error')).width('100%')
+
+          // 其他
+          this.sectionHeader('ⓘ', $r('app.string.settings_about'))
+          Row({ space: 10 }) {
+            Text('ⓘ')
+              .fontSize(15)
+              .fontColor($r('app.color.mono'))
+              .width(24)
+              .textAlign(TextAlign.Center)
+            Column({ space: 2 }) {
+              Text($r('app.string.settings_about_version'))
+                .fontSize(14.5)
+                .fontWeight(600)
+                .fontColor($r('app.color.text_1'))
+              Text(this.appVersion.length > 0 ? this.appVersion : '—')
+                .fontSize(11.5)
+                .fontColor($r('app.color.text_3'))
+            }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+          }.width('100%')
         }
         .width('100%')
         .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 12, bottom: 12 })

@@ -1295,6 +1295,18 @@
     {
       "name": "nav_layout_bottom",
       "value": "Bottom menu bar"
+    },
+    {
+      "name": "settings_network",
+      "value": "Network"
+    },
+    {
+      "name": "settings_about",
+      "value": "Other"
+    },
+    {
+      "name": "settings_about_version",
+      "value": "Version"
     }
   ]
 }

@@ -1295,6 +1295,18 @@
     {
       "name": "nav_layout_bottom",
       "value": "底部菜单栏"
+    },
+    {
+      "name": "settings_network",
+      "value": "网络"
+    },
+    {
+      "name": "settings_about",
+      "value": "其他"
+    },
+    {
+      "name": "settings_about_version",
+      "value": "版本"
     }
   ]
 }
