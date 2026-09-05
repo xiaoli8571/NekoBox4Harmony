@@ -33,9 +33,8 @@ class InstalledAppItem {
   }
 }
 
-@Entry
 @Component
-struct SettingsPage {
+export struct SettingsPage {
   @State s: AppSettings = new AppSettings();
   @State geoOk: boolean = false;
   @State geoLoading: boolean = false;
@@ -47,6 +46,7 @@ struct SettingsPage {
   @State appListError: ResourceStr = '';
   @State backupFileBusy: boolean = false;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+  onSettingsChanged: (settings: AppSettings) => void = (_settings: AppSettings) => {};
 
   aboutToAppear(): void {
     this.load();
@@ -101,6 +101,7 @@ struct SettingsPage {
   async save(quiet: boolean = false): Promise<void> {
     try {
       await saveSettings(this.s);
+      this.onSettingsChanged(this.s);
       if (!quiet) {
         promptAction.showToast({ message: $r('app.string.saved_reconnect_vpn') });
       }
@@ -310,16 +311,11 @@ struct SettingsPage {
 
   build() {
     Column() {
-      Row() {
-        Text('←').fontSize(22).onClick(() => {
-          this.save(true);
-          router.back();
-        }).padding(8)
-        Text($r('app.string.settings_title')).fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
-        Button($r('app.string.save')).height(34).onClick(() => this.save())
-      }
-      .width('100%').padding(12)
-
+      Text($r('app.string.settings_title'))
+        .fontSize(18)
+        .fontWeight(700)
+        .width('100%')
+        .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 24, bottom: 12 })
       if (this.loading) {
         Column({ space: 10 }) {
           LoadingProgress()
@@ -336,7 +332,7 @@ struct SettingsPage {
         Column({ space: 8 }) {
           Text($r('app.string.settings_load_failed'))
             .fontSize(16)
-            .fontWeight(FontWeight.Medium)
+            .fontWeight(500)
             .fontColor($r('app.color.text_primary'))
           Text(this.loadError)
             .fontSize(13)
@@ -451,7 +447,7 @@ struct SettingsPage {
 
           // 外观与交互
           Column({ space: 8 }) {
-            Text($r('app.string.appearance_and_interaction')).fontSize(14).fontWeight(FontWeight.Medium).width('100%')
+            Text($r('app.string.appearance_and_interaction')).fontSize(14).fontWeight(500).width('100%')
             Row({ space: 8 }) {
               ForEach(['system', 'light', 'dark'], (mode: string) => {
                 Button(mode === 'system' ? $r('app.string.appearance_follow_system') : (mode === 'light' ? $r('app.string.appearance_light') : $r('app.string.appearance_dark')))
@@ -464,6 +460,20 @@ struct SettingsPage {
                     this.save(true);
                   })
               }, (mode: string) => mode)
+            }.width('100%')
+            Text($r('app.string.nav_layout')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+            Row({ space: 8 }) {
+              ForEach(['bottom', 'side'], (layout: string) => {
+                Button(layout === 'side' ? $r('app.string.nav_layout_side') : $r('app.string.nav_layout_bottom'))
+                  .layoutWeight(1)
+                  .backgroundColor(Color.Transparent)
+                  .fontColor(this.s.navLayout === layout ? $r('app.color.mono') : $r('app.color.text_primary'))
+                  .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: this.s.navLayout === layout ? $r('app.color.mono') : $r('app.color.hairline') })
+                  .onClick(() => {
+                    this.s.navLayout = layout;
+                    this.save(true);
+                  })
+              }, (layout: string) => layout)
             }.width('100%')
             Text($r('app.string.profile_sort_mode')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
             Row({ space: 8 }) {
@@ -502,7 +512,7 @@ struct SettingsPage {
 
           // Clash API 连接统计
           Column({ space: 8 }) {
-            Text($r('app.string.clash_api_settings')).fontSize(14).fontWeight(FontWeight.Medium).width('100%')
+            Text($r('app.string.clash_api_settings')).fontSize(14).fontWeight(500).width('100%')
             Row() {
               Text($r('app.string.clash_api_enabled')).fontSize(14).layoutWeight(1)
               Toggle({ type: ToggleType.Switch, isOn: this.s.clashApiEnabled })
@@ -544,7 +554,7 @@ struct SettingsPage {
 
           // 分应用代理
           Column({ space: 8 }) {
-            Text($r('app.string.per_app_proxy')).fontSize(14).fontWeight(FontWeight.Medium).width('100%')
+            Text($r('app.string.per_app_proxy')).fontSize(14).fontWeight(500).width('100%')
             Row({ space: 8 }) {
               ForEach(APP_MODES, (m: string, idx: number) => {
                 Button(APP_MODE_LABELS[idx])
@@ -609,7 +619,7 @@ struct SettingsPage {
 
           // 备份与恢复
           Column({ space: 8 }) {
-            Text($r('app.string.backup_restore')).fontSize(14).fontWeight(FontWeight.Medium).width('100%')
+            Text($r('app.string.backup_restore')).fontSize(14).fontWeight(500).width('100%')
             Row({ space: 8 }) {
               Button(this.backupFileBusy ? $r('app.string.processing') : $r('app.string.export_backup_file'))
                 .layoutWeight(1)

@@ -113,6 +113,7 @@ export class AppSettings {
   hapticFeedback: boolean = true;
   appearance: string = 'system';       // system / light / dark
   profileSortMode: string = 'manual';  // manual / latency / name
+  navLayout: string = 'bottom';        // bottom / side
   clashApiEnabled: boolean = true;
   clashApiPort: number = 9090;
   clashApiSecret: string = '';

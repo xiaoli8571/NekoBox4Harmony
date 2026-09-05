@@ -410,3 +410,14 @@ Existing notification files reviewed:
 - 新增 `docs/U5-desktop-service-card.md`，仅记录桌面服务卡片方案，未修改 `module.json5`。
 - 新增 `BottomNavText.ets` 与 `StatsRow.ets` 组件；EntryAbility 仅增加窗口断点初始化和监听。
 - 本轮按约束不构建、不打包、不执行 commit/add/reset/checkout 等 Git 写操作。
+
+
+## 2026-09-05 B 方案第二轮静态交付
+
+- 设置页改为首页设置 Tab 原位渲染，保留原有设置业务与保存链路；页面采用纯行、hairline、无卡片阴影与无 blur。
+- AppSettings 新增 navLayout(bottom/side)，Store.loadSettings 将非 side 值钳制为 bottom，导航可选择底部菜单栏或侧边栏。
+- 首页移除测速入口；订阅管理保留全量测速、分组测速与节点菜单测速。
+- 新增 active_config_url 偏好：点击订阅即选中并持久化，仅显示该订阅节点；导入订阅后自动选中。
+- Index 与 SettingsPage 本轮涉及的 fontWeight 全部使用数字。
+- 中英文资源同步新增导航布局文案。
+- 按约束未构建、未打包、未提交、未 SSH，未修改冻结内核、module.json5、build-profile.json5、AppScope 或依赖清单。

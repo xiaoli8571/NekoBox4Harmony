@@ -1283,6 +1283,18 @@
     {
       "name": "url_test_result",
       "value": "URL 测试：%1$d 毫秒"
+    },
+    {
+      "name": "nav_layout",
+      "value": "导航栏位置"
+    },
+    {
+      "name": "nav_layout_side",
+      "value": "侧边栏"
+    },
+    {
+      "name": "nav_layout_bottom",
+      "value": "底部菜单栏"
     }
   ]
 }

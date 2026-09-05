@@ -5,6 +5,7 @@ import { UiSpec } from '../common/UiSpec';
 import { BigPowerButton } from '../common/components/BigPowerButton';
 import { StatsRow } from '../common/components/StatsRow';
 import { BottomNavText } from '../common/components/BottomNavText';
+import { SettingsPage } from './SettingsPage';
 
 import { Profile, ProfileGroup, AppSettings, profileTypeLabel } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, loadSettings, saveSettings, readPrefString, writePrefString, LogStore } from '../model/Store';
@@ -29,6 +30,7 @@ struct Index {
   @State testing: boolean = false;
   @State settings: AppSettings = new AppSettings();
   @State subscriptions: Array<SubInfo> = [];
+  @State activeConfigUrl: string = '';
   @State activeTab: number = 0;
   @State uiUptime: number = 0;
   @State nodeSearch: string = '';
@@ -42,6 +44,10 @@ struct Index {
   @StorageLink('vpnTotalUp') totalUp: number = 0;
   @StorageLink('vpnTotalDown') totalDown: number = 0;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+
+  private usesSidebar(): boolean {
+    return this.settings.navLayout === 'side';
+  }
   private switching: boolean = false;
   private speedTimer: number = -1;
   private speedPollGeneration: number = 0;
@@ -75,6 +81,11 @@ struct Index {
     }
     const days = Math.max(0, Math.ceil((sub.expire * 1000 - Date.now()) / 86400000));
     return $r('app.string.subscription_days_remaining', days);
+  }
+
+  private async selectSubscription(sub: SubInfo): Promise<void> {
+    this.activeConfigUrl = sub.url;
+    await writePrefString('active_config_url', sub.url);
   }
 
   async updateOneSubscription(sub: SubInfo): Promise<void> {
@@ -209,8 +220,8 @@ struct Index {
               Column({ space: 3 }) {
                 Text(sub.name)
                   .fontSize(14.5)
-                  .fontWeight(600)
-                  .fontColor($r('app.color.text_1'))
+                  .fontWeight(this.activeConfigUrl === sub.url ? 800 : 600)
+                  .fontColor(this.activeConfigUrl === sub.url ? $r('app.color.mono') : $r('app.color.text_1'))
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                   .width('100%')
@@ -227,7 +238,7 @@ struct Index {
               }
               .alignItems(HorizontalAlign.Start)
               .layoutWeight(1)
-              .onClick(() => router.pushUrl({ url: 'pages/SubDetailPage', params: { url: sub.url } }))
+              .onClick(() => { void this.selectSubscription(sub); })
               Text($r('app.string.sub_group_edit'))
                 .fontSize(12.5)
                 .fontWeight(600)
@@ -260,7 +271,7 @@ struct Index {
               Row() {
                 Text(this.groupName(groupId))
                   .fontSize(11)
-                  .fontWeight(FontWeight.Bold)
+                  .fontWeight(700)
                   .fontColor($r('app.color.text_3'))
                   .letterSpacing(2)
                   .layoutWeight(1)
@@ -343,7 +354,8 @@ struct Index {
 
   private visibleProfiles(groupId: string): Array<Profile> {
     const query = this.nodeSearch.trim().toLowerCase();
-    const profiles = this.profilesInGroup(groupId);
+    const profiles = this.profilesInGroup(groupId).filter((profile: Profile) =>
+      this.activeConfigUrl.length === 0 || profile.subUrl === this.activeConfigUrl);
     if (query.length === 0) {
       return profiles;
     }
@@ -354,7 +366,7 @@ struct Index {
 
   @Builder
   private bottomNavigation() {
-    if (this.uiBreakpoint === 'compact') {
+    if (!this.usesSidebar()) {
     Row() {
       BottomNavText({
         label: $r('app.string.home'),
@@ -369,7 +381,7 @@ struct Index {
       BottomNavText({
         label: $r('app.string.settings_title'),
         selected: this.activeTab === 2,
-        onSelect: () => { router.pushUrl({ url: 'pages/SettingsPage' }); }
+        onSelect: () => { this.activeTab = 2; }
       })
     }
     .width('100%')
@@ -388,21 +400,22 @@ struct Index {
         .width('100%')
       Text($r('app.string.home'))
         .fontSize(14)
-        .fontWeight(this.activeTab === 0 ? 800 : FontWeight.Regular)
+        .fontWeight(this.activeTab === 0 ? 800 : 400)
         .fontColor(this.activeTab === 0 ? $r('app.color.mono') : $r('app.color.text_3'))
         .width('100%')
         .onClick(() => { this.activeTab = 0; })
       Text($r('app.string.subscription_management'))
         .fontSize(14)
-        .fontWeight(this.activeTab === 1 ? 800 : FontWeight.Regular)
+        .fontWeight(this.activeTab === 1 ? 800 : 400)
         .fontColor(this.activeTab === 1 ? $r('app.color.mono') : $r('app.color.text_3'))
         .width('100%')
         .onClick(() => { this.activeTab = 1; })
       Text($r('app.string.settings_title'))
         .fontSize(14)
-        .fontColor($r('app.color.text_3'))
+        .fontWeight(this.activeTab === 2 ? 800 : 400)
+        .fontColor(this.activeTab === 2 ? $r('app.color.mono') : $r('app.color.text_3'))
         .width('100%')
-        .onClick(() => router.pushUrl({ url: 'pages/SettingsPage' }))
+        .onClick(() => { this.activeTab = 2; })
       Blank()
     }
     .width(this.uiBreakpoint === 'large' ? UiSpec.SIDEBAR_WIDTH_LARGE : UiSpec.SIDEBAR_WIDTH_MEDIUM)
@@ -416,8 +429,15 @@ struct Index {
   private activeContent() {
     if (this.activeTab === 0) {
       this.homeTab()
-    } else {
+    } else if (this.activeTab === 1) {
       this.subscriptionsTab()
+    } else {
+      SettingsPage({
+        onSettingsChanged: (settings: AppSettings) => {
+          this.settings = settings;
+          AppStorage.setOrCreate('uiNavLayout', settings.navLayout);
+        }
+      })
     }
   }
 
@@ -431,12 +451,6 @@ struct Index {
           .fontColor($r('app.color.text_1'))
           .letterSpacing(3)
           .layoutWeight(1)
-        Text($r('app.string.speed_test'))
-          .fontSize(13.5)
-          .fontWeight(600)
-          .fontColor($r('app.color.text_3'))
-          .padding(8)
-          .onClick(() => this.runSpeedTest())
         Text($r('app.string.connect'))
           .fontSize(13.5)
           .fontWeight(600)
@@ -455,7 +469,7 @@ struct Index {
 
       Text(this.isRunning ? this.uptimeText() : '00:00:00')
         .fontSize(UiSpec.CLOCK_SIZE)
-        .fontWeight(FontWeight.Lighter)
+        .fontWeight(300)
         .fontColor($r('app.color.text_1'))
         .fontFamily('monospace')
         .letterSpacing(2)
@@ -629,7 +643,13 @@ struct Index {
       this.profiles = await loadProfiles();
       this.groups = await loadGroups();
       this.settings = await loadSettings();
+      AppStorage.setOrCreate('uiNavLayout', this.settings.navLayout);
       this.subscriptions = await listSubs();
+      this.activeConfigUrl = await readPrefString('active_config_url', '');
+      if (this.activeConfigUrl.length > 0 && !this.subscriptions.some((sub: SubInfo) => sub.url === this.activeConfigUrl)) {
+        this.activeConfigUrl = '';
+        await writePrefString('active_config_url', '');
+      }
       if (this.selectedId.length === 0 && this.profiles.length > 0) {
         this.selectedId = this.profiles[0].id;
       }
@@ -948,6 +968,8 @@ struct Index {
       this.profiles = profiles;
       if (subUrl.length > 0) {
         await upsertSub(subUrl, subUserinfo, requestedName);
+        this.activeConfigUrl = subUrl;
+        await writePrefString('active_config_url', subUrl);
         const normalizedName = requestedName.trim();
         if (normalizedName.length > 0) {
           await writePrefString('recent_subscription_group', normalizedName);
@@ -1166,7 +1188,7 @@ struct Index {
 
   build() {
     Column() {
-      if (this.uiBreakpoint === 'compact') {
+      if (!this.usesSidebar()) {
         this.activeContent()
       } else {
         Row() {
@@ -1241,7 +1263,7 @@ struct ShareTextDialog {
     Column({ space: 12 }) {
       Text($r('app.string.share_link_title'))
         .fontSize(16)
-        .fontWeight(FontWeight.Bold)
+        .fontWeight(700)
         .width('100%')
       Text(this.text)
         .fontSize(12)
@@ -1285,7 +1307,7 @@ struct ImportDialog {
     Column({ space: 10 }) {
       Text($r('app.string.import_link_subscription'))
         .fontSize(16)
-        .fontWeight(FontWeight.Bold)
+        .fontWeight(700)
       TextInput({
         text: this.name,
         placeholder: $r('app.string.subscription_name_optional')

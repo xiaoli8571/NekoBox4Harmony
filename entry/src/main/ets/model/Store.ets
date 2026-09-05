@@ -84,6 +84,9 @@ export async function loadSettings(): Promise<AppSettings> {
   if (s.profileSortMode !== 'manual' && s.profileSortMode !== 'latency' && s.profileSortMode !== 'name') {
     s.profileSortMode = 'manual';
   }
+  if (s.navLayout !== 'side') {
+    s.navLayout = 'bottom';
+  }
   s.clashApiPort = Math.max(1024, Math.min(65535, s.clashApiPort));
   if (s.clashApiSecret.length === 0) {
     s.clashApiSecret = `${Date.now().toString(36)}${Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36)}`;
