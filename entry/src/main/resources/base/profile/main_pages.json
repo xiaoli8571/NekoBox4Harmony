@@ -2,7 +2,6 @@
   "src": [
     "pages/Index",
     "pages/ProfileEdit",
-    "pages/SettingsPage",
     "pages/LogPage",
     "pages/ConnectionsPage",
     "pages/SubDetailPage",
