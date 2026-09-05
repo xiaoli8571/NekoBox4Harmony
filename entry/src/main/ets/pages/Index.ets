@@ -652,7 +652,10 @@ struct Index {
         this.activeConfigUrl = '';
         await writePrefString('active_config_url', '');
       }
-      if (this.selectedId.length === 0 && this.profiles.length > 0) {
+      const savedNodeId = await readPrefString('selected_profile_id', '');
+      if (savedNodeId.length > 0 && this.profiles.some((profile: Profile) => profile.id === savedNodeId)) {
+        this.selectedId = savedNodeId;
+      } else if (this.selectedId.length === 0 && this.profiles.length > 0) {
         this.selectedId = this.profiles[0].id;
       }
     } catch (e) {
@@ -818,6 +821,7 @@ struct Index {
       return;
     }
     this.selectedId = p.id;
+    await writePrefString('selected_profile_id', p.id);
     try {
       await VpnService.connect(this.context, p.id);
     } catch (e) {
@@ -832,6 +836,7 @@ struct Index {
   /** 点击节点:未运行则选中;运行中点其他节点 = 自动断开重连切换 */
   async onNodeTap(p: Profile): Promise<void> {
     this.selectedId = p.id;
+    await writePrefString('selected_profile_id', p.id);
     if (!this.isRunning) {
       return;
     }
