@@ -243,6 +243,12 @@ struct Index {
               .alignItems(HorizontalAlign.Start)
               .layoutWeight(1)
               .onClick(() => { void this.selectSubscription(sub); })
+              if (this.activeConfigUrl === sub.url) {
+                Text('✓')
+                  .fontSize(15)
+                  .fontWeight(800)
+                  .fontColor($r('app.color.success'))
+              }
               Text($r('app.string.sub_group_edit'))
                 .fontSize(12.5)
                 .fontWeight(600)
@@ -547,10 +553,7 @@ struct Index {
 
 
   aboutToDisappear(): void {
-    if (this.speedTimer >= 0) {
-      clearInterval(this.speedTimer);
-      this.speedTimer = -1;
-    }
+    this.stopSpeedPoller();
     if (this.uptimeTimer >= 0) {
       clearInterval(this.uptimeTimer);
       this.uptimeTimer = -1;
@@ -575,26 +578,40 @@ struct Index {
 
   private startSpeedPoller(): void {
     this.stopSpeedPoller();
+    if (!this.isRunning || !this.settings.clashApiEnabled) {
+      return;
+    }
     this.lastUp = 0;
     this.lastDown = 0;
+    this.lastTrafficAt = 0;
     AppStorage.setOrCreate('vpnUpSpeed', 0);
     AppStorage.setOrCreate('vpnDownSpeed', 0);
-    this.speedTimer = setInterval(async () => {
-      const t = await fetchTrafficTotals();
-      if (t === null) {
+    const generation = ++this.speedPollGeneration;
+    const poll = async (): Promise<void> => {
+      const startedAt = Date.now();
+      const t = await fetchTrafficTotals(this.settings.clashApiPort, this.settings.clashApiSecret);
+      if (generation !== this.speedPollGeneration || !this.isRunning || !this.settings.clashApiEnabled || t === null) {
         return;
       }
-      if (this.lastUp === 0 && this.lastDown === 0) {
+      if (this.lastTrafficAt <= 0) {
         this.lastUp = t.up;
         this.lastDown = t.down;
+        this.lastTrafficAt = startedAt;
+        AppStorage.setOrCreate('vpnUpSpeed', 0);
+        AppStorage.setOrCreate('vpnDownSpeed', 0);
+      } else {
+        const elapsedSeconds = Math.max(0.001, (startedAt - this.lastTrafficAt) / 1000);
+        AppStorage.setOrCreate('vpnUpSpeed', Math.max(0, Math.round((t.up - this.lastUp) / elapsedSeconds)));
+        AppStorage.setOrCreate('vpnDownSpeed', Math.max(0, Math.round((t.down - this.lastDown) / elapsedSeconds)));
+        this.lastUp = t.up;
+        this.lastDown = t.down;
+        this.lastTrafficAt = startedAt;
       }
-      AppStorage.setOrCreate('vpnUpSpeed', Math.max(0, t.up - this.lastUp));
-      AppStorage.setOrCreate('vpnDownSpeed', Math.max(0, t.down - this.lastDown));
-      this.lastUp = t.up;
-      this.lastDown = t.down;
       AppStorage.setOrCreate('vpnTotalUp', t.up);
       AppStorage.setOrCreate('vpnTotalDown', t.down);
-    }, 1000);
+    };
+    void poll();
+    this.speedTimer = setInterval(() => { void poll(); }, 1000);
   }
 
   private startUptimeTimer(): void {
@@ -621,10 +638,14 @@ struct Index {
   }
 
   private stopSpeedPoller(): void {
+    this.speedPollGeneration++;
     if (this.speedTimer >= 0) {
       clearInterval(this.speedTimer);
       this.speedTimer = -1;
     }
+    this.lastUp = 0;
+    this.lastDown = 0;
+    this.lastTrafficAt = 0;
     AppStorage.setOrCreate('vpnUpSpeed', 0);
     AppStorage.setOrCreate('vpnDownSpeed', 0);
   }

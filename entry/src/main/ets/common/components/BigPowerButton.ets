@@ -5,7 +5,7 @@ export struct BigPowerButton {
   @Prop running: boolean = false;
   @Prop connecting: boolean = false;
   onToggle: () => void = () => {};
-  breakpoint: string = 'compact';
+  @Prop breakpoint: string = 'compact';
   @State private pressed: boolean = false;
 
   build() {
@@ -22,7 +22,7 @@ export struct BigPowerButton {
         .width(UiSpec.POWER_BUTTON_SIZE)
         .height(UiSpec.POWER_BUTTON_SIZE)
         .fill(Color.Transparent)
-        .stroke($r('app.color.mono'))
+        .stroke(this.running ? $r('app.color.success') : $r('app.color.mono'))
         .strokeWidth(UiSpec.POWER_RING_WIDTH)
       Button({ type: ButtonType.Circle }) {
         if (this.connecting) {

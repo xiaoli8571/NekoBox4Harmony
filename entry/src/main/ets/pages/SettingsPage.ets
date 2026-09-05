@@ -47,6 +47,14 @@ export struct SettingsPage {
   @State appListError: ResourceStr = '';
   @State backupFileBusy: boolean = false;
   @State appVersion: string = '';
+  @State dirty: boolean = false;
+  @State proxyExpanded: boolean = true;
+  @State networkExpanded: boolean = true;
+  @State appearanceExpanded: boolean = true;
+  @State apiExpanded: boolean = true;
+  @State perAppExpanded: boolean = true;
+  @State backupExpanded: boolean = true;
+  @State otherExpanded: boolean = true;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   onSettingsChanged: (settings: AppSettings) => void = (_settings: AppSettings) => {};
 
@@ -70,6 +78,7 @@ export struct SettingsPage {
     try {
       await initStore(this.context);
       this.s = await loadSettings();
+      this.dirty = false;
       this.geoOk = geoReady(this.context);
     } catch (e) {
       this.loadError = e instanceof Error ? e.message : `${e}`;
@@ -110,9 +119,14 @@ export struct SettingsPage {
     this.context.setColorMode(colorMode);
   }
 
+  private markDirty(): void {
+    this.dirty = true;
+  }
+
   async save(quiet: boolean = false): Promise<void> {
     try {
       await saveSettings(this.s);
+      this.dirty = false;
       this.onSettingsChanged(this.s);
       if (!quiet) {
         promptAction.showToast({ message: $r('app.string.saved_reconnect_vpn') });
@@ -129,6 +143,8 @@ export struct SettingsPage {
     this.s.mode = mode;
     try {
       await saveSettings(this.s);
+      this.dirty = false;
+      this.onSettingsChanged(this.s);
       promptAction.showToast({ message: toast });
       const running: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
       const profileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
@@ -167,7 +183,7 @@ export struct SettingsPage {
       chosen.delete(bundleName);
     }
     this.s.perAppList = Array.from(chosen).sort().join(',');
-    this.save(true);
+    this.markDirty();
   }
 
   private filteredInstalledApps(): Array<InstalledAppItem> {
@@ -321,9 +337,9 @@ export struct SettingsPage {
     }
   }
 
-  /** FlClash 式分组章节头:图标 + 小标题(字距 2)+ 下缘 hairline */
+  /** FlClash 式可折叠分组章节头:图标 + 小标题 + 展开状态 + 下缘 hairline */
   @Builder
-  private sectionHeader(icon: string, title: ResourceStr) {
+  private sectionHeader(icon: string, title: ResourceStr, expanded: boolean, onToggle: () => void) {
     Row({ space: 10 }) {
       Text(icon)
         .fontSize(15)
@@ -336,19 +352,32 @@ export struct SettingsPage {
         .fontColor($r('app.color.text_3'))
         .letterSpacing(2)
         .layoutWeight(1)
+      Text(expanded ? '⌃' : '⌄')
+        .fontSize(14)
+        .fontColor($r('app.color.text_3'))
     }
     .width('100%')
     .padding({ top: 14, bottom: 6 })
     .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
+    .onClick(onToggle)
   }
 
   build() {
     Column() {
-      Text($r('app.string.settings_title'))
-        .fontSize(18)
-        .fontWeight(700)
-        .width('100%')
-        .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 24, bottom: 12 })
+      Row() {
+        Text($r('app.string.settings_title'))
+          .fontSize(18)
+          .fontWeight(700)
+          .layoutWeight(1)
+        Button($r('app.string.save'))
+          .height(34)
+          .enabled(this.dirty)
+          .backgroundColor(this.dirty ? $r('app.color.primary') : $r('app.color.control_disabled'))
+          .fontColor($r('app.color.surface'))
+          .onClick(() => this.save())
+      }
+      .width('100%')
+      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 24, bottom: 12 })
       if (this.loading) {
         Column({ space: 10 }) {
           LoadingProgress()
@@ -382,7 +411,8 @@ export struct SettingsPage {
       Scroll() {
         Column({ space: 14 }) {
           // 代理
-          this.sectionHeader('▶', $r('app.string.outbound_mode'))
+          this.sectionHeader('▶', $r('app.string.outbound_mode'), this.proxyExpanded, () => { this.proxyExpanded = !this.proxyExpanded; })
+          if (this.proxyExpanded) {
           Column() {
             Row({ space: 8 }) {
               ForEach(MODES, (m: string, idx: number) => {
@@ -400,8 +430,11 @@ export struct SettingsPage {
               .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
 
+          }
+
           // 网络
-          this.sectionHeader('▤', $r('app.string.settings_network'))
+          this.sectionHeader('▤', $r('app.string.settings_network'), this.networkExpanded, () => { this.networkExpanded = !this.networkExpanded; })
+          if (this.networkExpanded) {
           Row() {
             Column() {
               Text($r('app.string.settings_custom_routes_title')).fontSize(14)
@@ -418,12 +451,18 @@ export struct SettingsPage {
               Text($r('app.string.settings_direct_domain_suffix')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
               TextInput({ text: this.s.directDomains, placeholder: 'baidu.com,qq.com,163.com' })
                 .width('100%').height(40)
-                .onChange((v: string) => { this.s.directDomains = v; })
+                .onChange((v: string) => {
+                  this.s.directDomains = v;
+                  this.markDirty();
+                })
               Text($r('app.string.settings_direct_cidr')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
                 .margin({ top: 6 })
               TextInput({ text: this.s.directIpCidrs, placeholder: '114.114.114.114/32' })
                 .width('100%').height(40)
-                .onChange((v: string) => { this.s.directIpCidrs = v; })
+                .onChange((v: string) => {
+                  this.s.directIpCidrs = v;
+                  this.markDirty();
+                })
               Row({ space: 8 }) {
                 Text(this.geoOk ? $r('app.string.settings_geo_ready')
                   : $r('app.string.settings_geo_missing'))
@@ -445,6 +484,7 @@ export struct SettingsPage {
               .onChange((v: string) => {
                 const n = parseInt(v);
                 this.s.mtu = isNaN(n) ? 9000 : n;
+                this.markDirty();
               })
           }.alignItems(HorizontalAlign.Start).width('100%')
 
@@ -453,14 +493,20 @@ export struct SettingsPage {
             Select(STACKS.map((t: string) => ({ value: t } as SelectOption)))
               .selected(STACKS.indexOf(this.s.stack) < 0 ? 0 : STACKS.indexOf(this.s.stack))
               .value(this.s.stack)
-              .onSelect((index: number) => { this.s.stack = STACKS[index]; })
+              .onSelect((index: number) => {
+                this.s.stack = STACKS[index];
+                this.markDirty();
+              })
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           Column() {
             Text($r('app.string.settings_remote_dns')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
             TextInput({ text: this.s.remoteDns })
               .width('100%').height(40)
-              .onChange((v: string) => { this.s.remoteDns = v; })
+              .onChange((v: string) => {
+                this.s.remoteDns = v;
+                this.markDirty();
+              })
             Text($r('app.string.settings_remote_dns_hint'))
               .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
@@ -469,19 +515,28 @@ export struct SettingsPage {
             Text($r('app.string.settings_direct_dns')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
             TextInput({ text: this.s.directDns })
               .width('100%').height(40)
-              .onChange((v: string) => { this.s.directDns = v; })
+              .onChange((v: string) => {
+                this.s.directDns = v;
+                this.markDirty();
+              })
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           Row() {
             Text($r('app.string.settings_enable_ipv6')).fontSize(14).layoutWeight(1)
             Toggle({ type: ToggleType.Switch, isOn: this.s.ipv6 })
-              .onChange((v: boolean) => { this.s.ipv6 = v; })
+              .onChange((v: boolean) => {
+                this.s.ipv6 = v;
+                this.markDirty();
+              })
           }.width('100%')
 
           Blank().height(2)
 
+          }
+
           // 外观与交互
-          this.sectionHeader('◐', $r('app.string.appearance_and_interaction'))
+          this.sectionHeader('◐', $r('app.string.appearance_and_interaction'), this.appearanceExpanded, () => { this.appearanceExpanded = !this.appearanceExpanded; })
+          if (this.appearanceExpanded) {
           Column({ space: 8 }) {
             Row({ space: 8 }) {
               ForEach(['system', 'light', 'dark'], (mode: string) => {
@@ -492,7 +547,7 @@ export struct SettingsPage {
                   .onClick(() => {
                     this.s.appearance = mode;
                     this.applyAppearance();
-                    this.save(true);
+                    this.markDirty();
                   })
               }, (mode: string) => mode)
             }.width('100%')
@@ -506,7 +561,7 @@ export struct SettingsPage {
                   .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: this.s.navLayout === layout ? $r('app.color.mono') : $r('app.color.hairline') })
                   .onClick(() => {
                     this.s.navLayout = layout;
-                    this.save(true);
+                    this.markDirty();
                   })
               }, (layout: string) => layout)
             }.width('100%')
@@ -519,7 +574,7 @@ export struct SettingsPage {
                   .fontColor(this.s.profileSortMode === mode ? $r('app.color.surface') : $r('app.color.text_primary'))
                   .onClick(() => {
                     this.s.profileSortMode = mode;
-                    this.save(true);
+                    this.markDirty();
                   })
               }, (mode: string) => mode)
             }.width('100%')
@@ -528,7 +583,7 @@ export struct SettingsPage {
               Toggle({ type: ToggleType.Switch, isOn: this.s.hapticFeedback })
                 .onChange((v: boolean) => {
                   this.s.hapticFeedback = v;
-                  this.save(true);
+                  this.markDirty();
                 })
             }.width('100%')
             Row() {
@@ -536,7 +591,7 @@ export struct SettingsPage {
               Toggle({ type: ToggleType.Switch, isOn: this.s.liquidGlass })
                 .onChange((v: boolean) => {
                   this.s.liquidGlass = v;
-                  this.save(true);
+                  this.markDirty();
                 })
             }.width('100%')
             Text($r('app.string.settings_theme_note'))
@@ -545,15 +600,18 @@ export struct SettingsPage {
 
           Blank().height(2)
 
+          }
+
           // Clash API 连接统计
-          this.sectionHeader('☰', $r('app.string.clash_api_settings'))
+          this.sectionHeader('☰', $r('app.string.clash_api_settings'), this.apiExpanded, () => { this.apiExpanded = !this.apiExpanded; })
+          if (this.apiExpanded) {
           Column({ space: 8 }) {
             Row() {
               Text($r('app.string.clash_api_enabled')).fontSize(14).layoutWeight(1)
               Toggle({ type: ToggleType.Switch, isOn: this.s.clashApiEnabled })
                 .onChange((value: boolean) => {
                   this.s.clashApiEnabled = value;
-                  this.save(true);
+                  this.markDirty();
                 })
             }.width('100%')
             Column() {
@@ -566,7 +624,7 @@ export struct SettingsPage {
                   const port = parseInt(value);
                   if (!isNaN(port)) {
                     this.s.clashApiPort = Math.max(1024, Math.min(65535, port));
-                    this.save(true);
+                    this.markDirty();
                   }
                 })
             }.alignItems(HorizontalAlign.Start).width('100%')
@@ -578,7 +636,7 @@ export struct SettingsPage {
                 .type(InputType.Password)
                 .onChange((value: string) => {
                   this.s.clashApiSecret = value;
-                  this.save(true);
+                  this.markDirty();
                 })
             }.alignItems(HorizontalAlign.Start).width('100%')
             Text($r('app.string.clash_api_reconnect_hint'))
@@ -587,8 +645,11 @@ export struct SettingsPage {
 
           Blank().height(2)
 
+          }
+
           // 分应用代理
-          this.sectionHeader('▦', $r('app.string.per_app_proxy'))
+          this.sectionHeader('▦', $r('app.string.per_app_proxy'), this.perAppExpanded, () => { this.perAppExpanded = !this.perAppExpanded; })
+          if (this.perAppExpanded) {
           Column({ space: 8 }) {
             Row({ space: 8 }) {
               ForEach(APP_MODES, (m: string, idx: number) => {
@@ -598,7 +659,7 @@ export struct SettingsPage {
                   .fontColor(this.s.perAppMode === m ? $r('app.color.surface') : $r('app.color.text_primary'))
                   .onClick(() => {
                     this.s.perAppMode = m;
-                    this.save(true);
+                    this.markDirty();
                   })
               }, (m: string) => m)
             }.width('100%')
@@ -644,7 +705,10 @@ export struct SettingsPage {
                   : $r('app.string.settings_per_app_hint_include')
               })
                 .width('100%').height(40)
-                .onChange((value: string) => { this.s.perAppList = value; })
+                .onChange((value: string) => {
+                  this.s.perAppList = value;
+                  this.markDirty();
+                })
               Text($r('app.string.settings_per_app_manual_note'))
                 .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
             }
@@ -652,8 +716,11 @@ export struct SettingsPage {
 
           Blank().height(2)
 
+          }
+
           // 备份与恢复
-          this.sectionHeader('✓', $r('app.string.backup_restore'))
+          this.sectionHeader('✓', $r('app.string.backup_restore'), this.backupExpanded, () => { this.backupExpanded = !this.backupExpanded; })
+          if (this.backupExpanded) {
           Column({ space: 8 }) {
             Row({ space: 8 }) {
               Button(this.backupFileBusy ? $r('app.string.processing') : $r('app.string.export_backup_file'))
@@ -701,6 +768,8 @@ export struct SettingsPage {
                     }
                     const msg = await importBackup(this.context, text.trim());
                     this.s = await loadSettings();
+                    this.dirty = false;
+                    this.onSettingsChanged(this.s);
                     promptAction.showToast({ message: msg });
                   } catch (e) {
                     promptAction.showToast({ message: this.backupErrorText(e instanceof Error ? e.message : `${e}`) });
@@ -719,14 +788,20 @@ export struct SettingsPage {
               Text($r('app.string.settings_insecure_tls_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
             }.alignItems(HorizontalAlign.Start).layoutWeight(1)
             Toggle({ type: ToggleType.Switch, isOn: this.s.allowInsecureAll })
-              .onChange((v: boolean) => { this.s.allowInsecureAll = v; })
+              .onChange((v: boolean) => {
+                  this.s.allowInsecureAll = v;
+                  this.markDirty();
+                })
           }.width('100%')
 
           Text($r('app.string.settings_reconnect_note'))
             .fontSize(12).fontColor($r('app.color.error')).width('100%')
 
+          }
+
           // 其他
-          this.sectionHeader('ⓘ', $r('app.string.settings_about'))
+          this.sectionHeader('ⓘ', $r('app.string.settings_about'), this.otherExpanded, () => { this.otherExpanded = !this.otherExpanded; })
+          if (this.otherExpanded) {
           Row({ space: 10 }) {
             Text('ⓘ')
               .fontSize(15)
@@ -743,6 +818,7 @@ export struct SettingsPage {
                 .fontColor($r('app.color.text_3'))
             }.alignItems(HorizontalAlign.Start).layoutWeight(1)
           }.width('100%')
+          }
         }
         .width('100%')
         .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 12, bottom: 12 })

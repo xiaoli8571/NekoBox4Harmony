@@ -1307,6 +1307,18 @@
     {
       "name": "settings_about_version",
       "value": "版本"
+    },
+    {
+      "name": "notification_upload",
+      "value": "上行"
+    },
+    {
+      "name": "notification_download",
+      "value": "下行"
+    },
+    {
+      "name": "notification_total",
+      "value": "累计"
     }
   ]
 }

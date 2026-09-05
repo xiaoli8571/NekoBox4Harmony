@@ -423,3 +423,11 @@ Existing notification files reviewed:
 - 中英文资源同步新增导航布局文案。
 - 静态审查通过：改动文件无 NUL、统一 LF，base/en_US 文案键各 324 个且完全一致；未修改冻结内核、module.json5、build-profile.json5、AppScope 或依赖清单。
 - 任务 8 待补日志：本机 `/root/bkui` 未发现可用的应用日志、hilog 或崩溃日志，暂不能开展应用层归因；收到复现时段的 hilog/崩溃栈后继续排查。
+
+
+## 2026-09-05 B 方案第三轮静态交付
+
+- VPN 常驻通知固定为两行正文：第一行显示当前节点与最近延迟，第二行显示上下行实时速度及上下行累计流量；新增流量标签均由 base/en_US 字符串资源提供。
+- 通知流量轮询仅在 VPN 已运行且 Clash API 已启用时启动；断开、onDestroy、启动失败、异常回滚、无待启动节点和统一 teardown 均停止轮询并取消通知，异步轮询通过 generation 防止停止后回写。
+- 设置页七组默认展开且可折叠；统一保存按钮仅 dirty 时可用。除 switchMode 继续即时持久化外，所有持久设置控件仅 markDirty；外观切换先即时 applyAppearance 再 markDirty；保存成功及恢复成功后清除 dirty。
+- 本轮仅进行静态验证，未运行构建、打包或真机测试。

@@ -15,6 +15,7 @@ import { loadRouteRules, RouteRule, loadRemoteRuleSets, RemoteRuleSet } from '..
 import { CoreManager } from '../core/CoreManager';
 import { publishVpnLog, publishVpnStatus, VPN_EVENT_LATENCY } from '../core/VpnIpc';
 import { geoReady, geoSitePath as geoSiteFile, geoIpPath as geoIpFile } from '../utils/GeoAssets';
+import { fetchTrafficTotals } from '../utils/TrafficStats';
 
 /**
  * VPN 扩展能力 — 真正的 VPN 生命周期在这里:
@@ -56,6 +57,17 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   private restartRequested: boolean = false;
   private latestRequestedProfileId: string = '';
   private forceRestartRequested: boolean = false;
+  private notificationTrafficTimer: number = -1;
+  private notificationGeneration: number = 0;
+  private notificationLatencyMs: number = -1;
+  private notificationLastUp: number = 0;
+  private notificationLastDown: number = 0;
+  private notificationLastAt: number = 0;
+  private notificationUpSpeed: number = 0;
+  private notificationDownSpeed: number = 0;
+  private notificationTotalUp: number = 0;
+  private notificationTotalDown: number = 0;
+  private notificationSettings: AppSettings | null = null;
 
   onCreate(want: Want): void {
     this.hookLifecycle('onCreate', want);
@@ -113,7 +125,8 @@ export default class VpnExtAbility extends VpnExtensionAbility {
               ? this.currentNodeName : `${payload['nodeName']}`;
             const latencyMs: number = Number(payload['latencyMs']);
             this.currentNodeName = nodeName;
-            this.showConnectedNotification(nodeName, latencyMs);
+            this.notificationLatencyMs = latencyMs;
+            void this.showConnectedNotification(nodeName, latencyMs);
           } catch (e) {
             // 忽略格式错误的测速事件
           }
@@ -127,12 +140,16 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   onDisconnect(want: Want): void {
     LogStore.addLog('[vpn] 扩展 onDisconnect');
     this.lifecycleGeneration++;
+    this.stopNotificationTrafficPoller();
+    this.cancelNotification();
     this.teardown();
   }
 
   onDestroy(): void {
     LogStore.addLog('[vpn] 扩展 onDestroy');
     this.lifecycleGeneration++;
+    this.stopNotificationTrafficPoller();
+    this.cancelNotification();
     this.teardown();
   }
 
@@ -147,13 +164,14 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   }
 
   private async doTeardown(silent: boolean): Promise<void> {
+    this.stopNotificationTrafficPoller();
+    this.cancelNotification();
     try {
       await CoreManager.stopCore();
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
       LogStore.addLog(`[vpn] 停止内核失败,继续销毁隧道: ${msg}`);
     }
-    this.cancelNotification();
     if (this.vpnConnection !== null) {
       try {
         await this.vpnConnection.destroy();
@@ -210,6 +228,8 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
       LogStore.addLog(`[vpn] 启动失败: ${msg}`);
+      this.stopNotificationTrafficPoller();
+      this.cancelNotification();
       await clearPendingProfileId();
       await this.teardown(true);
       publishVpnStatus(`connect_failed:${msg}`, false);
@@ -228,6 +248,8 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     if (pendingId.length === 0) {
       // 保持扩展待命:下一次 startVpnExtensionAbility 会带着新节点再次进入
       LogStore.addLog('[vpn] 暂无待启动节点,扩展保持待命');
+      this.stopNotificationTrafficPoller();
+      this.cancelNotification();
       return;
     }
     const profiles = await loadProfiles();
@@ -243,6 +265,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     }
     const node: Profile = profile;
     const settings = await loadSettings();
+    this.notificationSettings = settings;
     LogStore.addLog(`[vpn] 准备连接: ${node.name} (${node.server}:${node.serverPort})`);
 
     // ---- 1. 防回环策略 ----
@@ -390,12 +413,93 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.currentRunId = pendingId;
     this.currentNodeName = node.name;
     await setRunningProfileId(pendingId);
-    this.showConnectedNotification(node.name, -1);
+    this.notificationLatencyMs = -1;
+    await this.showConnectedNotification(node.name, -1);
+    this.startNotificationTrafficPoller();
     publishVpnStatus(`connected:${node.name}`, true, pendingId);
     await clearPendingProfileId();
   }
 
-  /** 常驻通知:显示当前连接和最近一次测速结果,并提供断开操作 */
+  private startNotificationTrafficPoller(): void {
+    this.stopNotificationTrafficPoller();
+    const settings = this.notificationSettings;
+    if (!this.started || settings === null || !settings.clashApiEnabled) {
+      return;
+    }
+    this.notificationLastUp = 0;
+    this.notificationLastDown = 0;
+    this.notificationLastAt = 0;
+    this.notificationUpSpeed = 0;
+    this.notificationDownSpeed = 0;
+    this.notificationTotalUp = 0;
+    this.notificationTotalDown = 0;
+    const generation = ++this.notificationGeneration;
+    const poll = async (): Promise<void> => {
+      const startedAt = Date.now();
+      const totals = await fetchTrafficTotals(settings.clashApiPort, settings.clashApiSecret);
+      if (generation !== this.notificationGeneration || !this.started || totals === null) {
+        return;
+      }
+      if (this.notificationLastAt > 0) {
+        const elapsedSeconds = Math.max(0.001, (startedAt - this.notificationLastAt) / 1000);
+        this.notificationUpSpeed = Math.max(0,
+          Math.round((totals.up - this.notificationLastUp) / elapsedSeconds));
+        this.notificationDownSpeed = Math.max(0,
+          Math.round((totals.down - this.notificationLastDown) / elapsedSeconds));
+      }
+      this.notificationLastUp = totals.up;
+      this.notificationLastDown = totals.down;
+      this.notificationLastAt = startedAt;
+      this.notificationTotalUp = totals.up;
+      this.notificationTotalDown = totals.down;
+      await this.showConnectedNotification(this.currentNodeName, this.notificationLatencyMs);
+    };
+    void poll();
+    this.notificationTrafficTimer = setInterval(() => { void poll(); }, 1500);
+  }
+
+  private stopNotificationTrafficPoller(): void {
+    this.notificationGeneration++;
+    if (this.notificationTrafficTimer >= 0) {
+      clearInterval(this.notificationTrafficTimer);
+      this.notificationTrafficTimer = -1;
+    }
+    this.notificationLastUp = 0;
+    this.notificationLastDown = 0;
+    this.notificationLastAt = 0;
+    this.notificationUpSpeed = 0;
+    this.notificationDownSpeed = 0;
+    this.notificationTotalUp = 0;
+    this.notificationTotalDown = 0;
+  }
+
+  private formatNotificationSpeed(bytesPerSecond: number): string {
+    if (bytesPerSecond < 1024) {
+      return `${bytesPerSecond} B/s`;
+    }
+    const kb = bytesPerSecond / 1024;
+    if (kb < 1024) {
+      return `${kb.toFixed(1)} KB/s`;
+    }
+    return `${(kb / 1024).toFixed(1)} MB/s`;
+  }
+
+  private formatNotificationBytes(bytes: number): string {
+    if (bytes < 1024) {
+      return `${bytes} B`;
+    }
+    const kb = bytes / 1024;
+    if (kb < 1024) {
+      return `${kb.toFixed(1)} KB`;
+    }
+    const mb = kb / 1024;
+    if (mb < 1024) {
+      return `${mb.toFixed(1)} MB`;
+    }
+    return `${(mb / 1024).toFixed(2)} GB`;
+  }
+
+  /** 常驻通知:显示当前连接、延迟、实时速率和累计流量,并提供断开操作 */
   private async showConnectedNotification(nodeName: string, latencyMs: number): Promise<void> {
     try {
       const latencyText: string = latencyMs >= 0 ? `${latencyMs}ms` : '--';
@@ -411,12 +515,19 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       });
       // 本机 SDK(API 24)通知字段为 string 类型,不接受 Resource:构建时现取本地化字符串
       const res = this.context.resourceManager;
+      const uploadLabel = res.getStringSync($r('app.string.notification_upload'));
+      const downloadLabel = res.getStringSync($r('app.string.notification_download'));
+      const totalLabel = res.getStringSync($r('app.string.notification_total'));
+      const trafficText = `${uploadLabel} ${this.formatNotificationSpeed(this.notificationUpSpeed)} / ` +
+        `${downloadLabel} ${this.formatNotificationSpeed(this.notificationDownSpeed)} · ` +
+        `${totalLabel} ${uploadLabel} ${this.formatNotificationBytes(this.notificationTotalUp)} / ` +
+        `${downloadLabel} ${this.formatNotificationBytes(this.notificationTotalDown)}`;
       const content: notificationManager.NotificationContent = {
         contentType: notification.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
         normal: {
           title: res.getStringSync($r('app.string.notification_vpn_connected')),
           text: `${nodeName} · ${latencyText}`,
-          additionalText: res.getStringSync($r('app.string.app_name'))
+          additionalText: trafficText
         }
       };
       const request: notificationManager.NotificationRequest = {
