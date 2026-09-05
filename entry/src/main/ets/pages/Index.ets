@@ -85,6 +85,10 @@ struct Index {
 
   private async selectSubscription(sub: SubInfo): Promise<void> {
     this.activeConfigUrl = sub.url;
+    const firstProfile = this.profiles.find((profile: Profile) => profile.subUrl === sub.url);
+    if (firstProfile !== undefined) {
+      this.selectedId = firstProfile.id;
+    }
     await writePrefString('active_config_url', sub.url);
   }
 
