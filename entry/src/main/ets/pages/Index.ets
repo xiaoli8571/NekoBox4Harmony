@@ -338,7 +338,6 @@ struct Index {
       .layoutWeight(1)
       .width('100%')
       .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
-      this.bottomNavigation()
     }
     .width('100%')
     .height('100%')
@@ -540,7 +539,6 @@ struct Index {
         traffic: this.isRunning ? formatBytes(this.totalUp + this.totalDown) : '—'
       })
         .margin({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
-      this.bottomNavigation()
     }
     .width('100%')
     .height('100%')
@@ -1193,7 +1191,12 @@ struct Index {
   build() {
     Column() {
       if (!this.usesSidebar()) {
-        this.activeContent()
+        Column() {
+          this.activeContent()
+        }
+        .width('100%')
+        .layoutWeight(1)
+        this.bottomNavigation()
       } else {
         Row() {
           this.wideNavigation()
