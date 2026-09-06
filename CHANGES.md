@@ -502,3 +502,15 @@ Existing notification files reviewed:
 - 配置页节点列表改为安卓卡片式:圆角 14 卡片、surface 底色、阴影、选中主色描边、协议类型徽标。
 - 抽屉头部对齐安卓:应用图标 + 名称 + 版本号;菜单项加图标字形。
 - 路由/日志改为抽屉内嵌页签(上一轮已做),本轮索引重排:0 配置/1 分组/2 路由/3 设置/4 日志/5 工具/6 关于。
+
+
+## 2026-09-06 对审修复轮(1.7.3,versionCode 1001920)
+
+> 对审发现的失效项全部修复;已在本机 DevEco 编译通过。
+
+1. Clash 订阅解析补全:hysteria2/hy2(password/sni/skip-cert-verify/obfs-password/up/down/ports 端口跳跃)与 tuic(uuid/password/congestion-controller/udp-relay-mode/reduce-rtt/disable-sni/alpn)映射到对应出站;此前这两类节点被跳过。
+2. Clash 传输解析修复:grpc-opts 读 grpc-service-name(此前读错键名导致 serviceName 丢失);ws-opts 增加 max-early-data/early-data-header-name;network h2 映射为 sing-box http 传输;兼容顶层 service-name。
+3. 「订阅请求放行不安全 TLS」(subAllowInsecure)接线:订阅下载经 http.remoteValidation='skip'(API 18+),生效于手动/自动/后台全部订阅更新路径与首页导入。
+4. 「解析目标地址」(resolveDestination)接线:规则模式下注入 resolve 兜底规则,IP 类规则(geoip 等)可匹配域名连接。
+5. 「通知中显示分组名」(notificationGroup)接线:连接时解析节点分组,通知副标题显示 [组名] 节点 · 延迟。
+6. 设置页补 UI:「解析目标地址」开关(路由组)、「全局自定义配置 JSON」输入(常规组,浅合并入 sing-box 根配置)。

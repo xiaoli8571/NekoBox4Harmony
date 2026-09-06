@@ -1851,6 +1851,22 @@
     {
       "name": "mux_padding",
       "value": "Mux padding"
+    },
+    {
+      "name": "settings_resolve_destination",
+      "value": "Resolve destination address"
+    },
+    {
+      "name": "settings_resolve_destination_desc",
+      "value": "Resolve domains before matching IP rules (e.g. geoip)"
+    },
+    {
+      "name": "settings_global_custom_config",
+      "value": "Global custom config JSON"
+    },
+    {
+      "name": "settings_global_custom_config_desc",
+      "value": "Shallow-merged into the generated sing-box config; invalid JSON is ignored"
     }
   ]
 }

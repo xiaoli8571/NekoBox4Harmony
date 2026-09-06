@@ -355,6 +355,21 @@ export struct SettingsPage {
                 })
             }.alignItems(HorizontalAlign.Start).width('100%')
 
+            Column() {
+              Text($r('app.string.settings_global_custom_config')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              TextArea({ text: this.s.globalCustomConfig, placeholder: '{"log":{"level":"info"}}' })
+                .height(90)
+                .fontSize(12)
+                .fontFamily('monospace')
+                .width('100%')
+                .onChange((v: string) => {
+                  this.s.globalCustomConfig = v;
+                  this.markDirty();
+                })
+              Text($r('app.string.settings_global_custom_config_desc'))
+                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+            }.alignItems(HorizontalAlign.Start).width('100%')
+
             Row() {
               Text($r('app.string.settings_always_show_address')).fontSize(14).layoutWeight(1)
               Toggle({ type: ToggleType.Switch, isOn: this.s.alwaysShowAddress })
@@ -495,6 +510,18 @@ export struct SettingsPage {
               }, (m: string) => m)
             }.width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
+
+          Row() {
+            Column() {
+              Text($r('app.string.settings_resolve_destination')).fontSize(14)
+              Text($r('app.string.settings_resolve_destination_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
+            }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.s.resolveDestination })
+              .onChange((v: boolean) => {
+                this.s.resolveDestination = v;
+                this.markDirty();
+              })
+          }.width('100%')
 
           Blank().height(2)
 

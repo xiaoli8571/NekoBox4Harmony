@@ -168,3 +168,9 @@
 
 - 设置页去重:路由入口/关于版本移除,备份迁至工具页;面板功能整体删除(含 yacd 资源与 external_ui);配置页节点列表卡片化,抽屉头部加图标+版本,菜单项带图标。
 - 页签终态:0 配置 / 1 分组 / 2 路由 / 3 设置 / 4 日志 / 5 工具 / 6 关于,全部原地切换,均可随时再开抽屉。
+
+
+## 对审修复轮(1.7.3,versionCode 1001920)—— 状态:✅ 已完成开发并本机编译通过(2026-09-06)
+
+- Clash 订阅 hysteria2/tuic/grpc/ws 早期数据/h2 解析补全;subAllowInsecure(http remoteValidation=skip)、resolveDestination(规则模式 resolve 兜底)、notificationGroup(通知前缀)全部接线;设置页补解析目标地址开关与全局自定义配置 JSON 输入。
+- 真机验证点:含 hy2/tuic 的 Clash 订阅导入不再跳过;自签证书订阅可下载;通知显示 [分组名];解析目标地址开启后 IP 规则生效。

@@ -8,8 +8,8 @@ import notification from '@ohos.notification';
 import wantAgent from '@ohos.app.ability.wantAgent';
 import commonEventManager from '@ohos.commonEventManager';
 import BusinessError from '@ohos.base';
-import { Profile, AppSettings } from '../model/Profile';
-import { initStore, loadProfiles, loadSettings, getPendingProfileId, setPendingProfileId, clearPendingProfileId, setRunningProfileId, LogStore } from '../model/Store';
+import { Profile, ProfileGroup, AppSettings } from '../model/Profile';
+import { initStore, loadProfiles, loadGroups, loadSettings, getPendingProfileId, setPendingProfileId, clearPendingProfileId, setRunningProfileId, LogStore } from '../model/Store';
 import { buildCoreConfig } from '../core/ConfigBuilder';
 import { loadRouteRules, RouteRule, loadRemoteRuleSets, RemoteRuleSet } from '../model/RouteRule';
 import { CoreManager } from '../core/CoreManager';
@@ -68,6 +68,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   private notificationTotalUp: number = 0;
   private notificationTotalDown: number = 0;
   private notificationSettings: AppSettings | null = null;
+  private notificationGroupName: string = '';
 
   onCreate(want: Want): void {
     this.hookLifecycle('onCreate', want);
@@ -273,6 +274,19 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     const node: Profile = profile;
     const settings = await loadSettings();
     this.notificationSettings = settings;
+    // 通知显示分组名(设置开启且节点有分组时)
+    this.notificationGroupName = '';
+    if (settings.notificationGroup && node.groupId.length > 0) {
+      try {
+        const groups = await loadGroups();
+        const g = groups.find((item: ProfileGroup) => item.id === node.groupId);
+        if (g !== undefined) {
+          this.notificationGroupName = g.name;
+        }
+      } catch (e) {
+        // 分组名缺失不影响连接
+      }
+    }
     LogStore.addLog(`[vpn] 准备连接: ${node.name} (${node.server}:${node.serverPort})`);
 
     // ---- 1. 防回环策略 ----
@@ -524,6 +538,8 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       });
       // 本机 SDK(API 24)通知字段为 string 类型,不接受 Resource:构建时现取本地化字符串
       const res = this.context.resourceManager;
+      const displayName = this.notificationGroupName.length > 0
+        ? `[${this.notificationGroupName}] ${nodeName}` : nodeName;
       const uploadLabel = res.getStringSync($r('app.string.notification_upload'));
       const downloadLabel = res.getStringSync($r('app.string.notification_download'));
       const totalLabel = res.getStringSync($r('app.string.notification_total'));
@@ -535,7 +551,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
         contentType: notification.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
         normal: {
           title: res.getStringSync($r('app.string.notification_vpn_connected')),
-          text: `${nodeName} · ${latencyText}`,
+          text: `${displayName} · ${latencyText}`,
           additionalText: trafficText
         }
       };
