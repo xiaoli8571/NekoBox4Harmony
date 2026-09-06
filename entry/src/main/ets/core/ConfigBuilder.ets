@@ -576,6 +576,14 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
       reference['outbound'] = item.outbound;
       routeRules.push(reference);
     }
+
+    if (s.resolveDestination) {
+      // 兜底规则前先解析目标地址:IP 类规则(geoip 等)得以匹配域名连接(对齐安卓解析目标地址)
+      const resolveRule: Record<string, Object> = {};
+      resolveRule['resolve'] = true;
+      resolveRule['outbound'] = finalOutbound;
+      routeRules.push(resolveRule);
+    }
   }
 
   const route: Record<string, Object> = {};

@@ -809,7 +809,7 @@ struct Index {
         // 订阅链接:下载内容后解析(服务商返回 Clash YAML 时自动切换解析器)
         promptAction.showToast({ message: $r('app.string.fetching_subscription') });
         subUrl = firstLine;
-        const fetched = await fetchSubscriptionWithInfo(firstLine);
+        const fetched = await fetchSubscriptionWithInfo(firstLine, this.settings.subAllowInsecure);
         const content = fetched.content;
         subUserinfo = fetched.userinfo;
         if (looksLikeClashYaml(content)) {

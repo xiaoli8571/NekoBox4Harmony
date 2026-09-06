@@ -21,21 +21,21 @@ export interface SubUserInfo {
   expire: number;
 }
 
-export async function fetchSubscriptionWithInfo(url: string): Promise<SubFetchResult> {
-  return await doFetchSubscription(url, true);
+export async function fetchSubscriptionWithInfo(url: string, allowInsecure: boolean = false): Promise<SubFetchResult> {
+  return await doFetchSubscription(url, true, allowInsecure);
 }
 
 async function fetchSubscriptionRaw(url: string, withInfo: boolean): Promise<string> {
-  const r = await doFetchSubscription(url, withInfo);
+  const r = await doFetchSubscription(url, withInfo, false);
   return r.content;
 }
 
-export async function fetchSubscription(url: string): Promise<string> {
-  const r = await doFetchSubscription(url, false);
+export async function fetchSubscription(url: string, allowInsecure: boolean = false): Promise<string> {
+  const r = await doFetchSubscription(url, false, allowInsecure);
   return r.content;
 }
 
-async function doFetchSubscription(url: string, withInfo: boolean): Promise<SubFetchResult> {
+async function doFetchSubscription(url: string, withInfo: boolean, allowInsecure: boolean): Promise<SubFetchResult> {
   const client = http.createHttp();
   try {
     const headers: Record<string, string> = { 'User-Agent': SUB_UA };
@@ -46,6 +46,10 @@ async function doFetchSubscription(url: string, withInfo: boolean): Promise<SubF
       connectTimeout: 15000,
       readTimeout: 30000
     };
+    // 订阅请求放行不安全 TLS(对齐安卓 allowInsecureOnRequest;API 18+)
+    if (allowInsecure) {
+      opts.remoteValidation = 'skip';
+    }
     const resp = await client.request(url, opts);
     if (resp.responseCode < 200 || resp.responseCode >= 300) {
       throw new Error(`订阅服务器返回 HTTP ${resp.responseCode}`);
@@ -316,19 +320,40 @@ function mBool(m: Record<string, Object>, k: string): boolean {
 
 function applyClashTransport(p: Profile, m: Record<string, Object>): void {
   const net = mStr(m, 'network');
-  p.transport = net === 'tcp' ? '' : net;
+  // Clash 的 h2 对应 sing-box 的 http 传输
+  p.transport = (net === 'tcp' || net === 'none') ? '' : (net === 'h2' ? 'http' : net);
   const wsKey = `${net}-opts`;
-  const wo = m[wsKey];
-  if (wo !== undefined && wo !== null) {
-    const w = wo as Record<string, Object>;
+  const oo = m[wsKey];
+  if (oo === undefined || oo === null) {
+    return;
+  }
+  const w = oo as Record<string, Object>;
+  if (net === 'ws') {
     p.path = mStr(w, 'path');
-    p.serviceName = mStr(w, 'serviceName');
     const hh = w['headers'];
     if (hh !== undefined && hh !== null) {
       const h = hh as Record<string, Object>;
       p.host = mStr(h, 'Host');
     }
+    p.wsEarlyData = mNum(w, 'max-early-data');
+    p.wsEarlyDataHeaderName = mStr(w, 'early-data-header-name');
+  } else if (net === 'grpc') {
+    // Clash 键名为 grpc-service-name(兼容部分订阅的 serviceName)
+    p.serviceName = mStr(w, 'grpc-service-name', mStr(w, 'serviceName', mStr(m, 'service-name')));
+  } else if (net === 'h2' || net === 'http') {
+    p.path = mStr(w, 'path');
+    const hh = w['headers'];
+    if (hh !== undefined && hh !== null) {
+      const h = hh as Record<string, Object>;
+      p.host = mStr(h, 'host', mStr(h, 'Host'));
+    }
   }
+}
+
+/** Clash 的带宽字段可能是 "30" 或 "30 Mbps" */
+function parseBandwidth(raw: string): number {
+  const n = parseInt(raw.trim());
+  return isNaN(n) ? 0 : n;
 }
 
 function profileFromClash(m: Record<string, Object> | null): Profile | null {
@@ -395,8 +420,33 @@ function profileFromClash(m: Record<string, Object> | null): Profile | null {
       p.sni = mStr(m, 'sni');
       p.tls = true;
       break;
+    case 'hysteria2':
+    case 'hy2':
+      p.type = ProfileType.HYSTERIA2;
+      p.password = mStr(m, 'password', mStr(m, 'auth'));
+      p.sni = mStr(m, 'sni', mStr(m, 'servername'));
+      p.tls = true;
+      p.allowInsecure = mBool(m, 'skip-cert-verify');
+      p.obfs = mStr(m, 'obfs-password', mStr(m, 'obfs'));
+      p.upMbps = parseBandwidth(mStr(m, 'up'));
+      p.downMbps = parseBandwidth(mStr(m, 'down'));
+      p.serverPorts = mStr(m, 'ports');
+      break;
+    case 'tuic':
+      p.type = ProfileType.TUIC;
+      p.uuid = mStr(m, 'uuid');
+      p.password = mStr(m, 'password', mStr(m, 'token'));
+      p.sni = mStr(m, 'sni', mStr(m, 'servername'));
+      p.tls = true;
+      p.allowInsecure = mBool(m, 'skip-cert-verify');
+      p.congestionControl = mStr(m, 'congestion-controller', mStr(m, 'congestion-control', 'bbr'));
+      p.udpRelayMode = mStr(m, 'udp-relay-mode', 'native');
+      p.reduceRtt = mBool(m, 'reduce-rtt');
+      p.disableSni = mBool(m, 'disable-sni');
+      p.alpn = mStr(m, 'alpn');
+      break;
     default:
-      // hysteria2 / tuic / ssr 等内核 1.4 不支持或暂未映射
+      // ssr 等内核不支持的类型跳过
       return null;
   }
   return p;

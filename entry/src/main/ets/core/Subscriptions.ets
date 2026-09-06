@@ -1,6 +1,6 @@
 import common from '@ohos.app.ability.common';
 import { Profile } from '../model/Profile';
-import { initStore, loadProfiles, saveProfiles, readPrefString, writePrefString } from '../model/Store';
+import { initStore, loadProfiles, saveProfiles, loadSettings, readPrefString, writePrefString } from '../model/Store';
 import { fetchSubscriptionWithInfo, parseSubUserInfo, looksLikeClashYaml, parseClashProxies } from '../utils/Subscription';
 import { parseShareText } from '../utils/LinkParser';
 
@@ -186,7 +186,8 @@ function stableProfileId(p: Profile, url: string): string {
 
 /** 更新单个订阅:下载 → 解析 → 原子替换该订阅的节点(保留运行中节点);同时记录流量/到期 */
 export async function updateSubscription(url: string): Promise<SubUpdateResult> {
-  const fetched = await fetchSubscriptionWithInfo(url);
+  const settings = await loadSettings();
+  const fetched = await fetchSubscriptionWithInfo(url, settings.subAllowInsecure);
   const content = fetched.content;
   let parsed: Array<Profile> = [];
   if (looksLikeClashYaml(content)) {

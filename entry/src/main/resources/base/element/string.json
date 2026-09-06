@@ -1851,6 +1851,22 @@
     {
       "name": "mux_padding",
       "value": "Mux padding"
+    },
+    {
+      "name": "settings_resolve_destination",
+      "value": "解析目标地址"
+    },
+    {
+      "name": "settings_resolve_destination_desc",
+      "value": "连接前先解析域名,让 IP 类规则(如 geoip)能匹配域名流量"
+    },
+    {
+      "name": "settings_global_custom_config",
+      "value": "全局自定义配置 JSON"
+    },
+    {
+      "name": "settings_global_custom_config_desc",
+      "value": "与生成的 sing-box 根配置浅合并,非法 JSON 会被忽略"
     }
   ]
 }
