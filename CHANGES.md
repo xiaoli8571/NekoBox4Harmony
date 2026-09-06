@@ -464,3 +464,24 @@ Existing notification files reviewed:
 - FakeDNS 与 resolveDestination 前者为真机验证项,后者仅存档不参与配置生成;通知显示分组名设置存档待 VpnExtAbility 消费。
 - 二维码扫码/生成维持既有降级(纯文本+复制);仅代理服务模式、开机自启、Quick Tile、TV 为安卓平台能力,鸿蒙无对应机制(桌面卡片方案见 docs/U5)。
 - 真机验证点:抽屉导航与 FAB 全断点无溢出、分组 Tabs 切换、STUN 真机探测、yacd 面板加载(/ui + secret)、链式/SSH/ShadowTLS/自定义出站真实连接、FakeDNS 开关、mixedPort 局域网访问。
+
+
+## 2026-09-06 真机反馈修复轮(1.7.1,versionCode 1001918)
+
+> 来源:真机试用反馈三项。全部改动位于 entry/src/main/ets 与 resources,已在本机 DevEco 编译通过。
+
+### 1. 抽屉各驻留页无返回入口
+- 新增共用组件 common/components/DrawerButton.ets(≡ 按钮);GroupPage/SettingsPage/ToolsPage/AboutPage/DashboardPage 头部全部接入,新增 onOpenDrawer 回调由 Index 打开抽屉。
+- 此前 ≡ 只在配置页顶栏,切到分组/工具/关于等页后没有任何返回导航的路径。
+
+### 2. FAB 启动按钮白色方形底
+- 原实现 Stack+Circle 的 shadow 按组件矩形边界渲染,产生方形光晕。
+- 改为容器式圆形按钮:borderRadius(32) + clip + 阴影跟随圆角;新增半透明色值令牌 fab_bg/fab_running(base #CC3478F6/#CC12A150,dark #CC6EA1FF/#CC4CCB7F);按钮放大到 64vp。
+
+### 3. 长时间闲置后 VPN 无法启动
+- 根因:UI 进程闲置被系统回收重建后(AppStorage 重置为未连接),:vpn 扩展实例仍在运行;再次点启动时扩展走「已在运行且节点未变化,忽略重复触发」分支且不广播状态,UI 永远停在「连接中」。
+- 修复:① 扩展两个忽略分支现在都会重播 connected:<节点> 状态(publishVpnStatus),回到前台的 UI 立即同步为已连接;② VpnService 启动看门狗升级:60s 数据面证据恢复逻辑保留,新增 120s 终态判定——仍停留在 connecting 则置 connect_failed(启动超时,可重试),不再无限转圈;③ doTeardown 的 stopCore/destroy 加 8s/5s 超时兜底,防止内核挂起时 teardown 永不结束卡死 starting 标记(之后所有启动请求会被队列吞掉);④ Index.onPageShow 增加前台状态核对:UI 认为「已连接」而 clash API 探测不可达(扩展实际已死)时,重置为断开态。
+
+### 其他
+- Index FAB 相关:fab 颜色令牌入 base/dark color.json 对称(检查脚本通过)。
+- 文档:本条;DEVPLAN 增补修复轮状态行。

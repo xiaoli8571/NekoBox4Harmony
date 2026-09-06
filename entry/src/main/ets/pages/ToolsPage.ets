@@ -1,6 +1,7 @@
 import common from '@ohos.app.ability.common';
 import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
+import { DrawerButton } from '../common/components/DrawerButton';
 import { initStore, resetAllData, LogStore } from '../model/Store';
 import { stunTest, StunResult } from '../utils/StunTester';
 
@@ -15,6 +16,7 @@ export struct ToolsPage {
   @State stunResult: StunResult | null = null;
   @State resetting: boolean = false;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+  onOpenDrawer: () => void = () => {};
 
   async runStun(): Promise<void> {
     if (this.stunTesting) {
@@ -74,10 +76,13 @@ export struct ToolsPage {
 
   build() {
     Column() {
-      Text($r('app.string.nav_tools'))
-        .fontSize(16).fontWeight(800).fontColor($r('app.color.text_1'))
-        .width('100%')
-        .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 26, bottom: 8 })
+      Row() {
+        DrawerButton({ onOpen: () => this.onOpenDrawer() })
+        Text($r('app.string.nav_tools'))
+          .fontSize(16).fontWeight(800).fontColor($r('app.color.text_1')).layoutWeight(1)
+      }
+      .width('100%')
+      .padding({ left: UiSpec.PAGE_PADDING - 10, right: UiSpec.PAGE_PADDING, top: 26, bottom: 8 })
 
       Scroll() {
         Column({ space: 14 }) {

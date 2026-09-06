@@ -1,6 +1,7 @@
 import common from '@ohos.app.ability.common';
 import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
+import { DrawerButton } from '../common/components/DrawerButton';
 import { Profile, ProfileGroup } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, LogStore } from '../model/Store';
 import { SubInfo, listSubs, saveSubs, removeSub, updateSubscription, markSubSuccess, markSubFailure } from '../core/Subscriptions';
@@ -23,6 +24,7 @@ export struct GroupPage {
   @State renameDraft: string = '';
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   onDataChanged: () => void = () => {};
+  onOpenDrawer: () => void = () => {};
 
   aboutToAppear(): void {
     this.refresh();
@@ -282,6 +284,7 @@ export struct GroupPage {
   build() {
     Column() {
       Row() {
+        DrawerButton({ onOpen: () => this.onOpenDrawer() })
         Text($r('app.string.nav_groups'))
           .fontSize(16).fontWeight(800).fontColor($r('app.color.text_1')).layoutWeight(1)
         Text(this.updatingAll ? $r('app.string.updating') : $r('app.string.update_all_subs'))
@@ -290,7 +293,7 @@ export struct GroupPage {
           .onClick(() => this.updateAll())
       }
       .width('100%')
-      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 26 })
+      .padding({ left: UiSpec.PAGE_PADDING - 10, right: UiSpec.PAGE_PADDING - 10, top: 26 })
 
       Row({ space: 8 }) {
         TextInput({ text: this.newGroupName, placeholder: $r('app.string.new_group_hint') })

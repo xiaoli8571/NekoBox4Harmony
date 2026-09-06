@@ -135,6 +135,14 @@
     {
       "name": "warn_fg",
       "value": "#B45309"
+    },
+    {
+      "name": "fab_bg",
+      "value": "#CC3478F6"
+    },
+    {
+      "name": "fab_running",
+      "value": "#CC12A150"
     }
   ]
 }

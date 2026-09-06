@@ -3,6 +3,7 @@ import bundleManager from '@ohos.bundle.bundleManager';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
+import { DrawerButton } from '../common/components/DrawerButton';
 import pasteboard from '@ohos.pasteboard';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 import picker from '@ohos.file.picker';
@@ -66,6 +67,7 @@ export struct SettingsPage {
   @State otherExpanded: boolean = false;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   onSettingsChanged: (settings: AppSettings) => void = (_settings: AppSettings) => {};
+  onOpenDrawer: () => void = () => {};
 
   aboutToAppear(): void {
     this.loadAppVersion();
@@ -405,6 +407,7 @@ export struct SettingsPage {
   build() {
     Column() {
       Row() {
+        DrawerButton({ onOpen: () => this.onOpenDrawer() })
         Text($r('app.string.settings_title'))
           .fontSize(18)
           .fontWeight(700)

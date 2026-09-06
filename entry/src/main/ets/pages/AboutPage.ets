@@ -3,6 +3,7 @@ import bundleManager from '@ohos.bundle.bundleManager';
 import promptAction from '@ohos.promptAction';
 import http from '@ohos.net.http';
 import { UiSpec } from '../common/UiSpec';
+import { DrawerButton } from '../common/components/DrawerButton';
 
 const CORE_VERSION = 'sing-box 1.11.9 (OHOS c-shared)';
 const GITHUB_URL = 'https://github.com/xiaoli8571/NekoBox4Harmony';
@@ -16,6 +17,7 @@ const RELEASES_API = 'https://api.github.com/repos/xiaoli8571/NekoBox4Harmony/re
 export struct AboutPage {
   @State appVersion: string = '';
   @State checking: boolean = false;
+  onOpenDrawer: () => void = () => {};
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear(): void {
@@ -77,10 +79,13 @@ export struct AboutPage {
 
   build() {
     Column() {
-      Text($r('app.string.nav_about'))
-        .fontSize(16).fontWeight(800).fontColor($r('app.color.text_1'))
-        .width('100%')
-        .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 26, bottom: 8 })
+      Row() {
+        DrawerButton({ onOpen: () => this.onOpenDrawer() })
+        Text($r('app.string.nav_about'))
+          .fontSize(16).fontWeight(800).fontColor($r('app.color.text_1')).layoutWeight(1)
+      }
+      .width('100%')
+      .padding({ left: UiSpec.PAGE_PADDING - 10, right: UiSpec.PAGE_PADDING, top: 26, bottom: 8 })
 
       Scroll() {
         Column({ space: 14 }) {
