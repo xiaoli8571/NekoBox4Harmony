@@ -404,8 +404,7 @@ export function buildCustomRule(r: RouteRule): Record<string, Object> | null {
 export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: string,
   logPath: string = '', geositePath: string = '', geoIpPath: string = '',
   customRules: Array<RouteRule> = [], remoteRuleSets: Array<RemoteRuleSet> = [],
-  cachePath: string = '', allProfiles: Array<Profile> = [],
-  externalUiPath: string = ''): string {
+  cachePath: string = '', allProfiles: Array<Profile> = []): string {
   if (p.type !== ProfileType.CUSTOM && p.type !== ProfileType.CHAIN && p.server.length === 0) {
     throw new Error('服务器地址为空');
   }
@@ -600,17 +599,12 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     route['geoip'] = geoipOpt;
   }
 
-  // ---- experimental: clash API(实时速率/流量统计/yacd 面板) + cache file ----
+  // ---- experimental: clash API(实时速率/流量统计) + cache file ----
   const experimental: Record<string, Object> = {};
   if (s.clashApiEnabled) {
     const clashApi: Record<string, Object> = {};
     clashApi['external_controller'] = `127.0.0.1:${s.clashApiPort}`;
     clashApi['secret'] = s.clashApiSecret;
-    if (externalUiPath.length > 0) {
-      clashApi['external_ui'] = externalUiPath;
-      clashApi['external_ui_download_url'] = 'https://github.com/MetaCubeX/yacd/archive/gh-pages.zip';
-      clashApi['external_ui_download_detour'] = 'proxy';
-    }
     experimental['clash_api'] = clashApi;
   }
   const cacheFile: Record<string, Object> = {};

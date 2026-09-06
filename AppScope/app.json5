@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "com.nekobox.app",
     "vendor": "nekobox4harmony",
-    "versionCode": 1001918,
-    "versionName": "1.7.1",
+    "versionCode": 1001919,
+    "versionName": "1.7.2",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }

@@ -1,15 +1,16 @@
-import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
+import { DrawerButton } from '../common/components/DrawerButton';
 import { RouteRule, RemoteRuleSet, loadRouteRules, saveRouteRules, loadRemoteRuleSets, saveRemoteRuleSets } from '../model/RouteRule';
 
-@Entry
+/** 路由规则面板(抽屉内嵌页签,对齐安卓 RouteFragment;不再是独立路由页) */
 @Component
-struct RouteRulesPage {
+export struct RouteRulesPanel {
   @State rules: Array<RouteRule> = [];
   @State remoteRuleSets: Array<RemoteRuleSet> = [];
   @State loading: boolean = true;
   @State loadError: string = '';
+  onOpenDrawer: () => void = () => {};
 
   aboutToAppear(): void {
     this.load();
@@ -120,7 +121,7 @@ struct RouteRulesPage {
     Column() {
     Column() {
       Row() {
-        Text('←').fontSize(22).padding(8).onClick(() => router.back())
+        DrawerButton({ onOpen: () => this.onOpenDrawer() })
         Text($r('app.string.route_rules_title')).fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
         Button($r('app.string.add')).height(34).onClick(() => this.addRule())
       }.width('100%').padding(12)
