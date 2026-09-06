@@ -9,11 +9,12 @@ import { CLASH_API_PORT } from './TrafficStats';
 export const URL_TEST_TARGET: string = 'https://www.gstatic.com/generate_204';
 
 /** 查询当前激活出站('proxy')经隧道的真实延迟(ms);非 200 或缺 delay 抛异常 */
-export async function fetchCurrentProxyDelay(timeoutMs: number = 5000): Promise<number> {
+export async function fetchCurrentProxyDelay(timeoutMs: number = 5000,
+  port: number = CLASH_API_PORT, testUrl: string = URL_TEST_TARGET): Promise<number> {
   const client = http.createHttp();
   try {
-    const url = `http://127.0.0.1:${CLASH_API_PORT}/proxies/proxy/delay`
-      + `?url=${encodeURIComponent(URL_TEST_TARGET)}&timeout=${timeoutMs}`;
+    const url = `http://127.0.0.1:${port}/proxies/proxy/delay`
+      + `?url=${encodeURIComponent(testUrl)}&timeout=${timeoutMs}`;
     const resp = await client.request(url, {
       method: http.RequestMethod.GET,
       connectTimeout: timeoutMs + 3000,
@@ -35,6 +36,7 @@ export async function fetchCurrentProxyDelay(timeoutMs: number = 5000): Promise<
 }
 
 /** 单节点测速别名:当前架构下仅激活出站可做 URL Test,其余节点请用 TCP 握手测速 */
-export async function fetchProxyDelay(timeoutMs: number = 5000): Promise<number> {
-  return fetchCurrentProxyDelay(timeoutMs);
+export async function fetchProxyDelay(timeoutMs: number = 5000,
+  port: number = CLASH_API_PORT, testUrl: string = URL_TEST_TARGET): Promise<number> {
+  return fetchCurrentProxyDelay(timeoutMs, port, testUrl);
 }

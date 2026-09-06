@@ -10,9 +10,21 @@ import { parseSingleLink, parseShareText } from '../utils/LinkParser';
 const ALL_TYPES: Array<string> = [
   ProfileType.SHADOWSOCKS, ProfileType.VMESS, ProfileType.VLESS, ProfileType.TROJAN,
   ProfileType.HYSTERIA, ProfileType.HYSTERIA2, ProfileType.TUIC, ProfileType.WIREGUARD,
-  ProfileType.HTTP, ProfileType.SOCKS
+  ProfileType.HTTP, ProfileType.SOCKS, ProfileType.SSH, ProfileType.SHADOWTLS,
+  ProfileType.CUSTOM, ProfileType.CHAIN
 ];
 const TRANSPORTS: Array<string> = ['', 'ws', 'grpc', 'http', 'httpupgrade', 'quic'];
+const SS_METHODS: Array<string> = [
+  'aes-128-gcm', 'aes-192-gcm', 'aes-256-gcm', 'chacha20-ietf-poly1305', 'xchacha20-ietf-poly1305',
+  '2022-blake3-aes-128-gcm', '2022-blake3-aes-256-gcm', '2022-blake3-chacha20-poly1305',
+  'none', 'aes-128-ctr', 'aes-192-ctr', 'aes-256-ctr', 'aes-128-cfb', 'aes-192-cfb', 'aes-256-cfb',
+  'rc4-md5', 'chacha20-ietf', 'xchacha20'
+];
+const SS_PLUGINS: Array<string> = ['', 'obfs-local', 'v2ray-plugin'];
+const PACKET_ENCODINGS: Array<string> = ['', 'packetaddr', 'xudp'];
+const SSH_AUTH_TYPES: Array<string> = ['none', 'password', 'private_key'];
+const MUX_PROTOCOLS: Array<string> = ['h2mux', 'smux', 'yamux'];
+const UTLS_FINGERPRINTS: Array<string> = ['', 'chrome', 'firefox', 'edge', 'safari', '360', 'qq', 'ios', 'android', 'random', 'randomized'];
 
 @Entry
 @Component
@@ -20,12 +32,14 @@ struct ProfileEdit {
   @State p: Profile = new Profile();
   @State isNew: boolean = true;
   @State pasteText: string = '';
+  @State allProfiles: Array<Profile> = [];
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear(): void {
     const id: string = AppStorage.get<string>('editProfileId') ?? '';
     initStore(this.context).then(async () => {
       const profiles = await loadProfiles();
+      this.allProfiles = profiles;
       const found = profiles.find(x => x.id === id);
       if (found !== undefined) {
         this.p = found;
@@ -48,6 +62,26 @@ struct ProfileEdit {
   }
 
   validationError(): ResourceStr {
+    if (this.p.type === ProfileType.CUSTOM) {
+      if (this.p.customOutbound.trim().length === 0) {
+        return $r('app.string.error_custom_outbound_required');
+      }
+      try {
+        const parsed = JSON.parse(this.p.customOutbound) as Record<string, Object>;
+        if (parsed['type'] === undefined) {
+          return $r('app.string.error_custom_outbound_type');
+        }
+      } catch (e) {
+        return $r('app.string.error_extra_json');
+      }
+      return '';
+    }
+    if (this.p.type === ProfileType.CHAIN) {
+      if (this.chainIds().length === 0) {
+        return $r('app.string.error_chain_empty');
+      }
+      return '';
+    }
     if (this.p.server.trim().length === 0) {
       return $r('app.string.error_server_required');
     }
@@ -74,6 +108,15 @@ struct ProfileEdit {
     if (this.p.type === ProfileType.TUIC && this.p.password.length === 0) {
       return $r('app.string.error_tuic_password_required');
     }
+    if (this.p.type === ProfileType.SSH && this.p.sshAuthType === 'password' && this.p.password.length === 0) {
+      return $r('app.string.error_ssh_password_required');
+    }
+    if (this.p.type === ProfileType.SSH && this.p.sshAuthType === 'private_key' && this.p.privateKey.trim().length === 0) {
+      return $r('app.string.error_ssh_key_required');
+    }
+    if (this.p.type === ProfileType.WIREGUARD && this.p.privateKey.trim().length === 0) {
+      return $r('app.string.error_wireguard_key_required');
+    }
     if (this.p.realityPublicKey.length > 0
       && !/^[A-Za-z0-9_-]{32,64}$/.test(this.p.realityPublicKey.trim())) {
       return $r('app.string.error_reality_public_key');
@@ -99,7 +142,9 @@ struct ProfileEdit {
       return;
     }
     if (this.p.name.trim().length === 0) {
-      this.p.name = `${this.p.server.trim()}:${this.p.serverPort}`;
+      this.p.name = this.p.type === ProfileType.CUSTOM
+        ? `Custom-${Date.now() % 10000}`
+        : `${this.p.server.trim()}:${this.p.serverPort}`;
     }
     this.p.server = this.p.server.trim();
     try {
@@ -162,6 +207,48 @@ struct ProfileEdit {
     this.pasteText = t;
   }
 
+  // ---- 链式代理选择状态 ----
+  chainIds(): Array<string> {
+    return this.p.chainIds.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+  }
+
+  chainSelected(id: string): boolean {
+    return this.chainIds().indexOf(id) >= 0;
+  }
+
+  toggleChain(id: string): void {
+    const ids = this.chainIds();
+    const idx = ids.indexOf(id);
+    if (idx >= 0) {
+      ids.splice(idx, 1);
+    } else {
+      ids.push(id);
+    }
+    this.p.chainIds = ids.join(',');
+  }
+
+  moveChain(id: string, delta: number): void {
+    const ids = this.chainIds();
+    const idx = ids.indexOf(id);
+    const target = idx + delta;
+    if (idx < 0 || target < 0 || target >= ids.length) {
+      return;
+    }
+    const tmp = ids[idx];
+    ids[idx] = ids[target];
+    ids[target] = tmp;
+    this.p.chainIds = ids.join(',');
+  }
+
+  chainName(id: string): string {
+    const found = this.allProfiles.find(x => x.id === id);
+    return found === undefined ? id : found.name;
+  }
+
+  chainCandidates(): Array<Profile> {
+    return this.allProfiles.filter(x => x.id !== this.p.id && x.type !== ProfileType.CHAIN);
+  }
+
   build() {
     Column() {
     Column() {
@@ -218,41 +305,56 @@ struct ProfileEdit {
               })
           }.alignItems(HorizontalAlign.Start).width('100%')
 
-          this.CommonFields()
-          if (this.p.type === ProfileType.SHADOWSOCKS) {
-            this.SsFields()
+          if (this.p.type === ProfileType.CUSTOM) {
+            this.CustomFields()
+          } else if (this.p.type === ProfileType.CHAIN) {
+            this.ChainFields()
+          } else {
+            this.CommonFields()
+            if (this.p.type === ProfileType.SHADOWSOCKS) {
+              this.SsFields()
+            }
+            if (this.p.type === ProfileType.VMESS) {
+              this.VmessFields()
+            }
+            if (this.p.type === ProfileType.VLESS) {
+              this.VlessFields()
+            }
+            if (this.p.type === ProfileType.TROJAN) {
+              this.PasswordFields($r('app.string.password_trojan'))
+            }
+            if (this.p.type === ProfileType.HYSTERIA) {
+              this.HysteriaFields()
+            }
+            if (this.p.type === ProfileType.HYSTERIA2) {
+              this.Hysteria2Fields()
+            }
+            if (this.p.type === ProfileType.TUIC) {
+              this.TuicFields()
+            }
+            if (this.p.type === ProfileType.WIREGUARD) {
+              this.WireguardFields()
+            }
+            if (this.p.type === ProfileType.SSH) {
+              this.SshFields()
+            }
+            if (this.p.type === ProfileType.SHADOWTLS) {
+              this.ShadowTlsFields()
+            }
+            if (this.p.type === ProfileType.HTTP || this.p.type === ProfileType.SOCKS) {
+              this.UserPassFields()
+            }
+            if (supportsTransport(this.p.type)) {
+              this.TransportFields()
+            }
+            if (this.p.tls || needsTlsByDefault(this.p.type) || this.p.realityPublicKey.length > 0) {
+              this.TlsFields()
+            }
+            if (this.p.mux && supportsTransport(this.p.type)) {
+              this.MuxFields()
+            }
+            this.AdvancedFields()
           }
-          if (this.p.type === ProfileType.VMESS) {
-            this.VmessFields()
-          }
-          if (this.p.type === ProfileType.VLESS) {
-            this.VlessFields()
-          }
-          if (this.p.type === ProfileType.TROJAN) {
-            this.PasswordFields($r('app.string.password_trojan'))
-          }
-          if (this.p.type === ProfileType.HYSTERIA) {
-            this.HysteriaFields()
-          }
-          if (this.p.type === ProfileType.HYSTERIA2) {
-            this.Hysteria2Fields()
-          }
-          if (this.p.type === ProfileType.TUIC) {
-            this.TuicFields()
-          }
-          if (this.p.type === ProfileType.WIREGUARD) {
-            this.WireguardFields()
-          }
-          if (this.p.type === ProfileType.HTTP || this.p.type === ProfileType.SOCKS) {
-            this.UserPassFields()
-          }
-          if (supportsTransport(this.p.type)) {
-            this.TransportFields()
-          }
-          if (this.p.tls || needsTlsByDefault(this.p.type) || this.p.realityPublicKey.length > 0) {
-            this.TlsFields()
-          }
-          this.AdvancedFields()
         }
         .width('100%')
         .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: UiSpec.GAP_MD, bottom: UiSpec.GAP_MD })
@@ -283,6 +385,26 @@ struct ProfileEdit {
   }
 
   @Builder
+  ToggleRow(label: ResourceStr, val: boolean, onChange: (v: boolean) => void) {
+    Row() {
+      Text(label).fontSize(14).layoutWeight(1)
+      Toggle({ type: ToggleType.Switch, isOn: val })
+        .onChange(onChange)
+    }.width('100%')
+  }
+
+  @Builder
+  SelectRow(label: ResourceStr, options: Array<string>, selected: number, onSelect: (index: number) => void) {
+    Column() {
+      Text(label).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+      Select(options.map((t: string) => ({ value: t } as SelectOption)))
+        .selected(selected < 0 ? 0 : selected)
+        .value(options[selected < 0 ? 0 : selected])
+        .onSelect(onSelect)
+    }.alignItems(HorizontalAlign.Start).width('100%')
+  }
+
+  @Builder
   CommonFields() {
     Column({ space: 10 }) {
       this.Field($r('app.string.profile_name'), $r('app.string.profile_name_placeholder'), this.p.name, (v: string) => { this.p.name = v; })
@@ -295,9 +417,16 @@ struct ProfileEdit {
   @Builder
   SsFields() {
     Column({ space: 10 }) {
-      this.Field($r('app.string.encryption_method'), 'aes-128-gcm / chacha20-ietf-poly1305 / 2022-*', this.p.method,
-        (v: string) => { this.p.method = v; })
+      this.SelectRow($r('app.string.encryption_method'), SS_METHODS,
+        SS_METHODS.indexOf(this.p.method), (index: number) => { this.p.method = SS_METHODS[index]; })
       this.Field($r('app.string.password'), 'password', this.p.password, (v: string) => { this.p.password = v; })
+      this.SelectRow($r('app.string.ss_plugin'), SS_PLUGINS,
+        SS_PLUGINS.indexOf(this.p.ssPlugin) < 0 ? 0 : SS_PLUGINS.indexOf(this.p.ssPlugin),
+        (index: number) => { this.p.ssPlugin = SS_PLUGINS[index]; })
+      if (this.p.ssPlugin.length > 0) {
+        this.Field($r('app.string.ss_plugin_opts'), 'obfs=http;obfs-host=example.com', this.p.ssPluginOpts,
+          (v: string) => { this.p.ssPluginOpts = v; })
+      }
     }
   }
 
@@ -308,6 +437,9 @@ struct ProfileEdit {
       this.Field('alterId', '0', `${this.p.alterId}`, (v: string) => { this.p.alterId = parseInt(v.length > 0 ? v : '0'); },
         InputType.Number)
       this.Field($r('app.string.encryption_security'), 'auto', this.p.security, (v: string) => { this.p.security = v; })
+      this.SelectRow($r('app.string.packet_encoding'), PACKET_ENCODINGS,
+        PACKET_ENCODINGS.indexOf(this.p.packetEncoding) < 0 ? 0 : PACKET_ENCODINGS.indexOf(this.p.packetEncoding),
+        (index: number) => { this.p.packetEncoding = PACKET_ENCODINGS[index]; })
     }
   }
 
@@ -316,6 +448,9 @@ struct ProfileEdit {
     Column({ space: 10 }) {
       this.Field('UUID', 'uuid', this.p.uuid, (v: string) => { this.p.uuid = v; })
       this.Field('Flow', $r('app.string.empty_or_xtls_vision'), this.p.flow, (v: string) => { this.p.flow = v; })
+      this.SelectRow($r('app.string.packet_encoding'), PACKET_ENCODINGS,
+        PACKET_ENCODINGS.indexOf(this.p.packetEncoding) < 0 ? 0 : PACKET_ENCODINGS.indexOf(this.p.packetEncoding),
+        (index: number) => { this.p.packetEncoding = PACKET_ENCODINGS[index]; })
     }
   }
 
@@ -340,9 +475,15 @@ struct ProfileEdit {
   Hysteria2Fields() {
     Column({ space: 10 }) {
       this.PasswordFields($r('app.string.password_hysteria2'))
-      this.Field($r('app.string.upload_mbps_optional'), '100', ``, (v: string) => { this.p.upMbps = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
-      this.Field($r('app.string.download_mbps_optional'), '100', ``, (v: string) => { this.p.downMbps = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+      this.Field($r('app.string.upload_mbps_optional'), '100', `${this.p.upMbps > 0 ? this.p.upMbps : ''}`,
+        (v: string) => { this.p.upMbps = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+      this.Field($r('app.string.download_mbps_optional'), '100', `${this.p.downMbps > 0 ? this.p.downMbps : ''}`,
+        (v: string) => { this.p.downMbps = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
       this.Field($r('app.string.obfs_password_optional'), $r('app.string.salamander_password'), this.p.obfs, (v: string) => { this.p.obfs = v; })
+      this.Field($r('app.string.server_ports_optional'), '2080:3000,4000', this.p.serverPorts,
+        (v: string) => { this.p.serverPorts = v; })
+      this.Field($r('app.string.hop_interval_seconds'), '30', `${this.p.hopInterval > 0 ? this.p.hopInterval : ''}`,
+        (v: string) => { this.p.hopInterval = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
     }
   }
 
@@ -353,6 +494,8 @@ struct ProfileEdit {
       this.Field($r('app.string.password'), $r('app.string.password_optional_placeholder'), this.p.password, (v: string) => { this.p.password = v; })
       this.Field($r('app.string.congestion_control'), 'bbr / cubic / new_reno', this.p.congestionControl, (v: string) => { this.p.congestionControl = v; })
       this.Field($r('app.string.udp_relay_mode'), 'native / quic', this.p.udpRelayMode, (v: string) => { this.p.udpRelayMode = v; })
+      this.ToggleRow($r('app.string.reduce_rtt'), this.p.reduceRtt, (v: boolean) => { this.p.reduceRtt = v; })
+      this.ToggleRow($r('app.string.disable_sni'), this.p.disableSni, (v: boolean) => { this.p.disableSni = v; })
     }
   }
 
@@ -363,6 +506,39 @@ struct ProfileEdit {
       this.Field($r('app.string.private_key'), '', this.p.privateKey, (v: string) => { this.p.privateKey = v; })
       this.Field($r('app.string.peer_public_key'), '', this.p.peerPublicKey, (v: string) => { this.p.peerPublicKey = v; })
       this.Field($r('app.string.pre_shared_key_optional'), '', this.p.preSharedKey, (v: string) => { this.p.preSharedKey = v; })
+      this.Field($r('app.string.wg_mtu'), '1420', `${this.p.wgMtu > 0 ? this.p.wgMtu : ''}`,
+        (v: string) => { this.p.wgMtu = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+      this.Field($r('app.string.wg_reserved'), '1,2,3', this.p.reserved, (v: string) => { this.p.reserved = v; })
+    }
+  }
+
+  @Builder
+  SshFields() {
+    Column({ space: 10 }) {
+      this.Field($r('app.string.username_optional'), 'root', this.p.username, (v: string) => { this.p.username = v; })
+      this.SelectRow($r('app.string.ssh_auth_type'), SSH_AUTH_TYPES,
+        SSH_AUTH_TYPES.indexOf(this.p.sshAuthType) < 0 ? 1 : SSH_AUTH_TYPES.indexOf(this.p.sshAuthType),
+        (index: number) => { this.p.sshAuthType = SSH_AUTH_TYPES[index]; })
+      if (this.p.sshAuthType === 'password') {
+        this.Field($r('app.string.password'), 'password', this.p.password, (v: string) => { this.p.password = v; })
+      }
+      if (this.p.sshAuthType === 'private_key') {
+        this.Field($r('app.string.private_key'), '-----BEGIN OPENSSH PRIVATE KEY-----', this.p.privateKey,
+          (v: string) => { this.p.privateKey = v; })
+        this.Field($r('app.string.private_key_passphrase_optional'), 'passphrase', this.p.privateKeyPassphrase,
+          (v: string) => { this.p.privateKeyPassphrase = v; })
+      }
+      this.Field($r('app.string.ssh_host_key_optional'), 'AAAAE2VjZHNh…', this.p.hostKey, (v: string) => { this.p.hostKey = v; })
+    }
+  }
+
+  @Builder
+  ShadowTlsFields() {
+    Column({ space: 10 }) {
+      this.SelectRow($r('app.string.shadowtls_version'), ['2', '3'], this.p.shadowtlsVersion === 2 ? 0 : 1,
+        (index: number) => { this.p.shadowtlsVersion = index === 0 ? 2 : 3; })
+      this.Field($r('app.string.password'), $r('app.string.password_optional_placeholder'), this.p.password,
+        (v: string) => { this.p.password = v; })
     }
   }
 
@@ -371,6 +547,60 @@ struct ProfileEdit {
     Column({ space: 10 }) {
       this.Field($r('app.string.username_optional'), 'username', this.p.username, (v: string) => { this.p.username = v; })
       this.Field($r('app.string.password_optional'), 'password', this.p.password, (v: string) => { this.p.password = v; })
+    }
+  }
+
+  @Builder
+  CustomFields() {
+    Column({ space: 10 }) {
+      this.Field($r('app.string.profile_name'), $r('app.string.profile_name_placeholder'), this.p.name,
+        (v: string) => { this.p.name = v; })
+      Column() {
+        Text($r('app.string.custom_outbound_json')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+        TextArea({ text: this.p.customOutbound, placeholder: '{"type":"hysteria2","server":"…","server_port":443}' })
+          .height(160)
+          .fontSize(12)
+          .fontFamily('monospace')
+          .width('100%')
+          .onChange((v: string) => { this.p.customOutbound = v; })
+      }.alignItems(HorizontalAlign.Start).width('100%')
+      Text($r('app.string.custom_outbound_hint'))
+        .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+    }
+  }
+
+  @Builder
+  ChainFields() {
+    Column({ space: 10 }) {
+      this.Field($r('app.string.profile_name'), $r('app.string.profile_name_placeholder'), this.p.name,
+        (v: string) => { this.p.name = v; })
+      Text($r('app.string.chain_select_hint'))
+        .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
+      List({ space: 4 }) {
+        ForEach(this.chainCandidates(), (cand: Profile) => {
+          ListItem() {
+            Row({ space: 8 }) {
+              if (this.chainSelected(cand.id)) {
+                Text(`${this.chainIds().indexOf(cand.id) + 1}`)
+                  .fontSize(12).fontWeight(700).fontColor($r('app.color.surface'))
+                  .backgroundColor($r('app.color.primary'))
+                  .width(22).height(22).borderRadius(11).textAlign(TextAlign.Center)
+              }
+              Text(cand.name)
+                .fontSize(14).layoutWeight(1)
+                .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+              if (this.chainSelected(cand.id)) {
+                Text('↑').fontSize(13).padding({ left: 6, right: 6 }).onClick(() => this.moveChain(cand.id, -1))
+                Text('↓').fontSize(13).padding({ left: 6, right: 6 }).onClick(() => this.moveChain(cand.id, 1))
+              }
+              Toggle({ type: ToggleType.Checkbox, isOn: this.chainSelected(cand.id) })
+                .onChange((selected: boolean) => { this.toggleChain(cand.id); })
+            }.width('100%').padding({ top: 6, bottom: 6 })
+          }
+        }, (cand: Profile) => cand.id)
+      }
+      .width('100%')
+      .height(240)
     }
   }
 
@@ -389,6 +619,12 @@ struct ProfileEdit {
       if (this.p.transport === 'grpc') {
         this.Field('serviceName', '', this.p.serviceName, (v: string) => { this.p.serviceName = v; })
       }
+      if (this.p.transport === 'ws') {
+        this.Field($r('app.string.ws_early_data'), '0', `${this.p.wsEarlyData > 0 ? this.p.wsEarlyData : ''}`,
+          (v: string) => { this.p.wsEarlyData = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+        this.Field($r('app.string.ws_early_data_header'), 'Sec-WebSocket-Protocol', this.p.wsEarlyDataHeaderName,
+          (v: string) => { this.p.wsEarlyDataHeaderName = v; })
+      }
     }.alignItems(HorizontalAlign.Start).width('100%')
   }
 
@@ -402,22 +638,42 @@ struct ProfileEdit {
       }.width('100%')
 
       this.Field('SNI', $r('app.string.sni_placeholder'), this.p.sni, (v: string) => { this.p.sni = v; })
+      this.SelectRow($r('app.string.utls_fingerprint'), UTLS_FINGERPRINTS,
+        UTLS_FINGERPRINTS.indexOf(this.p.fingerprint) < 0 ? 0 : UTLS_FINGERPRINTS.indexOf(this.p.fingerprint),
+        (index: number) => { this.p.fingerprint = UTLS_FINGERPRINTS[index]; })
       this.Field($r('app.string.alpn_comma_separated'), $r('app.string.alpn_placeholder'), this.p.alpn, (v: string) => { this.p.alpn = v; })
-      this.Field($r('app.string.utls_fingerprint'), 'chrome / firefox / safari / ios…', this.p.fingerprint, (v: string) => { this.p.fingerprint = v; })
       this.Field($r('app.string.reality_public_key_optional'), '', this.p.realityPublicKey, (v: string) => { this.p.realityPublicKey = v; })
       this.Field($r('app.string.reality_short_id_optional'), '', this.p.realityShortId, (v: string) => { this.p.realityShortId = v; })
+      Column() {
+        Text($r('app.string.certificates_optional')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+        TextArea({ text: this.p.certificates, placeholder: '-----BEGIN CERTIFICATE-----' })
+          .height(90).fontSize(12).width('100%')
+          .onChange((v: string) => { this.p.certificates = v; })
+      }.alignItems(HorizontalAlign.Start).width('100%')
+
+      this.ToggleRow($r('app.string.enable_ech'), this.p.ech, (v: boolean) => { this.p.ech = v; })
+      if (this.p.ech) {
+        this.Field($r('app.string.ech_config_optional'), 'base64 config', this.p.echConfig,
+          (v: string) => { this.p.echConfig = v; })
+      }
 
       Row() {
         Text($r('app.string.allow_insecure_tls')).fontSize(14).layoutWeight(1)
         Toggle({ type: ToggleType.Switch, isOn: this.p.allowInsecure })
           .onChange((v: boolean) => { this.p.allowInsecure = v; })
       }.width('100%')
+    }
+  }
 
-      Row() {
-        Text($r('app.string.multiplex')).fontSize(14).layoutWeight(1)
-        Toggle({ type: ToggleType.Switch, isOn: this.p.mux })
-          .onChange((v: boolean) => { this.p.mux = v; })
-      }.width('100%')
+  @Builder
+  MuxFields() {
+    Column({ space: 10 }) {
+      this.SelectRow($r('app.string.mux_protocol'), MUX_PROTOCOLS,
+        MUX_PROTOCOLS.indexOf(this.p.muxProtocol) < 0 ? 0 : MUX_PROTOCOLS.indexOf(this.p.muxProtocol),
+        (index: number) => { this.p.muxProtocol = MUX_PROTOCOLS[index]; })
+      this.Field($r('app.string.mux_max_streams'), '8', `${this.p.muxMaxStreams > 0 ? this.p.muxMaxStreams : ''}`,
+        (v: string) => { this.p.muxMaxStreams = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+      this.ToggleRow($r('app.string.mux_padding'), this.p.muxPadding, (v: boolean) => { this.p.muxPadding = v; })
     }
   }
 

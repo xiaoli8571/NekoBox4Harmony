@@ -1319,6 +1319,538 @@
     {
       "name": "notification_total",
       "value": "累计"
+    },
+    {
+      "name": "nav_config",
+      "value": "配置"
+    },
+    {
+      "name": "nav_groups",
+      "value": "分组"
+    },
+    {
+      "name": "nav_route",
+      "value": "路由"
+    },
+    {
+      "name": "nav_dashboard",
+      "value": "面板"
+    },
+    {
+      "name": "nav_tools",
+      "value": "工具"
+    },
+    {
+      "name": "nav_about",
+      "value": "关于"
+    },
+    {
+      "name": "drawer_footer",
+      "value": "NekoBox for Harmony"
+    },
+    {
+      "name": "test_current_group",
+      "value": "测速本组"
+    },
+    {
+      "name": "clear_test_results",
+      "value": "清除测试结果"
+    },
+    {
+      "name": "dedup_action",
+      "value": "移除重复节点"
+    },
+    {
+      "name": "delete_unavailable",
+      "value": "删除不可用节点"
+    },
+    {
+      "name": "dedup_done",
+      "value": "已移除 %1$d 个节点"
+    },
+    {
+      "name": "dedup_none",
+      "value": "没有发现重复节点"
+    },
+    {
+      "name": "no_unavailable_nodes",
+      "value": "没有不可用节点"
+    },
+    {
+      "name": "confirm_delete_unavailable",
+      "value": "确认删除 %1$d 个不可用节点?"
+    },
+    {
+      "name": "test_results_cleared",
+      "value": "已清除测试结果"
+    },
+    {
+      "name": "no_profiles_title",
+      "value": "还没有节点"
+    },
+    {
+      "name": "no_profiles_hint",
+      "value": "导入订阅或新建节点开始使用"
+    },
+    {
+      "name": "group_empty_nodes",
+      "value": "该分组暂无节点"
+    },
+    {
+      "name": "import_from_clipboard",
+      "value": "从剪贴板导入"
+    },
+    {
+      "name": "export_outbound_config",
+      "value": "导出 sing-box 配置"
+    },
+    {
+      "name": "outbound_config_copied",
+      "value": "出站配置已复制"
+    },
+    {
+      "name": "export_failed_generic",
+      "value": "导出失败: %1$s"
+    },
+    {
+      "name": "dashboard_disabled_title",
+      "value": "Clash API 未启用"
+    },
+    {
+      "name": "dashboard_disabled_desc",
+      "value": "在「设置 → Clash API」中开启后即可使用 yacd 面板"
+    },
+    {
+      "name": "dashboard_hint",
+      "value": "面板由内核 clash_api 提供,需 VPN 运行时访问"
+    },
+    {
+      "name": "update_all_subs",
+      "value": "更新全部订阅"
+    },
+    {
+      "name": "new_group_hint",
+      "value": "新建分组名称…"
+    },
+    {
+      "name": "add_group",
+      "value": "新建分组"
+    },
+    {
+      "name": "group_node_count",
+      "value": "%1$d 个节点"
+    },
+    {
+      "name": "clear_group",
+      "value": "清空分组"
+    },
+    {
+      "name": "confirm_clear_group",
+      "value": "确认清空该分组的 %1$d 个节点?"
+    },
+    {
+      "name": "group_name_required",
+      "value": "请输入分组名称"
+    },
+    {
+      "name": "confirm_delete_group",
+      "value": "确认删除分组「%1$s」?组内节点将移至未分组"
+    },
+    {
+      "name": "groups_empty",
+      "value": "暂无订阅与分组"
+    },
+    {
+      "name": "share_sub_link",
+      "value": "分享订阅"
+    },
+    {
+      "name": "sub_link_copied",
+      "value": "订阅链接已复制"
+    },
+    {
+      "name": "export_all_nodes",
+      "value": "导出节点链接"
+    },
+    {
+      "name": "export_all_empty",
+      "value": "没有可导出的节点"
+    },
+    {
+      "name": "export_all_done",
+      "value": "已导出 %1$d 条链接"
+    },
+    {
+      "name": "sub_last_update",
+      "value": "更新于 %1$s"
+    },
+    {
+      "name": "sub_not_updated",
+      "value": "未更新"
+    },
+    {
+      "name": "sub_traffic_used_remain",
+      "value": "%1$s / 剩余 %2$s"
+    },
+    {
+      "name": "sub_traffic_used",
+      "value": "已用 %1$s"
+    },
+    {
+      "name": "stun_title",
+      "value": "NAT 行为发现(STUN)"
+    },
+    {
+      "name": "stun_desc",
+      "value": "通过 STUN 服务器探测公网映射地址与 NAT 特征"
+    },
+    {
+      "name": "stun_test",
+      "value": "测试"
+    },
+    {
+      "name": "stun_testing",
+      "value": "测试中…"
+    },
+    {
+      "name": "stun_server_required",
+      "value": "请输入 STUN 服务器"
+    },
+    {
+      "name": "stun_public_endpoint",
+      "value": "公网映射地址"
+    },
+    {
+      "name": "stun_latency",
+      "value": "响应耗时 %1$d ms"
+    },
+    {
+      "name": "stun_nat_cone",
+      "value": "两次探测映射一致(Cone NAT 特征)"
+    },
+    {
+      "name": "stun_nat_symmetric",
+      "value": "两次探测映射变化(对称 NAT 特征)"
+    },
+    {
+      "name": "stun_failed",
+      "value": "STUN 测试失败: %1$s"
+    },
+    {
+      "name": "reset_title",
+      "value": "恢复出厂设置"
+    },
+    {
+      "name": "reset_desc",
+      "value": "清空节点、分组、订阅、路由规则与设置,恢复初始状态"
+    },
+    {
+      "name": "reset_action",
+      "value": "恢复出厂"
+    },
+    {
+      "name": "reset_confirm",
+      "value": "确认恢复出厂?该操作不可撤销"
+    },
+    {
+      "name": "reset_confirm_final",
+      "value": "再次确认:将清空全部数据!"
+    },
+    {
+      "name": "reset_done",
+      "value": "已恢复出厂设置"
+    },
+    {
+      "name": "reset_failed",
+      "value": "恢复出厂失败: %1$s"
+    },
+    {
+      "name": "about_core_version",
+      "value": "内核版本"
+    },
+    {
+      "name": "about_github",
+      "value": "项目主页"
+    },
+    {
+      "name": "check_update",
+      "value": "检查更新"
+    },
+    {
+      "name": "checking_update",
+      "value": "检查中…"
+    },
+    {
+      "name": "check_update_failed",
+      "value": "检查更新失败(网络不可用?)"
+    },
+    {
+      "name": "check_update_latest",
+      "value": "已是最新版本"
+    },
+    {
+      "name": "check_update_new",
+      "value": "发现新版本 %1$s,即将打开项目主页"
+    },
+    {
+      "name": "about_license_title",
+      "value": "开源许可"
+    },
+    {
+      "name": "about_license_body",
+      "value": "sing-box 为 GPL-3.0;应用图标来自 NekoBoxForAndroid(GPL-3.0)。"
+    },
+    {
+      "name": "settings_general",
+      "value": "常规"
+    },
+    {
+      "name": "settings_route",
+      "value": "路由"
+    },
+    {
+      "name": "settings_dns",
+      "value": "DNS"
+    },
+    {
+      "name": "settings_inbound",
+      "value": "入站"
+    },
+    {
+      "name": "settings_log_level",
+      "value": "日志级别"
+    },
+    {
+      "name": "settings_test_url",
+      "value": "连接测试 URL"
+    },
+    {
+      "name": "settings_test_concurrent",
+      "value": "测速并发数"
+    },
+    {
+      "name": "settings_always_show_address",
+      "value": "始终显示服务器地址"
+    },
+    {
+      "name": "settings_notification_group",
+      "value": "通知中显示分组名"
+    },
+    {
+      "name": "settings_sub_allow_insecure",
+      "value": "订阅请求放行不安全 TLS"
+    },
+    {
+      "name": "settings_sub_allow_insecure_desc",
+      "value": "仅影响订阅下载的 HTTPS 请求"
+    },
+    {
+      "name": "settings_bypass_lan",
+      "value": "绕过局域网"
+    },
+    {
+      "name": "settings_bypass_lan_desc",
+      "value": "局域网地址直连,不走代理"
+    },
+    {
+      "name": "settings_sniff",
+      "value": "流量嗅探"
+    },
+    {
+      "name": "sniff_off",
+      "value": "关闭"
+    },
+    {
+      "name": "sniff_route",
+      "value": "仅用于路由"
+    },
+    {
+      "name": "sniff_override",
+      "value": "嗅探并覆盖"
+    },
+    {
+      "name": "settings_remote_dns_strategy",
+      "value": "远程 DNS 域名策略"
+    },
+    {
+      "name": "settings_direct_dns_strategy",
+      "value": "直连 DNS 域名策略"
+    },
+    {
+      "name": "strategy_default",
+      "value": "默认"
+    },
+    {
+      "name": "strategy_auto",
+      "value": "auto"
+    },
+    {
+      "name": "strategy_prefer_ipv4",
+      "value": "prefer_ipv4"
+    },
+    {
+      "name": "strategy_prefer_ipv6",
+      "value": "prefer_ipv6"
+    },
+    {
+      "name": "strategy_ipv4_only",
+      "value": "ipv4_only"
+    },
+    {
+      "name": "strategy_ipv6_only",
+      "value": "ipv6_only"
+    },
+    {
+      "name": "settings_dns_routing",
+      "value": "DNS 路由"
+    },
+    {
+      "name": "settings_dns_routing_desc",
+      "value": "CN 域名用直连 DNS 解析"
+    },
+    {
+      "name": "settings_fakedns",
+      "value": "FakeDNS"
+    },
+    {
+      "name": "settings_fakedns_desc",
+      "value": "用假 IP 加速域名分流(真机验证项)"
+    },
+    {
+      "name": "settings_mixed_port",
+      "value": "混合代理端口"
+    },
+    {
+      "name": "settings_mixed_port_hint",
+      "value": "0 = 关闭"
+    },
+    {
+      "name": "settings_allow_access",
+      "value": "允许来自局域网的连接"
+    },
+    {
+      "name": "settings_allow_access_desc",
+      "value": "混合入站监听 0.0.0.0"
+    },
+    {
+      "name": "error_custom_outbound_required",
+      "value": "自定义出站 JSON 不能为空"
+    },
+    {
+      "name": "error_custom_outbound_type",
+      "value": "自定义出站 JSON 缺少 type 字段"
+    },
+    {
+      "name": "error_chain_empty",
+      "value": "链式代理至少选择一个节点"
+    },
+    {
+      "name": "error_ssh_password_required",
+      "value": "SSH 密码不能为空"
+    },
+    {
+      "name": "error_ssh_key_required",
+      "value": "SSH 私钥不能为空"
+    },
+    {
+      "name": "error_wireguard_key_required",
+      "value": "WireGuard 私钥不能为空"
+    },
+    {
+      "name": "ss_plugin",
+      "value": "SS 插件"
+    },
+    {
+      "name": "ss_plugin_opts",
+      "value": "插件配置"
+    },
+    {
+      "name": "packet_encoding",
+      "value": "包编码"
+    },
+    {
+      "name": "server_ports_optional",
+      "value": "端口跳跃(可选)"
+    },
+    {
+      "name": "hop_interval_seconds",
+      "value": "跳跃间隔(秒)"
+    },
+    {
+      "name": "reduce_rtt",
+      "value": "0-RTT 握手"
+    },
+    {
+      "name": "disable_sni",
+      "value": "禁用 SNI"
+    },
+    {
+      "name": "wg_mtu",
+      "value": "WireGuard MTU"
+    },
+    {
+      "name": "wg_reserved",
+      "value": "Reserved"
+    },
+    {
+      "name": "ssh_auth_type",
+      "value": "认证方式"
+    },
+    {
+      "name": "private_key_passphrase_optional",
+      "value": "私钥口令(可选)"
+    },
+    {
+      "name": "ssh_host_key_optional",
+      "value": "服务器公钥(可选)"
+    },
+    {
+      "name": "shadowtls_version",
+      "value": "ShadowTLS 版本"
+    },
+    {
+      "name": "custom_outbound_json",
+      "value": "自定义出站 JSON"
+    },
+    {
+      "name": "custom_outbound_hint",
+      "value": "完整的 sing-box 出站对象,tag 自动改为 proxy"
+    },
+    {
+      "name": "chain_select_hint",
+      "value": "勾选节点组成链(勾选顺序=流量顺序:前置→落地)"
+    },
+    {
+      "name": "ws_early_data",
+      "value": "WS 早期数据(字节)"
+    },
+    {
+      "name": "ws_early_data_header",
+      "value": "早期数据请求头"
+    },
+    {
+      "name": "certificates_optional",
+      "value": "证书(可选)"
+    },
+    {
+      "name": "enable_ech",
+      "value": "启用 ECH"
+    },
+    {
+      "name": "ech_config_optional",
+      "value": "ECH 配置(可选)"
+    },
+    {
+      "name": "mux_protocol",
+      "value": "Mux 协议"
+    },
+    {
+      "name": "mux_max_streams",
+      "value": "Mux 最大流数"
+    },
+    {
+      "name": "mux_padding",
+      "value": "Mux padding"
     }
   ]
 }

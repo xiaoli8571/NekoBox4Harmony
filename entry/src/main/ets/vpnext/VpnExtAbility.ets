@@ -13,9 +13,10 @@ import { initStore, loadProfiles, loadSettings, getPendingProfileId, setPendingP
 import { buildCoreConfig } from '../core/ConfigBuilder';
 import { loadRouteRules, RouteRule, loadRemoteRuleSets, RemoteRuleSet } from '../model/RouteRule';
 import { CoreManager } from '../core/CoreManager';
-import { publishVpnLog, publishVpnStatus, VPN_EVENT_LATENCY } from '../core/VpnIpc';
+import { publishVpnLog, publishVpnStatus, publishVpnTraffic, VPN_EVENT_LATENCY } from '../core/VpnIpc';
 import { geoReady, geoSitePath as geoSiteFile, geoIpPath as geoIpFile } from '../utils/GeoAssets';
 import { fetchTrafficTotals } from '../utils/TrafficStats';
+import { ensureYacdExtracted } from '../utils/WebUiAssets';
 
 /**
  * VPN 扩展能力 — 真正的 VPN 生命周期在这里:
@@ -358,8 +359,16 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       LogStore.addLog('[vpn] 读取远程规则集失败,本次连接忽略');
     }
     const cachePath = logPath.length > 0 ? logPath.substring(0, logPath.lastIndexOf('/') + 1) + 'cache.db' : '';
-    const configJson = buildCoreConfig(profile, settings, ifname, logPath, geositePath, geoIpPath,
-      customRules, remoteRuleSets, cachePath);
+    let externalUiPath = '';
+    if (settings.clashApiEnabled) {
+      try {
+        externalUiPath = await ensureYacdExtracted(context);
+      } catch (e) {
+        LogStore.addLog('[vpn] yacd 面板准备失败,Dashboard 走降级提示');
+      }
+    }
+    const configJson = buildCoreConfig(node, settings, ifname, logPath, geositePath, geoIpPath,
+      customRules, remoteRuleSets, cachePath, profiles, externalUiPath);
     const configPath = CoreManager.writeConfigFile(context, configJson);
     LogStore.addLog(`[vpn] sing-box 配置已写入 ${configPath}`);
 
@@ -452,6 +461,8 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       this.notificationLastAt = startedAt;
       this.notificationTotalUp = totals.up;
       this.notificationTotalDown = totals.down;
+      publishVpnTraffic(this.notificationUpSpeed, this.notificationDownSpeed,
+        this.notificationTotalUp, this.notificationTotalDown);
       await this.showConnectedNotification(this.currentNodeName, this.notificationLatencyMs);
     };
     void poll();

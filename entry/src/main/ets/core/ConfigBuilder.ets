@@ -3,7 +3,7 @@ import { CLASH_API_PORT } from '../utils/TrafficStats';
 import { RouteRule, RemoteRuleSet, ruleValueList } from '../model/RouteRule';
 
 /**
- * sing-box 1.4 配置生成器。
+ * sing-box 1.11 配置生成器。
  *
  * 关键设计(与鸿蒙 VPN 框架配合):
  *  - tun 入站 auto_route=false:路由由 @ohos.net.vpnExtension 建立;
@@ -15,6 +15,8 @@ import { RouteRule, RemoteRuleSet, ruleValueList } from '../model/RouteRule';
 
 const TUN_ADDR_V4 = '172.19.0.1/30';
 const TUN_ADDR_V6 = 'fdfe:dcba:9876::1/126';
+const FAKEIP_RANGE_V4 = '198.18.0.0/15';
+const FAKEIP_RANGE_V6 = 'fc00::/18';
 
 function setIf(o: Record<string, Object>, key: string, value: Object, skipEmpty: boolean = true): void {
   if (!skipEmpty || `${value}`.length > 0) {
@@ -43,7 +45,8 @@ function splitCsv(s: string): Array<string> {
 function buildTls(p: Profile, s: AppSettings): Object | undefined {
   const forceTls = needsTlsByDefault(p.type);
   const hasReality = p.realityPublicKey.length > 0;
-  if (!p.tls && !forceTls && !hasReality) {
+  const hasEch = p.ech;
+  if (!p.tls && !forceTls && !hasReality && !hasEch) {
     return undefined;
   }
   const tls: Record<string, Object> = { 'enabled': true };
@@ -57,6 +60,18 @@ function buildTls(p: Profile, s: AppSettings): Object | undefined {
   const alpn = splitCsv(p.alpn);
   if (alpn.length > 0) {
     tls['alpn'] = alpn;
+  }
+  if (p.certificates.trim().length > 0) {
+    const certs: Array<string> = [];
+    for (const c of p.certificates.split('\n\n')) {
+      const t = c.trim();
+      if (t.length > 0) {
+        certs.push(t);
+      }
+    }
+    if (certs.length > 0) {
+      tls['certificate'] = certs;
+    }
   }
   if (hasReality) {
     const reality: Record<string, Object> = { 'enabled': true };
@@ -73,6 +88,11 @@ function buildTls(p: Profile, s: AppSettings): Object | undefined {
     utls['fingerprint'] = p.fingerprint.length > 0 ? p.fingerprint : 'chrome';
     tls['utls'] = utls;
   }
+  if (hasEch) {
+    const ech: Record<string, Object> = { 'enabled': true };
+    setIf(ech, 'config', p.echConfig.trim());
+    tls['ech'] = ech;
+  }
   return tls;
 }
 
@@ -88,6 +108,12 @@ function buildTransport(p: Profile): Object | undefined {
         const headers: Record<string, Object> = {};
         headers['Host'] = [p.host];
         t['headers'] = headers;
+      }
+      if (p.wsEarlyData > 0) {
+        t['max_early_data'] = p.wsEarlyData;
+      }
+      if (p.wsEarlyDataHeaderName.length > 0) {
+        t['early_data_header_name'] = p.wsEarlyDataHeaderName;
       }
       break;
     case 'http':
@@ -111,10 +137,24 @@ function buildTransport(p: Profile): Object | undefined {
   return t;
 }
 
-function buildOutbound(p: Profile, s: AppSettings): Record<string, Object> {
+function buildOutbound(p: Profile, s: AppSettings, tag: string = 'proxy'): Record<string, Object> {
   const o: Record<string, Object> = {};
+  o['tag'] = tag;
+
+  if (p.type === ProfileType.CUSTOM) {
+    const parsed = JSON.parse(p.customOutbound) as Record<string, Object>;
+    if (parsed['type'] === undefined) {
+      throw new Error('自定义出站 JSON 缺少 type 字段');
+    }
+    const keys = Object.keys(parsed);
+    for (const k of keys) {
+      o[k] = parsed[k];
+    }
+    o['tag'] = tag;
+    return o;
+  }
+
   o['type'] = p.type;
-  o['tag'] = 'proxy';
   o['server'] = p.server;
   o['server_port'] = p.serverPort;
 
@@ -122,6 +162,12 @@ function buildOutbound(p: Profile, s: AppSettings): Record<string, Object> {
     case ProfileType.SHADOWSOCKS:
       o['method'] = p.method;
       o['password'] = p.password;
+      if (p.ssPlugin.length > 0) {
+        o['plugin'] = p.ssPlugin;
+        if (p.ssPluginOpts.length > 0) {
+          o['plugin_opts'] = p.ssPluginOpts;
+        }
+      }
       break;
     case ProfileType.VMESS:
       o['uuid'] = p.uuid;
@@ -129,11 +175,14 @@ function buildOutbound(p: Profile, s: AppSettings): Record<string, Object> {
       if (p.alterId > 0) {
         o['alter_id'] = p.alterId;
       }
+      if (p.packetEncoding.length > 0) {
+        o['packet_encoding'] = p.packetEncoding;
+      }
       break;
     case ProfileType.VLESS:
       o['uuid'] = p.uuid;
       setIf(o, 'flow', p.flow);
-      o['packet_encoding'] = 'xudp';
+      o['packet_encoding'] = p.packetEncoding.length > 0 ? p.packetEncoding : 'xudp';
       break;
     case ProfileType.TROJAN:
       o['password'] = p.password;
@@ -150,7 +199,7 @@ function buildOutbound(p: Profile, s: AppSettings): Record<string, Object> {
       }
       o['auth_str'] = p.password;
       break;
-    case ProfileType.HYSTERIA2:
+    case ProfileType.HYSTERIA2: {
       if (p.upMbps > 0) {
         o['up_mbps'] = p.upMbps;
       }
@@ -164,7 +213,15 @@ function buildOutbound(p: Profile, s: AppSettings): Record<string, Object> {
         o['obfs'] = obfs;
       }
       o['password'] = p.password;
+      const ports = normalizeServerPorts(p.serverPorts);
+      if (ports.length > 0) {
+        o['server_ports'] = ports;
+        if (p.hopInterval > 0) {
+          o['hop_interval'] = `${p.hopInterval}s`;
+        }
+      }
       break;
+    }
     case ProfileType.TUIC:
       o['uuid'] = p.uuid;
       if (p.password.length > 0) {
@@ -172,10 +229,23 @@ function buildOutbound(p: Profile, s: AppSettings): Record<string, Object> {
       }
       setIf(o, 'congestion_control', p.congestionControl);
       setIf(o, 'udp_relay_mode', p.udpRelayMode);
+      if (p.reduceRtt) {
+        o['reduce_rtt'] = true;
+      }
+      if (p.disableSni) {
+        o['disable_sni'] = true;
+      }
       break;
     case ProfileType.WIREGUARD: {
       setIf(o, 'local_address', p.localAddress, false);
       o['private_key'] = p.privateKey;
+      if (p.wgMtu > 0) {
+        o['mtu'] = p.wgMtu;
+      }
+      const reserved = parseReserved(p.reserved);
+      if (reserved.length === 3) {
+        o['reserved'] = reserved;
+      }
       const peer: Record<string, Object> = {};
       peer['public_key'] = p.peerPublicKey;
       if (p.preSharedKey.length > 0) {
@@ -186,6 +256,29 @@ function buildOutbound(p: Profile, s: AppSettings): Record<string, Object> {
       o['peers'] = peers;
       break;
     }
+    case ProfileType.SSH:
+      setIf(o, 'user', p.username);
+      if (p.sshAuthType === 'password') {
+        o['password'] = p.password;
+      } else if (p.sshAuthType === 'private_key') {
+        setIf(o, 'private_key', p.privateKey);
+        setIf(o, 'private_key_passphrase', p.privateKeyPassphrase);
+      }
+      {
+        const hostKeys = splitCsv(p.hostKey);
+        if (hostKeys.length > 0) {
+          const hk: Array<Object> = [];
+          for (const k of hostKeys) {
+            hk.push(k);
+          }
+          o['host_key'] = hk;
+        }
+      }
+      break;
+    case ProfileType.SHADOWTLS:
+      o['version'] = p.shadowtlsVersion === 2 ? 2 : 3;
+      setIf(o, 'password', p.password);
+      break;
     case ProfileType.HTTP:
     case ProfileType.SOCKS:
       setIf(o, 'username', p.username);
@@ -205,8 +298,13 @@ function buildOutbound(p: Profile, s: AppSettings): Record<string, Object> {
   }
   if (p.mux && supportsTransport(p.type) && p.transport !== 'quic') {
     const mux: Record<string, Object> = { 'enabled': true };
-    mux['protocol'] = 'h2mux';
-    mux['max_streams'] = 8;
+    mux['protocol'] = p.muxProtocol.length > 0 ? p.muxProtocol : 'h2mux';
+    if (p.muxMaxStreams > 0) {
+      mux['max_streams'] = p.muxMaxStreams;
+    }
+    if (!p.muxPadding) {
+      mux['padding'] = false;
+    }
     o['multiplex'] = mux;
   }
   if (p.extra.trim().length > 0) {
@@ -217,6 +315,60 @@ function buildOutbound(p: Profile, s: AppSettings): Record<string, Object> {
     }
   }
   return o;
+}
+
+/** hysteria2 server_ports 归一化:"2080-3000,4000" → ["2080:3000","4000"] */
+function normalizeServerPorts(raw: string): Array<string> {
+  const out: Array<string> = [];
+  for (const part of raw.split(',')) {
+    const t = part.trim().replace('-', ':');
+    if (t.length > 0) {
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+/** WireGuard reserved "1,2,3" → [1,2,3];非法输入返回空数组 */
+function parseReserved(raw: string): Array<number> {
+  const out: Array<number> = [];
+  for (const part of raw.split(',')) {
+    const n = parseInt(part.trim());
+    if (isNaN(n) || n < 0 || n > 255) {
+      return [];
+    }
+    out.push(n);
+  }
+  return out;
+}
+
+/** 链式代理:返回全部出站(前置→落地);最后一跳出站 tag=proxy。 */
+function buildChainOutbounds(chainProfile: Profile, s: AppSettings,
+  allProfiles: Array<Profile>): Array<Record<string, Object>> {
+  const ids = splitCsv(chainProfile.chainIds);
+  if (ids.length === 0) {
+    throw new Error('链式代理未选择任何节点');
+  }
+  const hops: Array<Profile> = [];
+  for (const id of ids) {
+    const found = allProfiles.find(x => x.id === id);
+    if (found !== undefined && found.type !== ProfileType.CHAIN) {
+      hops.push(found);
+    }
+  }
+  if (hops.length === 0) {
+    throw new Error('链式代理引用的节点不存在');
+  }
+  const outbounds: Array<Record<string, Object>> = [];
+  for (let i = 0; i < hops.length; i++) {
+    const hopTag = i === hops.length - 1 ? 'proxy' : `chain_${i}`;
+    const hop = buildOutbound(hops[i], s, hopTag);
+    if (i > 0) {
+      hop['detour'] = `chain_${i - 1}`;
+    }
+    outbounds.push(hop);
+  }
+  return outbounds;
 }
 
 /** 把自定义路由规则生成 sing-box 1.11 rule 对象(reject 出站改用 rule action) */
@@ -252,8 +404,9 @@ export function buildCustomRule(r: RouteRule): Record<string, Object> | null {
 export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: string,
   logPath: string = '', geositePath: string = '', geoIpPath: string = '',
   customRules: Array<RouteRule> = [], remoteRuleSets: Array<RemoteRuleSet> = [],
-  cachePath: string = ''): string {
-  if (p.server.length === 0) {
+  cachePath: string = '', allProfiles: Array<Profile> = [],
+  externalUiPath: string = ''): string {
+  if (p.type !== ProfileType.CUSTOM && p.type !== ProfileType.CHAIN && p.server.length === 0) {
     throw new Error('服务器地址为空');
   }
   if (s.mtu < 1280) {
@@ -273,14 +426,31 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   tun['auto_route'] = false;   // 路由由鸿蒙 VPN 框架管理
   tun['strict_route'] = false;
   tun['stack'] = s.stack;
-  tun['sniff'] = true;
+  tun['sniff'] = s.sniffMode !== 'off';
+  tun['sniff_override_destination'] = s.sniffMode === 'override';
   const inbounds: Array<Object> = [tun];
+  if (s.mixedPort > 0) {
+    const mixed: Record<string, Object> = {};
+    mixed['type'] = 'mixed';
+    mixed['tag'] = 'mixed-in';
+    mixed['listen'] = s.allowAccess ? '0.0.0.0' : '127.0.0.1';
+    mixed['listen_port'] = s.mixedPort;
+    inbounds.push(mixed);
+  }
 
   // ---- outbounds ----
-  const proxy = buildOutbound(p, s);
+  const outbounds: Array<Object> = [];
+  if (p.type === ProfileType.CHAIN) {
+    const chainOutbounds = buildChainOutbounds(p, s, allProfiles);
+    for (const co of chainOutbounds) {
+      outbounds.push(co);
+    }
+  } else {
+    outbounds.push(buildOutbound(p, s));
+  }
   const direct: Record<string, Object> = { 'type': 'direct', 'tag': 'direct' };
   // 1.11: block/dns 特殊 outbound 已移除,分流用 rule action(hijack-dns / reject)
-  const outbounds: Array<Object> = [proxy, direct];
+  outbounds.push(direct);
 
   // ---- dns ----
   const remoteServer: Record<string, Object> = {};
@@ -292,12 +462,30 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   localServer['address'] = s.directDns.includes('://') ? s.directDns : `udp://${s.directDns}`;
   localServer['detour'] = 'direct';
   const dnsServers: Array<Object> = [remoteServer, localServer];
+  if (s.fakeDns) {
+    const fakeServer: Record<string, Object> = {};
+    fakeServer['tag'] = 'fake';
+    fakeServer['address'] = 'fakeip';
+    fakeServer['inet4_range'] = FAKEIP_RANGE_V4;
+    if (s.ipv6) {
+      fakeServer['inet6_range'] = FAKEIP_RANGE_V6;
+    }
+    dnsServers.push(fakeServer);
+  }
   const dnsRules: Array<Object> = [];
-  // 规则模式 + geosite 数据就绪:CN 域名用直连 DNS 解析(CDN 友好)
-  if (s.mode === 'rule' && geositePath.length > 0) {
+  if (s.fakeDns) {
+    const fakeRule: Record<string, Object> = {};
+    const queryTypes: Array<Object> = ['A', 'AAAA'];
+    fakeRule['query_type'] = queryTypes;
+    fakeRule['server'] = 'fake';
+    dnsRules.push(fakeRule);
+  }
+  // 规则模式 + DNS 路由开启 + geosite 数据就绪:CN 域名用直连 DNS 解析(CDN 友好)
+  if (s.mode === 'rule' && s.dnsRouting && geositePath.length > 0) {
     const cnDnsRule: Record<string, Object> = {};
     cnDnsRule['geosite'] = ['cn'];
     cnDnsRule['server'] = 'local';
+    setIf(cnDnsRule, 'strategy', s.directDnsStrategy);
     dnsRules.push(cnDnsRule);
   }
   const resolveProxyRule: Record<string, Object> = {};
@@ -308,6 +496,7 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   dns['servers'] = dnsServers;
   dns['rules'] = dnsRules;
   dns['final'] = 'remote';
+  setIf(dns, 'strategy', s.remoteDnsStrategy);
 
   // ---- route ----
   const dnsRule: Record<string, Object> = {};
@@ -322,14 +511,16 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     finalOutbound = 'direct';
   } else if (s.mode === 'rule') {
     // 私网、自定义、Geo 与远程规则只允许在规则模式参与分流。
-    const privateRule: Record<string, Object> = {};
-    privateRule['ip_cidr'] = [
-      '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8',
-      '169.254.0.0/16', '100.64.0.0/10', '224.0.0.0/4', '255.255.255.255/32',
-      '::1/128', 'fe80::/10', 'fc00::/7', 'ff00::/8'
-    ];
-    privateRule['outbound'] = 'direct';
-    routeRules.push(privateRule);
+    if (s.bypassLan) {
+      const privateRule: Record<string, Object> = {};
+      privateRule['ip_cidr'] = [
+        '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8',
+        '169.254.0.0/16', '100.64.0.0/10', '224.0.0.0/4', '255.255.255.255/32',
+        '::1/128', 'fe80::/10', 'fc00::/7', 'ff00::/8'
+      ];
+      privateRule['outbound'] = 'direct';
+      routeRules.push(privateRule);
+    }
 
     for (const r of customRules) {
       if (!r.enabled) {
@@ -409,12 +600,17 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     route['geoip'] = geoipOpt;
   }
 
-  // ---- experimental: clash API(实时速率/流量统计) + cache file ----
+  // ---- experimental: clash API(实时速率/流量统计/yacd 面板) + cache file ----
   const experimental: Record<string, Object> = {};
   if (s.clashApiEnabled) {
     const clashApi: Record<string, Object> = {};
     clashApi['external_controller'] = `127.0.0.1:${s.clashApiPort}`;
     clashApi['secret'] = s.clashApiSecret;
+    if (externalUiPath.length > 0) {
+      clashApi['external_ui'] = externalUiPath;
+      clashApi['external_ui_download_url'] = 'https://github.com/MetaCubeX/yacd/archive/gh-pages.zip';
+      clashApi['external_ui_download_detour'] = 'proxy';
+    }
     experimental['clash_api'] = clashApi;
   }
   const cacheFile: Record<string, Object> = {};
@@ -429,7 +625,7 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
 
   // ---- log ----
   const log: Record<string, Object> = {};
-  log['level'] = 'info';
+  log['level'] = s.logLevel.length > 0 ? s.logLevel : 'info';
   log['timestamp'] = true;
   if (logPath.length > 0) {
     log['output'] = logPath;
@@ -442,5 +638,22 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   config['outbounds'] = outbounds;
   config['route'] = route;
   config['experimental'] = experimental;
+  // 全局自定义配置:与根对象浅合并(用户键优先,语法错误时忽略)
+  if (s.globalCustomConfig.trim().length > 0) {
+    try {
+      const custom = JSON.parse(s.globalCustomConfig) as Record<string, Object>;
+      const keys = Object.keys(custom);
+      for (const k of keys) {
+        config[k] = custom[k];
+      }
+    } catch (e) {
+      // 忽略非法 JSON,保持主配置可用
+    }
+  }
   return JSON.stringify(config, null, 2);
+}
+
+/** 导出单节点 sing-box 出站 JSON(分享菜单「导出配置」用) */
+export function buildOutboundJson(p: Profile, s: AppSettings): string {
+  return JSON.stringify(buildOutbound(p, s), null, 2);
 }

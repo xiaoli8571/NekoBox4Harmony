@@ -169,8 +169,19 @@ export async function markSubFailure(url: string): Promise<void> {
   await saveSubs(list);
 }
 
-function genId(): string {
-  return `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+function profileIdentity(p: Profile, url: string): string {
+  return [url, p.type, p.server, `${p.serverPort}`, p.uuid, p.name, p.transport,
+    p.path, p.host, p.serviceName, p.sni].join('\u001f');
+}
+
+function stableProfileId(p: Profile, url: string): string {
+  const value = profileIdentity(p, url);
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `sub_${(hash >>> 0).toString(16)}`;
 }
 
 /** 更新单个订阅:下载 → 解析 → 原子替换该订阅的节点(保留运行中节点);同时记录流量/到期 */
@@ -189,6 +200,11 @@ export async function updateSubscription(url: string): Promise<SubUpdateResult> 
   await initStore(globalContext());
   const profiles = await loadProfiles();
   const runningId = AppStorage.get<string>('vpnRunningProfileId') ?? '';
+  const selectedId = await readPrefString('selected_profile_id', '');
+  const selectedProfile = profiles.find((item: Profile) => item.id === selectedId);
+  const selectedIdentity = selectedProfile !== undefined && selectedProfile.subUrl === url
+    ? profileIdentity(selectedProfile, url) : '';
+  let migratedSelectedId = '';
 
   const kept: Array<Profile> = [];
   let removed = 0;
@@ -206,13 +222,26 @@ export async function updateSubscription(url: string): Promise<SubUpdateResult> 
     if (dup !== undefined) {
       continue;
     }
-    p.id = `${genId()}_${added}`;
     p.subUrl = url;
+    p.id = stableProfileId(p, url);
+    if (kept.some((item: Profile) => item.id === p.id)) {
+      p.id = `${p.id}_${added}`;
+    }
     p.updatedAt = Date.now();
     kept.push(p);
+    if (selectedIdentity.length > 0 && profileIdentity(p, url) === selectedIdentity) {
+      migratedSelectedId = p.id;
+    }
     added++;
   }
   await saveProfiles(kept);
+  if (migratedSelectedId.length > 0 && migratedSelectedId !== selectedId) {
+    await writePrefString('selected_profile_id', migratedSelectedId);
+  } else if (selectedProfile !== undefined && selectedProfile.subUrl === url
+    && !kept.some((item: Profile) => item.id === selectedId)) {
+    const replacement = kept.find((item: Profile) => item.subUrl === url);
+    await writePrefString('selected_profile_id', replacement === undefined ? '' : replacement.id);
+  }
   await touchSub(url);
   // 记录订阅流量/到期信息(响应头 subscription-userinfo)
   if (fetched.userinfo.length > 0) {

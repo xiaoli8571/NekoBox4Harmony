@@ -1319,6 +1319,538 @@
     {
       "name": "notification_total",
       "value": "Total"
+    },
+    {
+      "name": "nav_config",
+      "value": "Configuration"
+    },
+    {
+      "name": "nav_groups",
+      "value": "Groups"
+    },
+    {
+      "name": "nav_route",
+      "value": "Route"
+    },
+    {
+      "name": "nav_dashboard",
+      "value": "Dashboard"
+    },
+    {
+      "name": "nav_tools",
+      "value": "Tools"
+    },
+    {
+      "name": "nav_about",
+      "value": "About"
+    },
+    {
+      "name": "drawer_footer",
+      "value": "NekoBox for Harmony"
+    },
+    {
+      "name": "test_current_group",
+      "value": "Test this group"
+    },
+    {
+      "name": "clear_test_results",
+      "value": "Clear test results"
+    },
+    {
+      "name": "dedup_action",
+      "value": "Remove duplicates"
+    },
+    {
+      "name": "delete_unavailable",
+      "value": "Delete unavailable nodes"
+    },
+    {
+      "name": "dedup_done",
+      "value": "Removed %1$d nodes"
+    },
+    {
+      "name": "dedup_none",
+      "value": "No duplicate nodes"
+    },
+    {
+      "name": "no_unavailable_nodes",
+      "value": "No unavailable nodes"
+    },
+    {
+      "name": "confirm_delete_unavailable",
+      "value": "Delete %1$d unavailable nodes?"
+    },
+    {
+      "name": "test_results_cleared",
+      "value": "Test results cleared"
+    },
+    {
+      "name": "no_profiles_title",
+      "value": "No profiles yet"
+    },
+    {
+      "name": "no_profiles_hint",
+      "value": "Import a subscription or create a profile to get started"
+    },
+    {
+      "name": "group_empty_nodes",
+      "value": "No nodes in this group"
+    },
+    {
+      "name": "import_from_clipboard",
+      "value": "Import from clipboard"
+    },
+    {
+      "name": "export_outbound_config",
+      "value": "Export sing-box config"
+    },
+    {
+      "name": "outbound_config_copied",
+      "value": "Outbound config copied"
+    },
+    {
+      "name": "export_failed_generic",
+      "value": "Export failed: %1$s"
+    },
+    {
+      "name": "dashboard_disabled_title",
+      "value": "Clash API is disabled"
+    },
+    {
+      "name": "dashboard_disabled_desc",
+      "value": "Enable it in Settings → Clash API to use the yacd dashboard"
+    },
+    {
+      "name": "dashboard_hint",
+      "value": "Served by the kernel clash_api; available while VPN is running"
+    },
+    {
+      "name": "update_all_subs",
+      "value": "Update all subscriptions"
+    },
+    {
+      "name": "new_group_hint",
+      "value": "New group name…"
+    },
+    {
+      "name": "add_group",
+      "value": "Create group"
+    },
+    {
+      "name": "group_node_count",
+      "value": "%1$d nodes"
+    },
+    {
+      "name": "clear_group",
+      "value": "Clear group"
+    },
+    {
+      "name": "confirm_clear_group",
+      "value": "Clear %1$d nodes in this group?"
+    },
+    {
+      "name": "group_name_required",
+      "value": "Group name required"
+    },
+    {
+      "name": "confirm_delete_group",
+      "value": "Delete group \"%1$s\"? Its nodes will be ungrouped"
+    },
+    {
+      "name": "groups_empty",
+      "value": "No subscriptions or groups yet"
+    },
+    {
+      "name": "share_sub_link",
+      "value": "Share subscription"
+    },
+    {
+      "name": "sub_link_copied",
+      "value": "Subscription link copied"
+    },
+    {
+      "name": "export_all_nodes",
+      "value": "Export node links"
+    },
+    {
+      "name": "export_all_empty",
+      "value": "Nothing to export"
+    },
+    {
+      "name": "export_all_done",
+      "value": "Exported %1$d links"
+    },
+    {
+      "name": "sub_last_update",
+      "value": "Updated %1$s"
+    },
+    {
+      "name": "sub_not_updated",
+      "value": "Not updated"
+    },
+    {
+      "name": "sub_traffic_used_remain",
+      "value": "%1$s / %2$s left"
+    },
+    {
+      "name": "sub_traffic_used",
+      "value": "Used %1$s"
+    },
+    {
+      "name": "stun_title",
+      "value": "NAT behavior discovery (STUN)"
+    },
+    {
+      "name": "stun_desc",
+      "value": "Detect your public mapped address and NAT behavior via a STUN server"
+    },
+    {
+      "name": "stun_test",
+      "value": "Test"
+    },
+    {
+      "name": "stun_testing",
+      "value": "Testing…"
+    },
+    {
+      "name": "stun_server_required",
+      "value": "STUN server required"
+    },
+    {
+      "name": "stun_public_endpoint",
+      "value": "Public mapped address"
+    },
+    {
+      "name": "stun_latency",
+      "value": "Response time %1$d ms"
+    },
+    {
+      "name": "stun_nat_cone",
+      "value": "Mapping stable across probes (cone-like NAT)"
+    },
+    {
+      "name": "stun_nat_symmetric",
+      "value": "Mapping changed across probes (symmetric NAT)"
+    },
+    {
+      "name": "stun_failed",
+      "value": "STUN test failed: %1$s"
+    },
+    {
+      "name": "reset_title",
+      "value": "Reset all settings"
+    },
+    {
+      "name": "reset_desc",
+      "value": "Erase profiles, groups, subscriptions, rules and settings"
+    },
+    {
+      "name": "reset_action",
+      "value": "Factory reset"
+    },
+    {
+      "name": "reset_confirm",
+      "value": "Reset to factory defaults? This cannot be undone"
+    },
+    {
+      "name": "reset_confirm_final",
+      "value": "Confirm again: ALL data will be erased!"
+    },
+    {
+      "name": "reset_done",
+      "value": "Factory reset complete"
+    },
+    {
+      "name": "reset_failed",
+      "value": "Reset failed: %1$s"
+    },
+    {
+      "name": "about_core_version",
+      "value": "Core version"
+    },
+    {
+      "name": "about_github",
+      "value": "GitHub"
+    },
+    {
+      "name": "check_update",
+      "value": "Check for updates"
+    },
+    {
+      "name": "checking_update",
+      "value": "Checking…"
+    },
+    {
+      "name": "check_update_failed",
+      "value": "Update check failed (network unavailable?)"
+    },
+    {
+      "name": "check_update_latest",
+      "value": "Already up to date"
+    },
+    {
+      "name": "check_update_new",
+      "value": "New version %1$s available, opening GitHub"
+    },
+    {
+      "name": "about_license_title",
+      "value": "Licenses"
+    },
+    {
+      "name": "about_license_body",
+      "value": "sing-box is GPL-3.0; the app icon comes from NekoBoxForAndroid (GPL-3.0)."
+    },
+    {
+      "name": "settings_general",
+      "value": "General"
+    },
+    {
+      "name": "settings_route",
+      "value": "Route"
+    },
+    {
+      "name": "settings_dns",
+      "value": "DNS"
+    },
+    {
+      "name": "settings_inbound",
+      "value": "Inbounds"
+    },
+    {
+      "name": "settings_log_level",
+      "value": "Log level"
+    },
+    {
+      "name": "settings_test_url",
+      "value": "Connection test URL"
+    },
+    {
+      "name": "settings_test_concurrent",
+      "value": "Test concurrency"
+    },
+    {
+      "name": "settings_always_show_address",
+      "value": "Always show server address"
+    },
+    {
+      "name": "settings_notification_group",
+      "value": "Show group name in notification"
+    },
+    {
+      "name": "settings_sub_allow_insecure",
+      "value": "Allow insecure subscription requests"
+    },
+    {
+      "name": "settings_sub_allow_insecure_desc",
+      "value": "Applies to HTTPS subscription downloads only"
+    },
+    {
+      "name": "settings_bypass_lan",
+      "value": "Bypass LAN"
+    },
+    {
+      "name": "settings_bypass_lan_desc",
+      "value": "Direct access for LAN addresses"
+    },
+    {
+      "name": "settings_sniff",
+      "value": "Traffic sniffing"
+    },
+    {
+      "name": "sniff_off",
+      "value": "Off"
+    },
+    {
+      "name": "sniff_route",
+      "value": "Routing only"
+    },
+    {
+      "name": "sniff_override",
+      "value": "Override target"
+    },
+    {
+      "name": "settings_remote_dns_strategy",
+      "value": "Remote DNS domain strategy"
+    },
+    {
+      "name": "settings_direct_dns_strategy",
+      "value": "Direct DNS domain strategy"
+    },
+    {
+      "name": "strategy_default",
+      "value": "Default"
+    },
+    {
+      "name": "strategy_auto",
+      "value": "auto"
+    },
+    {
+      "name": "strategy_prefer_ipv4",
+      "value": "prefer_ipv4"
+    },
+    {
+      "name": "strategy_prefer_ipv6",
+      "value": "prefer_ipv6"
+    },
+    {
+      "name": "strategy_ipv4_only",
+      "value": "ipv4_only"
+    },
+    {
+      "name": "strategy_ipv6_only",
+      "value": "ipv6_only"
+    },
+    {
+      "name": "settings_dns_routing",
+      "value": "DNS routing"
+    },
+    {
+      "name": "settings_dns_routing_desc",
+      "value": "Resolve CN domains via direct DNS"
+    },
+    {
+      "name": "settings_fakedns",
+      "value": "FakeDNS"
+    },
+    {
+      "name": "settings_fakedns_desc",
+      "value": "Speed up domain routing with fake IPs (verify on device)"
+    },
+    {
+      "name": "settings_mixed_port",
+      "value": "Mixed proxy port"
+    },
+    {
+      "name": "settings_mixed_port_hint",
+      "value": "0 = disabled"
+    },
+    {
+      "name": "settings_allow_access",
+      "value": "Allow access from LAN"
+    },
+    {
+      "name": "settings_allow_access_desc",
+      "value": "Mixed inbound listens on 0.0.0.0"
+    },
+    {
+      "name": "error_custom_outbound_required",
+      "value": "Custom outbound JSON required"
+    },
+    {
+      "name": "error_custom_outbound_type",
+      "value": "Custom outbound JSON missing \"type\""
+    },
+    {
+      "name": "error_chain_empty",
+      "value": "Chain requires at least one node"
+    },
+    {
+      "name": "error_ssh_password_required",
+      "value": "SSH password required"
+    },
+    {
+      "name": "error_ssh_key_required",
+      "value": "SSH private key required"
+    },
+    {
+      "name": "error_wireguard_key_required",
+      "value": "WireGuard private key required"
+    },
+    {
+      "name": "ss_plugin",
+      "value": "SS plugin"
+    },
+    {
+      "name": "ss_plugin_opts",
+      "value": "Plugin options"
+    },
+    {
+      "name": "packet_encoding",
+      "value": "Packet encoding"
+    },
+    {
+      "name": "server_ports_optional",
+      "value": "Port hopping (optional)"
+    },
+    {
+      "name": "hop_interval_seconds",
+      "value": "Hop interval (seconds)"
+    },
+    {
+      "name": "reduce_rtt",
+      "value": "0-RTT handshake"
+    },
+    {
+      "name": "disable_sni",
+      "value": "Disable SNI"
+    },
+    {
+      "name": "wg_mtu",
+      "value": "WireGuard MTU"
+    },
+    {
+      "name": "wg_reserved",
+      "value": "Reserved"
+    },
+    {
+      "name": "ssh_auth_type",
+      "value": "Auth type"
+    },
+    {
+      "name": "private_key_passphrase_optional",
+      "value": "Key passphrase (optional)"
+    },
+    {
+      "name": "ssh_host_key_optional",
+      "value": "Host key (optional)"
+    },
+    {
+      "name": "shadowtls_version",
+      "value": "ShadowTLS version"
+    },
+    {
+      "name": "custom_outbound_json",
+      "value": "Custom outbound JSON"
+    },
+    {
+      "name": "custom_outbound_hint",
+      "value": "A full sing-box outbound object; its tag is forced to \"proxy\""
+    },
+    {
+      "name": "chain_select_hint",
+      "value": "Pick nodes to build the chain (order = traffic order: front → landing)"
+    },
+    {
+      "name": "ws_early_data",
+      "value": "WS early data (bytes)"
+    },
+    {
+      "name": "ws_early_data_header",
+      "value": "Early data header"
+    },
+    {
+      "name": "certificates_optional",
+      "value": "Certificates (optional)"
+    },
+    {
+      "name": "enable_ech",
+      "value": "Enable ECH"
+    },
+    {
+      "name": "ech_config_optional",
+      "value": "ECH config (optional)"
+    },
+    {
+      "name": "mux_protocol",
+      "value": "Mux protocol"
+    },
+    {
+      "name": "mux_max_streams",
+      "value": "Mux max streams"
+    },
+    {
+      "name": "mux_padding",
+      "value": "Mux padding"
     }
   ]
 }
