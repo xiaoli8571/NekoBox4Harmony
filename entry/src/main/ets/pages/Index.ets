@@ -79,6 +79,28 @@ struct Index {
   // 从编辑页 router.back() 回来时刷新列表(否则新保存的节点不显示)
   onPageShow(): void {
     this.refresh();
+    void this.reconcileVpnState();
+  }
+
+  /** 回到前台时核对 VPN 状态:UI 进程可能被系统回收重建而扩展进程实际已死。
+   *  以 clash API 探测为准,无响应则把 UI 重置回断开态,避免按钮停在「运行中」。 */
+  private async reconcileVpnState(): Promise<void> {
+    const running: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
+    const status: string = AppStorage.get<string>('vpnStatus') ?? '';
+    if (!running || !status.startsWith('connected:') || !this.settings.clashApiEnabled) {
+      return;
+    }
+    try {
+      const totals = await fetchTrafficTotals(this.settings.clashApiPort, this.settings.clashApiSecret);
+      if (totals === null) {
+        LogStore.addLog('[ui] 前台探测:VPN 扩展无响应(clash API 不可达),重置为断开状态');
+        AppStorage.setOrCreate('vpnRunning', false);
+        AppStorage.setOrCreate('vpnRunningProfileId', '');
+        AppStorage.setOrCreate('vpnStatus', 'disconnected');
+      }
+    } catch (e) {
+      // 探测异常不改变 UI 状态
+    }
   }
 
   onRunningChange(): void {
@@ -1262,23 +1284,22 @@ struct Index {
   @Builder
   private fabButton() {
     Stack() {
-      Circle()
-        .width(56)
-        .height(56)
-        .fill(this.isRunning ? $r('app.color.success') : $r('app.color.primary'))
-        .shadow({ radius: 12, color: 'rgba(0,0,0,0.3)', offsetY: 4 })
       if (this.statusText === 'connecting' || this.statusText === 'switching') {
         LoadingProgress()
-          .width(24).height(24).color($r('app.color.surface'))
+          .width(26).height(26).color($r('app.color.surface'))
       } else {
         Text(this.isRunning ? '■' : '▶')
-          .fontSize(this.isRunning ? 20 : 18)
+          .fontSize(this.isRunning ? 22 : 20)
           .fontColor($r('app.color.surface'))
       }
     }
-    .width(56)
-    .height(56)
-    .margin({ right: 24, bottom: 58 })
+    .width(64)
+    .height(64)
+    .borderRadius(32)
+    .backgroundColor(this.isRunning ? $r('app.color.fab_running') : $r('app.color.fab_bg'))
+    .clip(true)
+    .shadow({ radius: 14, color: 'rgba(0,0,0,0.25)', offsetY: 4 })
+    .margin({ right: 20, bottom: 54 })
     .onClick(() => this.toggleVpn())
   }
 
@@ -1292,20 +1313,38 @@ struct Index {
       GroupPage({
         onDataChanged: () => {
           this.refresh();
+        },
+        onOpenDrawer: () => {
+          this.drawerOpen = true;
         }
       })
     } else if (this.activeTab === 2) {
       SettingsPage({
         onSettingsChanged: (settings: AppSettings) => {
           this.settings = settings;
+        },
+        onOpenDrawer: () => {
+          this.drawerOpen = true;
         }
       })
     } else if (this.activeTab === 3) {
-      DashboardPage()
+      DashboardPage({
+        onOpenDrawer: () => {
+          this.drawerOpen = true;
+        }
+      })
     } else if (this.activeTab === 4) {
-      ToolsPage()
+      ToolsPage({
+        onOpenDrawer: () => {
+          this.drawerOpen = true;
+        }
+      })
     } else {
-      AboutPage()
+      AboutPage({
+        onOpenDrawer: () => {
+          this.drawerOpen = true;
+        }
+      })
     }
   }
 

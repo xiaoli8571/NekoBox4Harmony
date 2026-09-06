@@ -69,11 +69,23 @@ export class VpnService {
           AppStorage.setOrCreate('vpnRunningProfileId', profileId);
           AppStorage.setOrCreate('vpnStatus', 'connected');
           LogStore.addLog('[app] VPN 状态回调缺失，但已检测到流量，按数据面状态恢复为已连接');
-        } else {
-          LogStore.addLog('[app] VPN 启动 60s 后仍未收到状态回调，保持连接中并等待后续控制面或流量同步');
         }
       }
     }, 60000);
+    // 长时间闲置后扩展可能对启动请求完全无响应(进程被回收/冻结残留),
+    // 120s 仍停留在 connecting 就明确报错并解锁按钮,避免永远转圈。
+    setTimeout(() => {
+      if (generation !== VpnService.generation) {
+        return;
+      }
+      const running: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
+      const status: string = AppStorage.get<string>('vpnStatus') ?? '';
+      if (!running && status === 'connecting') {
+        AppStorage.setOrCreate('vpnStatus', 'connect_failed:启动超时,VPN 扩展无响应,请重试或重启应用');
+        AppStorage.setOrCreate('vpnRunning', false);
+        LogStore.addLog('[app] 启动 120s 超时:扩展始终无状态回调,已解锁重试');
+      }
+    }, 120000);
     })();
     return VpnService.operation;
   }

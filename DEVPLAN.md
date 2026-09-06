@@ -154,3 +154,11 @@
 - 已交付:协议 14 种(新增 SSH/ShadowTLS/自定义出站/链式代理及全部 TLS/Mux/端口跳跃等字段)、设置页四大新组(常规/路由/DNS/入站)、抽屉导航 + StatsBar + FAB、分组管理页(GroupFragment 对齐)、工具页(STUN + 恢复出厂)、关于页(检查更新/内核版本)、yacd Dashboard(内置 yacd.zip + external_ui)、链接解析扩展(ssh/socks4/SS 插件)。
 - 真机风险项:FakeDNS、yacd 面板加载、链式代理真实连接、STUN 探测、mixedPort 局域网访问。
 - 内核限制(冻结 sing-box 1.11.9):anytls/mieru/naive/trojan-go 不支持,未导入以避免死节点。
+
+
+## 真机反馈修复轮(1.7.1,versionCode 1001918)—— 状态:✅ 已完成开发并本机编译通过(2026-09-06)
+
+- ① 抽屉各驻留页(分组/设置/工具/关于/面板)头部接入共用 DrawerButton,新增 onOpenDrawer 回调,消除无返回入口死胡同。
+- ② FAB 改容器式圆形按钮(64vp、半透明 fab_bg/fab_running 令牌、阴影跟随圆角),消除 Circle 阴影方形光晕。
+- ③ 闲置后无法启动三重修复:扩展忽略分支重播 connected 状态(UI 回收重建后自动同步);120s 启动终态判定(不再无限 connecting);doTeardown stopCore/destroy 超时兜底(防 starting 卡死);Index.onPageShow clash API 前台探测(扩展已死则重置断开态)。
+- 真机验证点:闲置 30 分钟+后回到 App 直接点启动应能恢复已连接状态或正常重连;FAB 深浅色下均无方形底;五个驻留页左上 ≡ 均可打开抽屉。

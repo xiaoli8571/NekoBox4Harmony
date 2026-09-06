@@ -1,5 +1,7 @@
 import web_webview from '@ohos.web.webview';
 import common from '@ohos.app.ability.common';
+import { UiSpec } from '../common/UiSpec';
+import { DrawerButton } from '../common/components/DrawerButton';
 import { initStore, loadSettings, LogStore } from '../model/Store';
 
 /**
@@ -10,6 +12,7 @@ import { initStore, loadSettings, LogStore } from '../model/Store';
 export struct DashboardPage {
   @State url: string = '';
   @State clashEnabled: boolean = true;
+  onOpenDrawer: () => void = () => {};
   controller: web_webview.WebviewController = new web_webview.WebviewController();
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
@@ -29,6 +32,14 @@ export struct DashboardPage {
 
   build() {
     Column() {
+      Row() {
+        DrawerButton({ onOpen: () => this.onOpenDrawer() })
+        Text($r('app.string.nav_dashboard'))
+          .fontSize(16).fontWeight(800).fontColor($r('app.color.text_1')).layoutWeight(1)
+      }
+      .width('100%')
+      .padding({ left: UiSpec.PAGE_PADDING - 10, right: UiSpec.PAGE_PADDING, top: 20, bottom: 4 })
+
       if (!this.clashEnabled) {
         Column({ space: 10 }) {
           Text($r('app.string.dashboard_disabled_title'))

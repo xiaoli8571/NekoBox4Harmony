@@ -168,14 +168,16 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.stopNotificationTrafficPoller();
     this.cancelNotification();
     try {
-      await CoreManager.stopCore();
+      // 内核长时间闲置后可能无响应,stopCore 回调若永不触发会卡死 starting,
+      // 导致之后所有启动请求被队列吞掉——这里必须带超时兜底。
+      await withTimeout(CoreManager.stopCore(), 8000, '停止内核超时');
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
       LogStore.addLog(`[vpn] 停止内核失败,继续销毁隧道: ${msg}`);
     }
     if (this.vpnConnection !== null) {
       try {
-        await this.vpnConnection.destroy();
+        await withTimeout(this.vpnConnection.destroy(), 5000, '销毁隧道超时');
       } catch (e) {
         const msg = e instanceof Error ? e.message : `${e}`;
         LogStore.addLog(`[vpn] 销毁隧道失败: ${msg}`);
@@ -209,11 +211,16 @@ export default class VpnExtAbility extends VpnExtensionAbility {
         ? this.latestRequestedProfileId : await getPendingProfileId();
       if (this.started) {
         if (pendingId.length === 0) {
-          LogStore.addLog('[vpn] 已在运行且没有新的启动目标,忽略重复触发');
+          // UI 进程可能刚被系统回收重建(AppStorage 已重置),必须重播当前状态,
+          // 否则 UI 永远停在「连接中」——这是闲置后无法启动的主要根因。
+          LogStore.addLog('[vpn] 已在运行且没有新的启动目标,忽略重复触发并重播已连接状态');
+          publishVpnStatus(`connected:${this.currentNodeName}`, true, this.currentRunId);
           return;
         }
         if (pendingId === this.currentRunId && !this.forceRestartRequested) {
-          LogStore.addLog('[vpn] 已在运行且节点未变化,忽略重复触发');
+          LogStore.addLog('[vpn] 已在运行且节点未变化,忽略重复触发并重播已连接状态');
+          publishVpnStatus(`connected:${this.currentNodeName}`, true, this.currentRunId);
+          await clearPendingProfileId();
           return;
         }
         const restartReason: string = pendingId === this.currentRunId ? '模式变更' : '节点切换';
