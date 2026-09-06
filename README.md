@@ -1,4 +1,5 @@
 # NekoBox for Harmony(HarmonyOS 原生 VPN 客户端)
+# 注意：目前版本问题比较多，等后面大版本更新。
 
 参考 [NekoBoxForAndroid](https://github.com/MatsuriDayo/NekoBoxForAndroid) 架构思路、基于 **sing-box v1.11.9**(含 OHOS 补丁)内核的 HarmonyOS NEXT(Stage 模型)VPN 客户端。内核以 **c-shared .so 进程内 dlopen** 方式运行(沙箱禁止 exec 二进制),支持 Hysteria2 / TUIC v5 等协议。
 
