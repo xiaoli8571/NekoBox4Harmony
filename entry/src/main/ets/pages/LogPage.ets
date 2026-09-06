@@ -1,5 +1,4 @@
 import emitter from '@ohos.events.emitter';
-import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import common from '@ohos.app.ability.common';
 import fs from '@ohos.file.fs';
@@ -9,12 +8,13 @@ import { LogStore, LOG_EVENT_ID } from '../model/Store';
 import { CoreManager } from '../core/CoreManager';
 import { setClipboardText } from '../utils/ClipboardHelper';
 
-@Entry
+/** 日志面板(抽屉内嵌页签,对齐安卓 LogcatFragment;终端配色刻意固定深底浅字) */
 @Component
-struct LogPage {
+export struct LogPanel {
   @State lines: Array<string> = [];
   @State searchText: string = '';
   @State levelFilter: string = 'ALL';
+  onOpenDrawer: () => void = () => {};
   private scroller: Scroller = new Scroller();
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   private fileOffset: number = 0;
@@ -134,7 +134,8 @@ struct LogPage {
   build() {
     Column() {
       Row() {
-        Text('←').fontSize(22).fontColor('#E8E8E8').onClick(() => router.back()).padding(8)
+        Text('≡').fontSize(20).fontColor('#E8E8E8').width(36).height(36).textAlign(TextAlign.Center)
+          .onClick(() => this.onOpenDrawer())
         Text('日志').fontSize(18).fontWeight(FontWeight.Bold).fontColor('#E8E8E8').layoutWeight(1)
         Text('导出').fontSize(14).fontColor('#64B5F6').padding(8)
           .onClick(() => this.exportLogs())

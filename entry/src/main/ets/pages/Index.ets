@@ -1,12 +1,14 @@
 import common from '@ohos.app.ability.common';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
+import bundleManager from '@ohos.bundle.bundleManager';
 import { UiSpec } from '../common/UiSpec';
 import { SettingsPage } from './SettingsPage';
 import { GroupPage } from './GroupPage';
 import { ToolsPage } from './ToolsPage';
 import { AboutPage } from './AboutPage';
-import { DashboardPage } from './DashboardPage';
+import { RouteRulesPanel } from './RouteRulesPage';
+import { LogPanel } from './LogPage';
 
 import { Profile, ProfileGroup, AppSettings, profileTypeLabel } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, loadGroups, loadSettings, saveSettings, readPrefString, writePrefString, LogStore } from '../model/Store';
@@ -36,12 +38,13 @@ struct Index {
   @State settings: AppSettings = new AppSettings();
   @State subscriptions: Array<SubInfo> = [];
   @State activeConfigUrl: string = '';
-  @State activeTab: number = 0;          // 0 配置 / 1 分组 / 2 设置 / 3 Dashboard / 4 工具 / 5 关于
+  @State activeTab: number = 0;          // 0 配置 / 1 分组 / 2 路由 / 3 设置 / 4 日志 / 5 工具 / 6 关于
   @State uiUptime: number = 0;
   @State nodeSearch: string = '';
   @State searchVisible: boolean = false;
   @State drawerOpen: boolean = false;
   @State groupTabIndex: number = 0;
+  @State appVersion: string = '';
   @StorageLink('uiBreakpoint') uiBreakpoint: string = 'compact';
   @StorageLink('vpnRunning') @Watch('onRunningChange') isRunning: boolean = false;
   @StorageLink('vpnStatus') statusText: string = 'disconnected';
@@ -60,6 +63,12 @@ struct Index {
 
   aboutToAppear(): void {
     setAppContext(this.context);
+    try {
+      const info = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
+      this.appVersion = info.versionName;
+    } catch (e) {
+      this.appVersion = '';
+    }
     this.refresh();
     this.autoUpdateSubs();
     if (this.isRunning) {
@@ -859,17 +868,16 @@ struct Index {
 
   // ---------------------------------------------------------------- 抽屉导航(对齐安卓 Drawer)
 
-  private drawerItems(): Array<[ResourceStr, string]> {
-    // [文案, 项标识]
-    const items: Array<[ResourceStr, string]> = [
-      [$r('app.string.nav_config'), 'config'],
-      [$r('app.string.nav_groups'), 'groups'],
-      [$r('app.string.nav_route'), 'route'],
-      [$r('app.string.settings_title'), 'settings'],
-      [$r('app.string.logs'), 'logs'],
-      [$r('app.string.nav_dashboard'), 'dashboard'],
-      [$r('app.string.nav_tools'), 'tools'],
-      [$r('app.string.nav_about'), 'about']
+  private drawerItems(): Array<[ResourceStr, string, string]> {
+    // [文案, 项标识, 图标字形]
+    const items: Array<[ResourceStr, string, string]> = [
+      [$r('app.string.nav_config'), 'config', '▤'],
+      [$r('app.string.nav_groups'), 'groups', '⧉'],
+      [$r('app.string.nav_route'), 'route', '⇄'],
+      [$r('app.string.settings_title'), 'settings', '⚙'],
+      [$r('app.string.logs'), 'logs', '≣'],
+      [$r('app.string.nav_tools'), 'tools', '✦'],
+      [$r('app.string.nav_about'), 'about', 'ⓘ']
     ];
     return items;
   }
@@ -881,17 +889,20 @@ struct Index {
     if (id === 'groups') {
       return this.activeTab === 1;
     }
-    if (id === 'settings') {
+    if (id === 'route') {
       return this.activeTab === 2;
     }
-    if (id === 'dashboard') {
+    if (id === 'settings') {
       return this.activeTab === 3;
     }
-    if (id === 'tools') {
+    if (id === 'logs') {
       return this.activeTab === 4;
     }
-    if (id === 'about') {
+    if (id === 'tools') {
       return this.activeTab === 5;
+    }
+    if (id === 'about') {
+      return this.activeTab === 6;
     }
     return false;
   }
@@ -902,65 +913,63 @@ struct Index {
       this.activeTab = 0;
     } else if (id === 'groups') {
       this.activeTab = 1;
-    } else if (id === 'settings') {
-      this.activeTab = 2;
-    } else if (id === 'dashboard') {
-      if (!this.settings.clashApiEnabled) {
-        promptAction.showToast({ message: $r('app.string.dashboard_disabled_title') });
-        return;
-      }
-      this.activeTab = 3;
-    } else if (id === 'tools') {
-      this.activeTab = 4;
-    } else if (id === 'about') {
-      this.activeTab = 5;
     } else if (id === 'route') {
-      router.pushUrl({ url: 'pages/RouteRulesPage' });
+      this.activeTab = 2;
+    } else if (id === 'settings') {
+      this.activeTab = 3;
     } else if (id === 'logs') {
-      router.pushUrl({ url: 'pages/LogPage' });
+      this.activeTab = 4;
+    } else if (id === 'tools') {
+      this.activeTab = 5;
+    } else if (id === 'about') {
+      this.activeTab = 6;
     }
   }
 
   @Builder
   private drawerPanel() {
     Column() {
-      // 头部:品牌 + 状态
-      Column({ space: 6 }) {
-        Text($r('app.string.brand_name'))
-          .fontSize(18).fontWeight(800).fontColor($r('app.color.text_1')).letterSpacing(2)
-        Row({ space: 6 }) {
-          Circle()
-            .width(8).height(8)
-            .fill(this.isRunning ? $r('app.color.dot_live') : $r('app.color.text_3'))
-          Text(this.statusDisplay())
-            .fontSize(12).fontColor($r('app.color.text_2'))
-            .maxLines(1)
+      // 头部:应用图标 + 名称 + 版本(对齐安卓 Drawer 头部)
+      Row({ space: 12 }) {
+        Image($r('app.media.icon'))
+          .width(40)
+          .height(40)
+          .borderRadius(10)
+          .alt($r('app.media.icon'))
+        Column({ space: 2 }) {
+          Text($r('app.string.brand_name'))
+            .fontSize(16).fontWeight(800).fontColor($r('app.color.text_1'))
+          Text(this.appVersion.length > 0 ? `v${this.appVersion}` : '')
+            .fontSize(11).fontColor($r('app.color.text_3'))
         }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
       }
-      .alignItems(HorizontalAlign.Start)
       .width('100%')
-      .padding({ left: 20, right: 16, top: 30, bottom: 18 })
+      .alignItems(VerticalAlign.Center)
+      .padding({ left: 20, right: 16, top: 30, bottom: 16 })
 
       Divider().color($r('app.color.hairline')).strokeWidth(UiSpec.HAIRLINE_WIDTH)
 
       Column() {
-        ForEach(this.drawerItems(), (item: [ResourceStr, string]) => {
-          Row({ space: 12 }) {
-            Row()
-              .width(3).height(18)
-              .borderRadius(1.5)
-              .backgroundColor(this.drawerItemActive(item[1]) ? $r('app.color.primary') : Color.Transparent)
+        ForEach(this.drawerItems(), (item: [ResourceStr, string, string]) => {
+          Row({ space: 14 }) {
+            Text(item[2])
+              .fontSize(15)
+              .fontColor(this.drawerItemActive(item[1]) ? $r('app.color.primary') : $r('app.color.text_3'))
+              .width(24)
+              .textAlign(TextAlign.Center)
             Text(item[0])
               .fontSize(14.5)
               .fontWeight(this.drawerItemActive(item[1]) ? 700 : 400)
-              .fontColor(this.drawerItemActive(item[1]) ? $r('app.color.mono') : $r('app.color.text_2'))
+              .fontColor(this.drawerItemActive(item[1]) ? $r('app.color.primary') : $r('app.color.text_2'))
           }
           .width('100%')
-          .height(44)
+          .height(46)
           .borderRadius(10)
-              .backgroundColor(this.drawerItemActive(item[1]) ? $r('app.color.surface_selected') : Color.Transparent)
+          .backgroundColor(this.drawerItemActive(item[1]) ? $r('app.color.surface_selected') : Color.Transparent)
           .onClick(() => this.onDrawerSelect(item[1]))
-        }, (item: [ResourceStr, string]) => item[1])
+        }, (item: [ResourceStr, string, string]) => item[1])
       }
       .width('100%')
       .padding({ left: 10, right: 10, top: 8 })
@@ -1113,68 +1122,65 @@ struct Index {
 
   @Builder
   private nodeCard(p: Profile) {
-    Row({ space: 10 }) {
-      Row()
-        .width(3)
-        .height(40)
-        .borderRadius(1.5)
-        .backgroundColor(this.selectedId === p.id ? $r('app.color.primary') : Color.Transparent)
-      Column({ space: 2 }) {
-        Row({ space: 6 }) {
-          if (p.pinned) {
-            Text('📌').fontSize(10)
-          }
-          Text(p.name)
-            .fontSize(14.5)
-            .fontWeight(this.selectedId === p.id ? 800 : 600)
-            .fontColor($r('app.color.text_1'))
+    // 对齐安卓 layout_profile:圆角卡片 + 选中描边 + 类型徽标 + 延迟着色
+    Column({ space: 5 }) {
+      Row({ space: 6 }) {
+        if (p.pinned) {
+          Text('📌').fontSize(10)
+        }
+        Text(p.name)
+          .fontSize(14.5)
+          .fontWeight(this.selectedId === p.id ? 800 : 600)
+          .fontColor($r('app.color.text_1'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
+        Text(this.latencyText(p).toString().length === 0 ? '—' : this.latencyText(p))
+          .fontSize(12.5)
+          .fontColor(this.latencyColor(p))
+      }
+      .width('100%')
+
+      Row({ space: 6 }) {
+        Text(profileTypeLabel(p.type))
+          .fontSize(10)
+          .fontWeight(600)
+          .fontColor($r('app.color.mono'))
+          .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+          .borderRadius(6)
+          .backgroundColor($r('app.color.surface_selected'))
+        if (this.settings.alwaysShowAddress) {
+          Text(p.server)
+            .fontSize(10.5)
+            .fontColor($r('app.color.text_3'))
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .layoutWeight(1)
         }
-        .width('100%')
-        Row({ space: 6 }) {
-          Text(profileTypeLabel(p.type))
-            .fontSize(10.5).fontColor($r('app.color.mono'))
-          if (this.settings.alwaysShowAddress) {
-            Text(p.server)
-              .fontSize(10.5).fontColor($r('app.color.text_3'))
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-              .layoutWeight(1)
-          }
-        }
-        .width('100%')
       }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-
-      Text(this.latencyText(p).toString().length === 0 ? '—' : this.latencyText(p))
-        .fontSize(12.5)
-        .fontColor(this.latencyColor(p))
-      if (this.selectedId === p.id) {
-        Text('✓')
-          .fontSize(15)
-          .fontWeight(800)
-          .fontColor($r('app.color.success'))
-      }
+      .width('100%')
     }
+    .alignItems(HorizontalAlign.Start)
     .width('100%')
-    .height(UiSpec.ROW_HEIGHT)
-    .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
+    .padding({ left: 14, right: 14, top: 11, bottom: 11 })
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(14)
+    .border({ width: 1.5, color: this.selectedId === p.id ? $r('app.color.primary') : Color.Transparent })
+    .shadow({ radius: 6, color: $r('app.color.shadow_color'), offsetY: 1 })
     .onClick(() => this.onNodeTap(p))
     .bindContextMenu(this.profileContextMenu(p), ResponseType.LongPress)
   }
 
   @Builder
   private nodeListFor(groupId: string) {
-    List() {
+    List({ space: 8 }) {
       if (this.visibleProfiles(groupId).length === 0) {
         ListItem() {
           Text($r('app.string.group_empty_nodes'))
             .fontSize(13)
             .fontColor($r('app.color.text_3'))
             .width('100%')
+            .textAlign(TextAlign.Center)
             .padding({ top: 30, bottom: 30 })
         }
       }
@@ -1186,7 +1192,7 @@ struct Index {
     }
     .layoutWeight(1)
     .width('100%')
-    .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
+    .padding({ left: 14, right: 14, top: 6 })
   }
 
   @Builder
@@ -1319,6 +1325,12 @@ struct Index {
         }
       })
     } else if (this.activeTab === 2) {
+      RouteRulesPanel({
+        onOpenDrawer: () => {
+          this.drawerOpen = true;
+        }
+      })
+    } else if (this.activeTab === 3) {
       SettingsPage({
         onSettingsChanged: (settings: AppSettings) => {
           this.settings = settings;
@@ -1327,13 +1339,13 @@ struct Index {
           this.drawerOpen = true;
         }
       })
-    } else if (this.activeTab === 3) {
-      DashboardPage({
+    } else if (this.activeTab === 4) {
+      LogPanel({
         onOpenDrawer: () => {
           this.drawerOpen = true;
         }
       })
-    } else if (this.activeTab === 4) {
+    } else if (this.activeTab === 5) {
       ToolsPage({
         onOpenDrawer: () => {
           this.drawerOpen = true;

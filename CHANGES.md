@@ -485,3 +485,20 @@ Existing notification files reviewed:
 ### 其他
 - Index FAB 相关:fab 颜色令牌入 base/dark color.json 对称(检查脚本通过)。
 - 文档:本条;DEVPLAN 增补修复轮状态行。
+
+
+## 2026-09-06 真机反馈修复轮 2(1.7.2,versionCode 1001919)
+
+> 反馈:①设置页与侧边栏内容重复;②面板无用要求删除;③UI 仍是旧观感,要求对齐安卓。已在本机 DevEco 编译通过。
+
+### 1. 设置页去重(对齐安卓设置只保留 global_preferences 内容)
+- 移除「自定义路由入口」行(路由已在抽屉);移除「其他/关于」分组(版本在抽屉-关于页);「备份与恢复」整组迁至工具页(安卓 Tools = 网络/备份两个 Tab 的布局)。
+- SettingsPage 相应清理 router/picker/fs/util/pasteboard/Backup 导入与 backup 助手方法、appVersion/backupFileBusy/backupExpanded/otherExpanded 状态。
+
+### 2. 面板(Dashboard/yacd)功能整体删除
+- 抽屉移除「面板」项;删除 DashboardPage.ets、utils/WebUiAssets.ets、resources/rawfile/yacd.zip;ConfigBuilder 移除 external_ui 生成与参数;VpnExtAbility 移除 yacd 解压逻辑。clash_api 本体保留(连接统计依赖)。
+
+### 3. UI 对齐安卓观感
+- 配置页节点列表改为安卓卡片式:圆角 14 卡片、surface 底色、阴影、选中主色描边、协议类型徽标。
+- 抽屉头部对齐安卓:应用图标 + 名称 + 版本号;菜单项加图标字形。
+- 路由/日志改为抽屉内嵌页签(上一轮已做),本轮索引重排:0 配置/1 分组/2 路由/3 设置/4 日志/5 工具/6 关于。

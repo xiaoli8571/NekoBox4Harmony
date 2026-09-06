@@ -16,7 +16,6 @@ import { CoreManager } from '../core/CoreManager';
 import { publishVpnLog, publishVpnStatus, publishVpnTraffic, VPN_EVENT_LATENCY } from '../core/VpnIpc';
 import { geoReady, geoSitePath as geoSiteFile, geoIpPath as geoIpFile } from '../utils/GeoAssets';
 import { fetchTrafficTotals } from '../utils/TrafficStats';
-import { ensureYacdExtracted } from '../utils/WebUiAssets';
 
 /**
  * VPN 扩展能力 — 真正的 VPN 生命周期在这里:
@@ -366,16 +365,8 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       LogStore.addLog('[vpn] 读取远程规则集失败,本次连接忽略');
     }
     const cachePath = logPath.length > 0 ? logPath.substring(0, logPath.lastIndexOf('/') + 1) + 'cache.db' : '';
-    let externalUiPath = '';
-    if (settings.clashApiEnabled) {
-      try {
-        externalUiPath = await ensureYacdExtracted(context);
-      } catch (e) {
-        LogStore.addLog('[vpn] yacd 面板准备失败,Dashboard 走降级提示');
-      }
-    }
     const configJson = buildCoreConfig(node, settings, ifname, logPath, geositePath, geoIpPath,
-      customRules, remoteRuleSets, cachePath, profiles, externalUiPath);
+      customRules, remoteRuleSets, cachePath, profiles);
     const configPath = CoreManager.writeConfigFile(context, configJson);
     LogStore.addLog(`[vpn] sing-box 配置已写入 ${configPath}`);
 

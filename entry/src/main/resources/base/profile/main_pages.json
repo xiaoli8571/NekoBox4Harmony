@@ -2,9 +2,7 @@
   "src": [
     "pages/Index",
     "pages/ProfileEdit",
-    "pages/LogPage",
     "pages/ConnectionsPage",
-    "pages/SubDetailPage",
-    "pages/RouteRulesPage"
+    "pages/SubDetailPage"
   ]
 }
