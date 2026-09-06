@@ -2,23 +2,28 @@ import common from '@ohos.app.ability.common';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
-import { BigPowerButton } from '../common/components/BigPowerButton';
-import { StatsRow } from '../common/components/StatsRow';
-import { BottomNavText } from '../common/components/BottomNavText';
 import { SettingsPage } from './SettingsPage';
+import { GroupPage } from './GroupPage';
+import { ToolsPage } from './ToolsPage';
+import { AboutPage } from './AboutPage';
+import { DashboardPage } from './DashboardPage';
 
 import { Profile, ProfileGroup, AppSettings, profileTypeLabel } from '../model/Profile';
-import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, loadSettings, saveSettings, readPrefString, writePrefString, LogStore } from '../model/Store';
+import { initStore, loadProfiles, saveProfiles, loadGroups, loadSettings, saveSettings, readPrefString, writePrefString, LogStore } from '../model/Store';
 import { VpnService } from '../core/VpnService';
 import { parseShareText } from '../utils/LinkParser';
 import { getClipboardText, setClipboardText } from '../utils/ClipboardHelper';
-import { fetchSubscriptionWithInfo, fetchSubscription, looksLikeClashYaml, parseClashProxies, ClashParseResult } from '../utils/Subscription';
-import { testProfiles, tcpPing } from '../utils/LatencyTester';
-import { SubInfo, listSubs, saveSubs, removeSub, upsertSub, needAutoUpdate, updateSubscription, setAppContext, subNameOf, markSubSuccess, markSubFailure } from '../core/Subscriptions';
-import { fetchTrafficTotals, formatSpeed, formatBytes } from '../utils/TrafficStats';
+import { fetchSubscriptionWithInfo, looksLikeClashYaml, parseClashProxies, ClashParseResult } from '../utils/Subscription';
+import { testProfiles } from '../utils/LatencyTester';
+import { SubInfo, listSubs, upsertSub, needAutoUpdate, updateSubscription, setAppContext, subNameOf, markSubSuccess, markSubFailure } from '../core/Subscriptions';
+import { fetchTrafficTotals, formatSpeed } from '../utils/TrafficStats';
 import { fetchCurrentProxyDelay } from '../utils/ClashApi';
 import { exportProfileLink } from '../utils/LinkExporter';
+import { buildOutboundJson } from '../core/ConfigBuilder';
 import { publishVpnLatency } from '../core/VpnIpc';
+
+const OUTBOUND_MODES: Array<string> = ['rule', 'global', 'direct'];
+const OUTBOUND_MODE_LABELS: Array<Resource> = [$r('app.string.mode_rule'), $r('app.string.mode_global'), $r('app.string.mode_direct')];
 
 @Entry
 @Component
@@ -31,11 +36,12 @@ struct Index {
   @State settings: AppSettings = new AppSettings();
   @State subscriptions: Array<SubInfo> = [];
   @State activeConfigUrl: string = '';
-  @State activeTab: number = 0;
+  @State activeTab: number = 0;          // 0 配置 / 1 分组 / 2 设置 / 3 Dashboard / 4 工具 / 5 关于
   @State uiUptime: number = 0;
   @State nodeSearch: string = '';
-  @State subNameDraft: string = '';
-  @State subGroupDraft: string = '';
+  @State searchVisible: boolean = false;
+  @State drawerOpen: boolean = false;
+  @State groupTabIndex: number = 0;
   @StorageLink('uiBreakpoint') uiBreakpoint: string = 'compact';
   @StorageLink('vpnRunning') @Watch('onRunningChange') isRunning: boolean = false;
   @StorageLink('vpnStatus') statusText: string = 'disconnected';
@@ -44,10 +50,6 @@ struct Index {
   @StorageLink('vpnTotalUp') totalUp: number = 0;
   @StorageLink('vpnTotalDown') totalDown: number = 0;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
-
-  private usesSidebar(): boolean {
-    return this.settings.navLayout === 'side';
-  }
   private switching: boolean = false;
   private speedTimer: number = -1;
   private speedPollGeneration: number = 0;
@@ -55,15 +57,6 @@ struct Index {
   private lastDown: number = 0;
   private lastTrafficAt: number = 0;
   private uptimeTimer: number = -1;
-  private subEditUrl: string = '';
-  private subEditDialog: CustomDialogController = new CustomDialogController({
-    builder: SubscriptionGroupDialog({
-      name: $subNameDraft,
-      group: $subGroupDraft,
-      onSaved: (name: string, group: string) => { void this.saveSubscriptionGroup(name, group); }
-    }),
-    autoCancel: true
-  });
 
   aboutToAppear(): void {
     setAppContext(this.context);
@@ -74,483 +67,6 @@ struct Index {
       this.startUptimeTimer();
     }
   }
-
-  private subscriptionExpiryText(sub: SubInfo): ResourceStr {
-    if (sub.expire <= 0) {
-      return $r('app.string.subscription_no_expiry');
-    }
-    const days = Math.max(0, Math.ceil((sub.expire * 1000 - Date.now()) / 86400000));
-    return $r('app.string.subscription_days_remaining', days);
-  }
-
-  private async selectSubscription(sub: SubInfo): Promise<void> {
-    this.activeConfigUrl = sub.url;
-    const firstProfile = this.profiles.find((profile: Profile) => profile.subUrl === sub.url);
-    if (firstProfile !== undefined) {
-      this.selectedId = firstProfile.id;
-    }
-    await writePrefString('active_config_url', sub.url);
-  }
-
-  async updateOneSubscription(sub: SubInfo): Promise<void> {
-    if (this.testing) {
-      return;
-    }
-    this.testing = true;
-    try {
-      const result = await updateSubscription(sub.url);
-      await markSubSuccess(sub.url);
-      this.subscriptions = await listSubs();
-      this.profiles = await loadProfiles();
-      promptAction.showToast({ message: $r('app.string.sub_update_result', result.added, result.removed) });
-    } catch (e) {
-      await markSubFailure(sub.url);
-      this.subscriptions = await listSubs();
-      const message = e instanceof Error ? e.message : `${e}`;
-      promptAction.showToast({ message: $r('app.string.update_failed_reason', message) });
-    } finally {
-      this.testing = false;
-    }
-  }
-
-  async openSubscriptionGroup(sub: SubInfo): Promise<void> {
-    this.subEditUrl = sub.url;
-    this.subNameDraft = sub.name;
-    this.subGroupDraft = sub.group.length > 0
-      ? sub.group
-      : await readPrefString('recent_subscription_group', '');
-    this.subEditDialog.open();
-  }
-
-  async saveSubscriptionGroup(name: string, group: string): Promise<void> {
-    const index = this.subscriptions.findIndex((item: SubInfo) => item.url === this.subEditUrl);
-    if (index < 0) {
-      return;
-    }
-    const next = this.subscriptions.slice();
-    next[index].name = name.trim().length > 0 ? name.trim() : subNameOf(next[index].url);
-    next[index].group = group.trim();
-    await saveSubs(next);
-    if (next[index].group.length > 0) {
-      await writePrefString('recent_subscription_group', next[index].group);
-    }
-    this.subscriptions = next;
-    this.subEditUrl = '';
-  }
-  deleteSubscription(sub: SubInfo): void {
-    const count = this.profiles.filter((profile: Profile) => profile.subUrl === sub.url).length;
-    AlertDialog.show({
-      message: $r('app.string.confirm_delete_sub_name', sub.name, count),
-      primaryButton: { value: $r('app.string.cancel'), action: () => {} },
-      secondaryButton: {
-        value: $r('app.string.delete'),
-        fontColor: $r('app.color.error'),
-        action: async () => {
-          await removeSub(sub.url);
-          this.profiles = this.profiles.filter((profile: Profile) => profile.subUrl !== sub.url);
-          await saveProfiles(this.profiles);
-          this.subscriptions = this.subscriptions.filter((item: SubInfo) => item.url !== sub.url);
-        }
-      }
-    });
-  }
-
-
-
-
-
-
-  @Builder
-  private subscriptionsTab() {
-    Column() {
-      Row() {
-        Text($r('app.string.subscription_management'))
-          .fontSize(16)
-          .fontWeight(800)
-          .fontColor($r('app.color.text_1'))
-          .layoutWeight(1)
-        Text($r('app.string.add_entry'))
-          .fontSize(13.5)
-          .fontWeight(600)
-          .fontColor($r('app.color.mono'))
-          .padding(8)
-          .onClick(() => this.addEntryDialog.open())
-      }
-      .width('100%')
-      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 26 })
-
-      TextInput({ text: this.nodeSearch, placeholder: $r('app.string.search_nodes') })
-        .fontSize(14.5)
-        .fontColor($r('app.color.text_1'))
-        .placeholderColor($r('app.color.text_3'))
-        .backgroundColor(Color.Transparent)
-        .height(UiSpec.ROW_HEIGHT)
-        .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
-        .margin({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
-        .onChange((value: string) => { this.nodeSearch = value; })
-      Row() {
-        Text($r('app.string.settings_auto_update_subs'))
-          .fontSize(13.5)
-          .fontColor($r('app.color.text_2'))
-          .layoutWeight(1)
-        Text(this.testing ? $r('app.string.speed_testing') : $r('app.string.speed_test'))
-          .fontSize(13.5)
-          .fontWeight(600)
-          .fontColor($r('app.color.mono'))
-          .padding(8)
-          .onClick(() => this.runSpeedTest())
-        Toggle({ type: ToggleType.Switch, isOn: this.settings.autoUpdateSubs })
-          .onChange((value: boolean) => {
-            this.settings.autoUpdateSubs = value;
-            saveSettings(this.settings);
-          })
-      }
-      .width('100%')
-      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
-
-      List() {
-        if (this.subscriptions.length === 0) {
-          ListItem() {
-            Text($r('app.string.settings_subs_empty'))
-              .fontSize(13)
-              .fontColor($r('app.color.text_3'))
-              .width('100%')
-              .padding({ top: 30, bottom: 30 })
-          }
-        }
-        ForEach(this.subscriptions, (sub: SubInfo) => {
-          ListItem() {
-            Row({ space: 12 }) {
-              Column({ space: 3 }) {
-                Text(sub.name)
-                  .fontSize(14.5)
-                  .fontWeight(this.activeConfigUrl === sub.url ? 800 : 600)
-                  .fontColor(this.activeConfigUrl === sub.url ? $r('app.color.mono') : $r('app.color.text_1'))
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  .width('100%')
-                Text(sub.url)
-                  .fontSize(11)
-                  .fontColor($r('app.color.text_3'))
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  .width('100%')
-                Text(this.subscriptionExpiryText(sub))
-                  .fontSize(11)
-                  .fontColor($r('app.color.text_2'))
-                  .width('100%')
-              }
-              .alignItems(HorizontalAlign.Start)
-              .layoutWeight(1)
-              .onClick(() => { void this.selectSubscription(sub); })
-              if (this.activeConfigUrl === sub.url) {
-                Text('✓')
-                  .fontSize(15)
-                  .fontWeight(800)
-                  .fontColor($r('app.color.success'))
-              }
-              Text($r('app.string.sub_group_edit'))
-                .fontSize(12.5)
-                .fontWeight(600)
-                .fontColor($r('app.color.text_2'))
-                .padding({ left: 8, top: 12, bottom: 12 })
-                .onClick(() => this.openSubscriptionGroup(sub))
-
-              Text(this.testing ? $r('app.string.updating') : $r('app.string.update_action'))
-                .fontSize(12.5)
-                .fontWeight(600)
-                .fontColor($r('app.color.mono'))
-                .padding({ left: 8, top: 12, bottom: 12 })
-                .onClick(() => this.updateOneSubscription(sub))
-              Text($r('app.string.delete'))
-                .fontSize(12.5)
-                .fontWeight(600)
-                .fontColor($r('app.color.error'))
-                .padding({ left: 8, top: 12, bottom: 12 })
-                .onClick(() => this.deleteSubscription(sub))
-
-            }
-            .width('100%')
-            .padding({ top: 12, bottom: 12 })
-            .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
-          }
-        }, (sub: SubInfo) => sub.url)
-        ForEach(this.sortedGroupIds(), (groupId: string) => {
-          ListItem() {
-            Column() {
-              Row() {
-                Text(this.groupName(groupId))
-                  .fontSize(11)
-                  .fontWeight(700)
-                  .fontColor($r('app.color.text_3'))
-                  .letterSpacing(2)
-                  .layoutWeight(1)
-                Text(this.groupLatencyText(groupId))
-                  .fontSize(11)
-                  .fontColor($r('app.color.text_3'))
-                Text(this.testing ? $r('app.string.speed_testing') : $r('app.string.test_group'))
-                  .fontSize(11)
-                  .fontColor($r('app.color.mono'))
-                  .padding({ left: 10, top: 8, bottom: 8 })
-                  .onClick(() => this.runGroupSpeedTest(groupId))
-              }
-              .width('100%')
-              .padding({ top: 14, bottom: 4 })
-              .onClick(() => {
-                if (groupId.length > 0) {
-                  const group = this.groups.find((item: ProfileGroup) => item.id === groupId);
-                  if (group !== undefined) {
-                    void this.toggleGroupCollapsed(group);
-                  }
-                }
-              })
-
-
-              if (!this.isGroupCollapsed(groupId)) {
-                ForEach(this.visibleProfiles(groupId), (profile: Profile) => {
-                Row({ space: 10 }) {
-                  Text('●')
-                    .fontSize(9)
-                    .fontColor($r('app.color.text_3'))
-                  Text(profile.name)
-                    .fontSize(14.5)
-                    .fontWeight(this.selectedId === profile.id ? 800 : 600)
-                    .fontColor($r('app.color.text_1'))
-                    .maxLines(1)
-                    .textOverflow({ overflow: TextOverflow.Ellipsis })
-                    .layoutWeight(1)
-                  Text(this.latencyText(profile).toString().length === 0 ? '—' : this.latencyText(profile))
-                    .fontSize(12.5)
-                    .fontColor($r('app.color.text_2'))
-                  if (this.selectedId === profile.id) {
-                    Text('✓')
-                      .fontSize(15)
-                      .fontWeight(800)
-                      .fontColor($r('app.color.success'))
-                  }
-                }
-                .width('100%')
-                .height(UiSpec.ROW_HEIGHT)
-                .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
-                .onClick(() => this.onNodeTap(profile))
-                .bindContextMenu(this.profileContextMenu(profile), ResponseType.LongPress)
-                }, (profile: Profile) => profile.id)
-              }
-            }
-            .width('100%')
-          }
-        }, (groupId: string) => groupId)
-      }
-      .layoutWeight(1)
-      .width('100%')
-      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
-    }
-    .width('100%')
-    .height('100%')
-  }
-
-  private uptimeText(): string {
-    const hours = Math.floor(this.uiUptime / 3600);
-    const minutes = Math.floor((this.uiUptime % 3600) / 60);
-    const seconds = this.uiUptime % 60;
-    const pad = (value: number): string => value < 10 ? `0${value}` : `${value}`;
-    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-  }
-
-  private selectedProfile(): Profile | undefined {
-    return this.profiles.find((profile: Profile) => profile.id === this.selectedId);
-  }
-
-  private visibleProfiles(groupId: string): Array<Profile> {
-    const query = this.nodeSearch.trim().toLowerCase();
-    const profiles = this.profilesInGroup(groupId).filter((profile: Profile) =>
-      this.activeConfigUrl.length === 0 || profile.subUrl === this.activeConfigUrl);
-    if (query.length === 0) {
-      return profiles;
-    }
-    return profiles.filter((profile: Profile) =>
-      profile.name.toLowerCase().includes(query)
-      || profile.server.toLowerCase().includes(query));
-  }
-
-  @Builder
-  private bottomNavigation() {
-    if (!this.usesSidebar()) {
-    Row() {
-      BottomNavText({
-        label: $r('app.string.home'),
-        selected: this.activeTab === 0,
-        onSelect: () => { this.activeTab = 0; }
-      })
-      BottomNavText({
-        label: $r('app.string.subscription_management'),
-        selected: this.activeTab === 1,
-        onSelect: () => { this.activeTab = 1; }
-      })
-      BottomNavText({
-        label: $r('app.string.settings_title'),
-        selected: this.activeTab === 2,
-        onSelect: () => { this.activeTab = 2; }
-      })
-    }
-    .width('100%')
-    .justifyContent(FlexAlign.Center)
-    }
-  }
-
-  @Builder
-  private wideNavigation() {
-    Column({ space: 24 }) {
-      Text($r('app.string.brand_name'))
-        .fontSize(12)
-        .fontWeight(800)
-        .fontColor($r('app.color.text_1'))
-        .letterSpacing(3)
-        .width('100%')
-      Text($r('app.string.home'))
-        .fontSize(14)
-        .fontWeight(this.activeTab === 0 ? 800 : 400)
-        .fontColor(this.activeTab === 0 ? $r('app.color.mono') : $r('app.color.text_3'))
-        .width('100%')
-        .onClick(() => { this.activeTab = 0; })
-      Text($r('app.string.subscription_management'))
-        .fontSize(14)
-        .fontWeight(this.activeTab === 1 ? 800 : 400)
-        .fontColor(this.activeTab === 1 ? $r('app.color.mono') : $r('app.color.text_3'))
-        .width('100%')
-        .onClick(() => { this.activeTab = 1; })
-      Text($r('app.string.settings_title'))
-        .fontSize(14)
-        .fontWeight(this.activeTab === 2 ? 800 : 400)
-        .fontColor(this.activeTab === 2 ? $r('app.color.mono') : $r('app.color.text_3'))
-        .width('100%')
-        .onClick(() => { this.activeTab = 2; })
-      Blank()
-    }
-    .width(this.uiBreakpoint === 'large' ? UiSpec.SIDEBAR_WIDTH_LARGE : UiSpec.SIDEBAR_WIDTH_MEDIUM)
-    .height('100%')
-    .alignItems(HorizontalAlign.Start)
-    .padding({ left: 24, right: 18, top: 30, bottom: 24 })
-    .border({ width: { right: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
-  }
-
-  @Builder
-  private activeContent() {
-    if (this.activeTab === 0) {
-      this.homeTab()
-    } else if (this.activeTab === 1) {
-      this.subscriptionsTab()
-    } else {
-      SettingsPage({
-        onSettingsChanged: (settings: AppSettings) => {
-          this.settings = settings;
-          AppStorage.setOrCreate('uiNavLayout', settings.navLayout);
-        }
-      })
-    }
-  }
-
-  @Builder
-  private homeTab() {
-    Column() {
-      Row() {
-        Text($r('app.string.brand_name'))
-          .fontSize(12)
-          .fontWeight(800)
-          .fontColor($r('app.color.text_1'))
-          .letterSpacing(3)
-          .layoutWeight(1)
-        Text($r('app.string.connect'))
-          .fontSize(13.5)
-          .fontWeight(600)
-          .fontColor($r('app.color.text_3'))
-          .padding(8)
-          .onClick(() => router.pushUrl({ url: 'pages/ConnectionsPage' }))
-        Text($r('app.string.logs'))
-          .fontSize(13.5)
-          .fontWeight(600)
-          .fontColor($r('app.color.text_3'))
-          .padding(8)
-          .onClick(() => router.pushUrl({ url: 'pages/LogPage' }))
-      }
-      .width('100%')
-      .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 26 })
-
-      Text(this.isRunning ? this.uptimeText() : '00:00:00')
-        .fontSize(UiSpec.CLOCK_SIZE)
-        .fontWeight(300)
-        .fontColor($r('app.color.text_1'))
-        .fontFamily('monospace')
-        .letterSpacing(2)
-        .margin({ top: 44 })
-
-      Row({ space: 8 }) {
-        Circle()
-          .width(8)
-          .height(8)
-          .fill(this.isRunning ? $r('app.color.dot_live') : $r('app.color.text_3'))
-        Text(this.statusDisplay())
-          .fontSize(13.5)
-          .fontColor($r('app.color.text_2'))
-        Text('·')
-          .fontSize(13.5)
-          .fontColor($r('app.color.text_3'))
-        Text(this.modeLabel())
-          .fontSize(13.5)
-          .fontColor($r('app.color.text_2'))
-      }
-      .margin({ top: 10 })
-
-      BigPowerButton({
-        running: this.isRunning,
-        connecting: this.statusText === 'connecting' || this.statusText === 'switching',
-        breakpoint: this.uiBreakpoint,
-        onToggle: () => {
-          if (this.isRunning) {
-            this.disconnect();
-            return;
-          }
-          const target = this.selectedProfile();
-          if (target === undefined) {
-            promptAction.showToast({ message: $r('app.string.select_or_create_profile') });
-            return;
-          }
-          this.connectTo(target);
-        }
-      })
-        .margin({ top: 38 })
-
-      if (this.selectedProfile() !== undefined) {
-        Row({ space: 6 }) {
-          Text('●')
-            .fontSize(10)
-            .fontColor($r('app.color.text_3'))
-          Text(this.selectedProfile()?.name ?? '')
-            .fontSize(13.5)
-            .fontWeight(600)
-            .fontColor($r('app.color.text_1'))
-          Text(this.latencyText(this.selectedProfile() as Profile))
-            .fontSize(13.5)
-            .fontColor($r('app.color.text_2'))
-        }
-        .margin({ top: 34 })
-        .onClick(() => { this.activeTab = 1; })
-      }
-
-      Blank()
-
-      StatsRow({
-        upload: this.isRunning ? formatSpeed(this.upSpeed) : '—',
-        download: this.isRunning ? formatSpeed(this.downSpeed) : '—',
-        traffic: this.isRunning ? formatBytes(this.totalUp + this.totalDown) : '—'
-      })
-        .margin({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
-    }
-    .width('100%')
-    .height('100%')
-    .alignItems(HorizontalAlign.Center)
-  }
-
 
   aboutToDisappear(): void {
     this.stopSpeedPoller();
@@ -575,6 +91,55 @@ struct Index {
     }
     this.refresh();
   }
+
+  async refresh(): Promise<void> {
+    try {
+      await initStore(this.context);
+      this.profiles = await loadProfiles();
+      this.groups = await loadGroups();
+      this.settings = await loadSettings();
+      this.subscriptions = await listSubs();
+      this.activeConfigUrl = await readPrefString('active_config_url', '');
+      if (this.activeConfigUrl.length > 0 && !this.subscriptions.some((sub: SubInfo) => sub.url === this.activeConfigUrl)) {
+        this.activeConfigUrl = '';
+        await writePrefString('active_config_url', '');
+      }
+      const savedNodeId = await readPrefString('selected_profile_id', '');
+      if (savedNodeId.length > 0 && this.profiles.some((profile: Profile) => profile.id === savedNodeId)) {
+        this.selectedId = savedNodeId;
+      } else if (this.selectedId.length === 0 && this.profiles.length > 0) {
+        this.selectedId = this.profiles[0].id;
+      }
+    } catch (e) {
+      LogStore.addLog(`[ui] 加载节点失败: ${e}`);
+    }
+  }
+
+  /** 启动时自动更新超过设定间隔的订阅 */
+  async autoUpdateSubs(): Promise<void> {
+    try {
+      await initStore(this.context);
+      if (!this.settings.autoUpdateSubs) {
+        return;
+      }
+      const stale = await needAutoUpdate();
+      for (const sub of stale) {
+        try {
+          const r = await updateSubscription(sub.url);
+          await markSubSuccess(sub.url);
+          LogStore.addLog(`[app] 订阅 ${sub.name} 自动更新:新增 ${r.added},移除 ${r.removed}`);
+          this.refresh();
+        } catch (e) {
+          await markSubFailure(sub.url);
+          LogStore.addLog(`[app] 订阅 ${sub.name} 自动更新失败: ${e}`);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // ---------------------------------------------------------------- 速度/计时轮询
 
   private startSpeedPoller(): void {
     this.stopSpeedPoller();
@@ -650,65 +215,123 @@ struct Index {
     AppStorage.setOrCreate('vpnDownSpeed', 0);
   }
 
-  modeLabel(): Resource {
-    if (this.settings.mode === 'direct') {
-      return $r('app.string.mode_direct');
-    }
-    if (this.settings.mode === 'global') {
-      return $r('app.string.mode_global');
-    }
-    return $r('app.string.mode_rule');
+  // ---------------------------------------------------------------- 连接控制
+
+  private uptimeText(): string {
+    const hours = Math.floor(this.uiUptime / 3600);
+    const minutes = Math.floor((this.uiUptime % 3600) / 60);
+    const seconds = this.uiUptime % 60;
+    const pad = (value: number): string => value < 10 ? `0${value}` : `${value}`;
+    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
   }
 
-  async refresh(): Promise<void> {
+  statusDisplay(): ResourceStr {
+    const s = this.statusText;
+    if (s === 'connecting') {
+      return $r('app.string.status_connecting');
+    }
+    if (s === 'disconnecting') {
+      return $r('app.string.status_disconnecting');
+    }
+    if (s === 'disconnected') {
+      return $r('app.string.status_disconnected');
+    }
+    if (s === 'switching') {
+      return $r('app.string.status_switching');
+    }
+    if (s === 'start_timeout') {
+      return $r('app.string.status_start_timeout');
+    }
+    if (s === 'awaiting_auth') {
+      return $r('app.string.status_awaiting_auth');
+    }
+    if (s.startsWith('connected:')) {
+      return $r('app.string.status_connected_node', s.substring('connected:'.length));
+    }
+    if (s.startsWith('start_failed:')) {
+      return $r('app.string.status_start_failed', s.substring('start_failed:'.length));
+    }
+    if (s.startsWith('connect_failed:')) {
+      return $r('app.string.status_connect_failed', s.substring('connect_failed:'.length));
+    }
+    return s;
+  }
+
+  async connectTo(p: Profile): Promise<void> {
+    if (this.isRunning) {
+      promptAction.showToast({ message: $r('app.string.disconnect_first') });
+      return;
+    }
+    this.selectedId = p.id;
+    await writePrefString('selected_profile_id', p.id);
     try {
-      await initStore(this.context);
-      this.profiles = await loadProfiles();
-      this.groups = await loadGroups();
-      this.settings = await loadSettings();
-      AppStorage.setOrCreate('uiNavLayout', this.settings.navLayout);
-      this.subscriptions = await listSubs();
-      this.activeConfigUrl = await readPrefString('active_config_url', '');
-      if (this.activeConfigUrl.length > 0 && !this.subscriptions.some((sub: SubInfo) => sub.url === this.activeConfigUrl)) {
-        this.activeConfigUrl = '';
-        await writePrefString('active_config_url', '');
-      }
-      const savedNodeId = await readPrefString('selected_profile_id', '');
-      if (savedNodeId.length > 0 && this.profiles.some((profile: Profile) => profile.id === savedNodeId)) {
-        this.selectedId = savedNodeId;
-      } else if (this.selectedId.length === 0 && this.profiles.length > 0) {
-        this.selectedId = this.profiles[0].id;
-      }
+      await VpnService.connect(this.context, p.id);
     } catch (e) {
-      LogStore.addLog(`[ui] 加载节点失败: ${e}`);
+      // 状态已在 VpnService 中更新
     }
   }
 
-  /** 启动时自动更新超过 12 小时的订阅 */
-  async autoUpdateSubs(): Promise<void> {
+  async disconnect(): Promise<void> {
+    await VpnService.disconnect(this.context);
+  }
+
+  private selectedProfile(): Profile | undefined {
+    return this.profiles.find((profile: Profile) => profile.id === this.selectedId);
+  }
+
+  async toggleVpn(): Promise<void> {
+    if (this.isRunning) {
+      await this.disconnect();
+      return;
+    }
+    const target = this.selectedProfile();
+    if (target === undefined) {
+      promptAction.showToast({ message: $r('app.string.select_or_create_profile') });
+      return;
+    }
+    await this.connectTo(target);
+  }
+
+  /** 点击节点:未运行则选中;运行中点其他节点 = 热切换 */
+  async onNodeTap(p: Profile): Promise<void> {
+    this.selectedId = p.id;
+    await writePrefString('selected_profile_id', p.id);
+    if (!this.isRunning) {
+      return;
+    }
+    if (this.switching) {
+      promptAction.showToast({ message: $r('app.string.switching_wait') });
+      return;
+    }
+    const runningId = AppStorage.get<string>('vpnRunningProfileId') ?? '';
+    if (runningId.length > 0 && runningId === p.id) {
+      return;
+    }
+    this.switching = true;
     try {
-      await initStore(this.context);
-      if (!this.settings.autoUpdateSubs) {
-        return;
-      }
-      const stale = await needAutoUpdate();
-      for (const sub of stale) {
-        try {
-          const r = await updateSubscription(sub.url);
-          await markSubSuccess(sub.url);
-          LogStore.addLog(`[app] 订阅 ${sub.name} 自动更新:新增 ${r.added},移除 ${r.removed}`);
-          this.refresh();
-        } catch (e) {
-          await markSubFailure(sub.url);
-          LogStore.addLog(`[app] 订阅 ${sub.name} 自动更新失败: ${e}`);
-        }
-      }
-    } catch (e) {
-      // ignore
+      promptAction.showToast({ message: $r('app.string.switching_to_name', p.name) });
+      await VpnService.switchTo(this.context, p.id);
+    } finally {
+      this.switching = false;
     }
   }
 
-  /** 真连接延迟测试(TCP 握手计时) */
+  async switchOutboundMode(mode: string): Promise<void> {
+    if (!OUTBOUND_MODES.includes(mode) || this.settings.mode === mode) {
+      return;
+    }
+    this.settings.mode = mode;
+    await saveSettings(this.settings);
+    if (this.isRunning) {
+      const profileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? this.selectedId;
+      if (profileId.length > 0) {
+        await VpnService.connect(this.context, profileId, true);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- 测速
+
   async runSpeedTest(): Promise<void> {
     if (this.testing || this.profiles.length === 0) {
       return;
@@ -747,7 +370,7 @@ struct Index {
             publishVpnLatency(id, profile.name, ms);
           }
         }
-      });
+      }, this.settings.testConcurrent);
       await saveProfiles(this.profiles);
       this.profiles = this.profiles.slice();
       promptAction.showToast({ message: $r('app.string.speed_test_complete') });
@@ -756,63 +379,183 @@ struct Index {
     }
   }
 
-  groupLatencyText(groupId: string): ResourceStr {
-    const profiles = this.profiles.filter((item: Profile) => item.groupId === groupId);
-    let minimum = Number.MAX_SAFE_INTEGER;
-    let untested = 0;
-    let successful = 0;
-    for (const profile of profiles) {
-      const latency = this.latencies[profile.id];
-      if (latency === undefined) {
-        untested++;
-      } else if (latency >= 0) {
-        successful++;
-        minimum = Math.min(minimum, latency);
+  /** 清除当前分组测试结果 */
+  async clearTestResults(groupId: string): Promise<void> {
+    let changed = false;
+    for (const p of this.profiles) {
+      if (p.groupId === groupId && p.latencyMs !== 0) {
+        p.latencyMs = 0;
+        p.latencyTestedAt = 0;
+        changed = true;
       }
     }
-    if (untested > 0) {
-      return $r('app.string.group_latency_untested', untested);
+    const next: Record<string, number> = {};
+    this.latencies = next;
+    if (changed) {
+      await saveProfiles(this.profiles);
+      this.profiles = this.profiles.slice();
+      promptAction.showToast({ message: $r('app.string.test_results_cleared') });
     }
-    if (successful === 0) {
-      return $r('app.string.timeout');
-    }
-    return $r('app.string.group_latency_minimum', minimum);
   }
 
-  statusDisplay(): ResourceStr {
-    const s = this.statusText;
-    if (s === 'connecting') {
-      return $r('app.string.status_connecting');
+  /** 去重(当前分组,按 名称+类型+服务器+端口+凭据) */
+  async dedupGroup(groupId: string): Promise<void> {
+    const seen = new Set<string>();
+    const kept: Array<Profile> = [];
+    let removed = 0;
+    for (const p of this.profiles) {
+      if (p.groupId !== groupId) {
+        kept.push(p);
+        continue;
+      }
+      const key = `${p.name}\u001f${p.type}\u001f${p.server}\u001f${p.serverPort}\u001f${p.uuid}\u001f${p.password}`;
+      if (seen.has(key)) {
+        removed++;
+        continue;
+      }
+      seen.add(key);
+      kept.push(p);
     }
-    if (s === 'disconnecting') {
-      return $r('app.string.status_disconnecting');
+    if (removed > 0) {
+      this.profiles = kept;
+      await saveProfiles(kept);
+      promptAction.showToast({ message: $r('app.string.dedup_done', removed) });
+    } else {
+      promptAction.showToast({ message: $r('app.string.dedup_none') });
     }
-    if (s === 'disconnected') {
-      return $r('app.string.status_disconnected');
+  }
+
+  /** 删除当前分组不可用节点(最近测速失败) */
+  deleteUnavailable(groupId: string): void {
+    const dead = this.profiles.filter((p: Profile) => p.groupId === groupId && p.latencyMs === -1);
+    if (dead.length === 0) {
+      promptAction.showToast({ message: $r('app.string.no_unavailable_nodes') });
+      return;
     }
-    if (s === 'switching') {
-      return $r('app.string.status_switching');
+    AlertDialog.show({
+      message: $r('app.string.confirm_delete_unavailable', dead.length),
+      primaryButton: { value: $r('app.string.cancel'), action: () => {} },
+      secondaryButton: {
+        value: $r('app.string.delete'),
+        fontColor: $r('app.color.error'),
+        action: async () => {
+          const deadIds = new Set<string>(dead.map((p: Profile) => p.id));
+          this.profiles = this.profiles.filter((p: Profile) => !deadIds.has(p.id));
+          await saveProfiles(this.profiles);
+          promptAction.showToast({ message: $r('app.string.dedup_done', dead.length) });
+        }
+      }
+    });
+  }
+
+  async setSortMode(mode: string): Promise<void> {
+    this.settings.profileSortMode = mode;
+    await saveSettings(this.settings);
+    this.profiles = this.profiles.slice();
+  }
+
+  // ---------------------------------------------------------------- 分组/节点数据
+
+  sortedProfiles(): Array<Profile> {
+    return this.profiles.slice().sort((a: Profile, b: Profile) => {
+      if (a.pinned !== b.pinned) {
+        return a.pinned ? -1 : 1;
+      }
+      if (a.groupId !== b.groupId) {
+        return 0;
+      }
+      if (this.settings.profileSortMode === 'name') {
+        return a.name.localeCompare(b.name);
+      }
+      if (this.settings.profileSortMode === 'latency') {
+        const aLatency = this.latencyValueOf(a);
+        const bLatency = this.latencyValueOf(b);
+        return aLatency - bLatency;
+      }
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder;
+      }
+      return this.latencyValueOf(a) - this.latencyValueOf(b);
+    });
+  }
+
+  private latencyValueOf(p: Profile): number {
+    const ms = this.latencies[p.id];
+    if (ms !== undefined) {
+      return ms < 0 ? Number.MAX_SAFE_INTEGER : ms;
     }
-    if (s === 'start_timeout') {
-      return $r('app.string.status_start_timeout');
+    if (p.latencyMs < 0) {
+      return Number.MAX_SAFE_INTEGER;
     }
-    if (s === 'awaiting_auth') {
-      return $r('app.string.status_awaiting_auth');
+    return p.latencyMs === 0 ? Number.MAX_SAFE_INTEGER : p.latencyMs;
+  }
+
+  profilesInGroup(groupId: string): Array<Profile> {
+    return this.sortedProfiles().filter((p: Profile) => p.groupId === groupId);
+  }
+
+  sortedGroupIds(): Array<string> {
+    const ids: Array<string> = [];
+    const sortedGroups = this.groups.slice().sort((a: ProfileGroup, b: ProfileGroup) => a.sortOrder - b.sortOrder);
+    for (const group of sortedGroups) {
+      if (this.profiles.some((profile: Profile) => profile.groupId === group.id)) {
+        ids.push(group.id);
+      }
     }
-    if (s.startsWith('connected:')) {
-      return $r('app.string.status_connected_node', s.substring('connected:'.length));
+    if (this.profiles.some((profile: Profile) => profile.groupId.length === 0)) {
+      ids.push('');
     }
-    if (s.startsWith('start_failed:')) {
-      return $r('app.string.status_start_failed', s.substring('start_failed:'.length));
+    return ids;
+  }
+
+  private visibleProfiles(groupId: string): Array<Profile> {
+    const query = this.nodeSearch.trim().toLowerCase();
+    const profiles = this.profilesInGroup(groupId);
+    if (query.length === 0) {
+      return profiles;
     }
-    if (s.startsWith('connect_failed:')) {
-      return $r('app.string.status_connect_failed', s.substring('connect_failed:'.length));
+    return profiles.filter((profile: Profile) =>
+      profile.name.toLowerCase().includes(query)
+      || profile.server.toLowerCase().includes(query));
+  }
+
+  groupName(groupId: string): ResourceStr {
+    if (groupId.length === 0) {
+      return $r('app.string.ungrouped');
     }
-    return s;
+    const group = this.groups.find((item: ProfileGroup) => item.id === groupId);
+    return group === undefined ? $r('app.string.ungrouped') : group.name;
+  }
+
+  async moveProfile(p: Profile, delta: number): Promise<void> {
+    const peers = this.profilesInGroup(p.groupId).filter((item: Profile) => item.pinned === p.pinned);
+    const index = peers.findIndex((item: Profile) => item.id === p.id);
+    const targetIndex = index + delta;
+    if (index < 0 || targetIndex < 0 || targetIndex >= peers.length) {
+      return;
+    }
+    for (let i = 0; i < peers.length; i++) {
+      peers[i].sortOrder = i;
+    }
+    const target = peers[targetIndex];
+    const currentOrder = p.sortOrder;
+    p.sortOrder = target.sortOrder;
+    target.sortOrder = currentOrder;
+    await saveProfiles(this.profiles);
+    this.profiles = this.profiles.slice();
+  }
+
+  async togglePinned(p: Profile): Promise<void> {
+    p.pinned = !p.pinned;
+    await saveProfiles(this.profiles);
+    this.profiles = this.profiles.slice();
   }
 
   latencyText(p: Profile): ResourceStr {
-    const ms = this.latencies[p.id];
+    let ms = this.latencies[p.id];
+    if (ms === undefined && p.latencyMs !== 0) {
+      ms = p.latencyMs;
+    }
     if (this.testing && ms === undefined) {
       return '…';
     }
@@ -823,9 +566,15 @@ struct Index {
   }
 
   latencyColor(p: Profile): ResourceColor {
-    const ms = this.latencies[p.id];
-    if (ms === undefined || ms < 0) {
-      return ms === -1 ? $r('app.color.error') : $r('app.color.text_secondary');
+    let ms = this.latencies[p.id];
+    if (ms === undefined && p.latencyMs !== 0) {
+      ms = p.latencyMs;
+    }
+    if (ms === undefined) {
+      return $r('app.color.text_3');
+    }
+    if (ms < 0) {
+      return $r('app.color.error');
     }
     if (ms < 150) {
       return $r('app.color.success');
@@ -836,49 +585,49 @@ struct Index {
     return $r('app.color.error');
   }
 
-  async connectTo(p: Profile): Promise<void> {
-    if (this.isRunning) {
-      promptAction.showToast({ message: $r('app.string.disconnect_first') });
-      return;
-    }
-    this.selectedId = p.id;
-    await writePrefString('selected_profile_id', p.id);
-    try {
-      await VpnService.connect(this.context, p.id);
-    } catch (e) {
-      // 状态已在 VpnService 中更新
-    }
-  }
-
-  async disconnect(): Promise<void> {
-    await VpnService.disconnect(this.context);
-  }
-
-  /** 点击节点:未运行则选中;运行中点其他节点 = 自动断开重连切换 */
-  async onNodeTap(p: Profile): Promise<void> {
-    this.selectedId = p.id;
-    await writePrefString('selected_profile_id', p.id);
+  async runUrlTest(p: Profile): Promise<void> {
     if (!this.isRunning) {
-      return;
-    }
-    if (this.switching) {
-      promptAction.showToast({ message: $r('app.string.switching_wait') });
+      promptAction.showToast({ message: $r('app.string.url_test_requires_connection') });
       return;
     }
     const runningId = AppStorage.get<string>('vpnRunningProfileId') ?? '';
-    if (runningId.length > 0 && runningId === p.id) {
+    if (runningId !== p.id) {
+      promptAction.showToast({ message: $r('app.string.url_test_current_profile_only') });
       return;
     }
-    this.switching = true;
     try {
-      promptAction.showToast({ message: $r('app.string.switching_to_name', p.name) });
-      await VpnService.switchTo(this.context, p.id);
-    } finally {
-      this.switching = false;
+      const delay = await fetchCurrentProxyDelay(5000, this.settings.clashApiPort, this.settings.testUrl);
+      const next: Record<string, number> = {};
+      for (const key of Object.keys(this.latencies)) {
+        next[key] = this.latencies[key];
+      }
+      next[p.id] = delay;
+      this.latencies = next;
+      promptAction.showToast({ message: $r('app.string.url_test_result', delay) });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : `${e}`;
+      promptAction.showToast({ message });
     }
   }
 
-  // ---- 分享弹窗：当前 SDK 未发现 ScanKit generateBarcode，使用纯文本与复制降级路径 ----
+  deleteProfile(p: Profile): void {
+    AlertDialog.show({
+      message: $r('app.string.confirm_delete_profile_name', p.name),
+      primaryButton: {
+        value: $r('app.string.cancel'), action: () => {
+        }
+      },
+      secondaryButton: {
+        value: $r('app.string.delete'), fontColor: $r('app.color.error'), action: () => {
+          this.profiles = this.profiles.filter(x => x.id !== p.id);
+          saveProfiles(this.profiles);
+        }
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------- 分享/导出
+
   @State shareText: string = '';
   private shareDialog: CustomDialogController = new CustomDialogController({
     builder: ShareTextDialog({
@@ -901,7 +650,62 @@ struct Index {
     this.shareDialog.open();
   }
 
-  // ---- 导入弹窗(手动粘贴,不依赖剪贴板权限) ----
+  async copyProfileLink(p: Profile): Promise<void> {
+    const link = exportProfileLink(p);
+    if (link.length === 0) {
+      promptAction.showToast({ message: $r('app.string.protocol_export_unsupported') });
+      return;
+    }
+    await setClipboardText(link);
+    promptAction.showToast({ message: $r('app.string.profile_link_copied') });
+  }
+
+  /** 导出节点为 sing-box 出站 JSON(对齐安卓「导出配置」) */
+  async exportProfileConfig(p: Profile): Promise<void> {
+    try {
+      const json = buildOutboundJson(p, this.settings);
+      await setClipboardText(json);
+      promptAction.showToast({ message: $r('app.string.outbound_config_copied') });
+    } catch (e) {
+      promptAction.showToast({ message: $r('app.string.export_failed_generic', e instanceof Error ? e.message : `${e}`) });
+    }
+  }
+
+  @Builder
+  profileContextMenu(p: Profile) {
+    Column() {
+      MenuItem({ content: p.pinned ? $r('app.string.unpin') : $r('app.string.pin') })
+        .onClick(() => this.togglePinned(p))
+      if (this.settings.profileSortMode === 'manual') {
+        MenuItem({ content: $r('app.string.move_up') })
+          .onClick(() => this.moveProfile(p, -1))
+        MenuItem({ content: $r('app.string.move_down') })
+          .onClick(() => this.moveProfile(p, 1))
+      }
+      MenuItem({ content: $r('app.string.url_test') })
+        .onClick(() => this.runUrlTest(p))
+      MenuItem({ content: $r('app.string.copy_share_link') })
+        .onClick(() => this.copyProfileLink(p))
+      MenuItem({ content: $r('app.string.share_profile') })
+        .onClick(() => this.openProfileShare(p))
+      MenuItem({ content: $r('app.string.export_outbound_config') })
+        .onClick(() => this.exportProfileConfig(p))
+      MenuItem({ content: $r('app.string.profile_edit_title') })
+        .onClick(() => {
+          AppStorage.setOrCreate('editProfileId', p.id);
+          router.pushUrl({ url: 'pages/ProfileEdit' });
+        })
+      if (p.subUrl.length > 0) {
+        MenuItem({ content: $r('app.string.view_subscription') })
+          .onClick(() => router.pushUrl({ url: 'pages/SubDetailPage', params: { url: p.subUrl } }))
+      }
+      MenuItem({ content: $r('app.string.delete'), labelInfo: $r('app.string.irreversible') })
+        .onClick(() => this.deleteProfile(p))
+    }
+  }
+
+  // ---------------------------------------------------------------- 导入
+
   @State importText: string = '';
   @State importName: string = '';
   private importDialog: CustomDialogController = new CustomDialogController({
@@ -918,7 +722,6 @@ struct Index {
     autoCancel: true
   });
 
-  // ---- 统一添加入口:新建节点 / 导入订阅 ----
   private addEntryDialog: CustomDialogController = new CustomDialogController({
     builder: AddEntryDialog({
       onNewProfile: () => {
@@ -927,6 +730,9 @@ struct Index {
       },
       onImportSubscription: () => {
         this.openImportDialog();
+      },
+      onImportClipboard: () => {
+        this.quickImportClipboard();
       }
     }),
     autoCancel: true
@@ -937,6 +743,16 @@ struct Index {
     await initStore(this.context);
     this.importName = await readPrefString('recent_subscription_group', '');
     this.importDialog.open();
+  }
+
+  async quickImportClipboard(): Promise<void> {
+    const t = await getClipboardText();
+    if (t.trim().length === 0) {
+      promptAction.showToast({ message: $r('app.string.clipboard_empty_paste_manually') });
+      return;
+    }
+    await this.openImportDialog();
+    this.importText = t;
   }
 
   async fillDialogFromClipboard(): Promise<void> {
@@ -1007,6 +823,7 @@ struct Index {
       } else {
         promptAction.showToast({ message: $r('app.string.imported_count', parsed.length) });
       }
+      this.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
       LogStore.addLog(`[ui] 导入失败: ${msg}`);
@@ -1018,223 +835,499 @@ struct Index {
     return `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
   }
 
-  sortedProfiles(): Array<Profile> {
-    return this.profiles.slice().sort((a: Profile, b: Profile) => {
-      if (a.pinned !== b.pinned) {
-        return a.pinned ? -1 : 1;
+  // ---------------------------------------------------------------- 抽屉导航(对齐安卓 Drawer)
+
+  private drawerItems(): Array<[ResourceStr, string]> {
+    // [文案, 项标识]
+    const items: Array<[ResourceStr, string]> = [
+      [$r('app.string.nav_config'), 'config'],
+      [$r('app.string.nav_groups'), 'groups'],
+      [$r('app.string.nav_route'), 'route'],
+      [$r('app.string.settings_title'), 'settings'],
+      [$r('app.string.logs'), 'logs'],
+      [$r('app.string.nav_dashboard'), 'dashboard'],
+      [$r('app.string.nav_tools'), 'tools'],
+      [$r('app.string.nav_about'), 'about']
+    ];
+    return items;
+  }
+
+  private drawerItemActive(id: string): boolean {
+    if (id === 'config') {
+      return this.activeTab === 0;
+    }
+    if (id === 'groups') {
+      return this.activeTab === 1;
+    }
+    if (id === 'settings') {
+      return this.activeTab === 2;
+    }
+    if (id === 'dashboard') {
+      return this.activeTab === 3;
+    }
+    if (id === 'tools') {
+      return this.activeTab === 4;
+    }
+    if (id === 'about') {
+      return this.activeTab === 5;
+    }
+    return false;
+  }
+
+  private onDrawerSelect(id: string): void {
+    this.drawerOpen = false;
+    if (id === 'config') {
+      this.activeTab = 0;
+    } else if (id === 'groups') {
+      this.activeTab = 1;
+    } else if (id === 'settings') {
+      this.activeTab = 2;
+    } else if (id === 'dashboard') {
+      if (!this.settings.clashApiEnabled) {
+        promptAction.showToast({ message: $r('app.string.dashboard_disabled_title') });
+        return;
       }
-      if (a.groupId !== b.groupId) {
-        return 0;
-      }
-      if (this.settings.profileSortMode === 'name') {
-        return a.name.localeCompare(b.name);
-      }
-      if (this.settings.profileSortMode === 'latency') {
-        const aLatency = this.latencies[a.id];
-        const bLatency = this.latencies[b.id];
-        const aValue = aLatency === undefined || aLatency < 0 ? Number.MAX_SAFE_INTEGER : aLatency;
-        const bValue = bLatency === undefined || bLatency < 0 ? Number.MAX_SAFE_INTEGER : bLatency;
-        return aValue - bValue;
-      }
-      if (a.sortOrder !== b.sortOrder) {
-        return a.sortOrder - b.sortOrder;
-      }
-      const aLatency = this.latencies[a.id];
-      const bLatency = this.latencies[b.id];
-      const aValue = aLatency === undefined || aLatency < 0 ? Number.MAX_SAFE_INTEGER : aLatency;
-      const bValue = bLatency === undefined || bLatency < 0 ? Number.MAX_SAFE_INTEGER : bLatency;
-      return aValue - bValue;
-    });
-  }
-
-  async moveProfile(p: Profile, delta: number): Promise<void> {
-    const peers = this.profilesInGroup(p.groupId).filter((item: Profile) => item.pinned === p.pinned);
-    const index = peers.findIndex((item: Profile) => item.id === p.id);
-    const targetIndex = index + delta;
-    if (index < 0 || targetIndex < 0 || targetIndex >= peers.length) {
-      return;
+      this.activeTab = 3;
+    } else if (id === 'tools') {
+      this.activeTab = 4;
+    } else if (id === 'about') {
+      this.activeTab = 5;
+    } else if (id === 'route') {
+      router.pushUrl({ url: 'pages/RouteRulesPage' });
+    } else if (id === 'logs') {
+      router.pushUrl({ url: 'pages/LogPage' });
     }
-    for (let i = 0; i < peers.length; i++) {
-      peers[i].sortOrder = i;
-    }
-    const target = peers[targetIndex];
-    const currentOrder = p.sortOrder;
-    p.sortOrder = target.sortOrder;
-    target.sortOrder = currentOrder;
-    await saveProfiles(this.profiles);
-    this.profiles = this.profiles.slice();
-  }
-
-  profilesInGroup(groupId: string): Array<Profile> {
-    return this.sortedProfiles().filter((p: Profile) => p.groupId === groupId);
-  }
-
-  sortedGroupIds(): Array<string> {
-    const ids: Array<string> = [];
-    const sortedGroups = this.groups.slice().sort((a: ProfileGroup, b: ProfileGroup) => a.sortOrder - b.sortOrder);
-    for (const group of sortedGroups) {
-      if (this.profiles.some((profile: Profile) => profile.groupId === group.id)) {
-        ids.push(group.id);
-      }
-    }
-    if (this.profiles.some((profile: Profile) => profile.groupId.length === 0)) {
-      ids.push('');
-    }
-    return ids;
-  }
-
-  isGroupCollapsed(groupId: string): boolean {
-    if (groupId.length === 0) {
-      return false;
-    }
-    const group = this.groups.find((item: ProfileGroup) => item.id === groupId);
-    return group !== undefined && group.collapsed;
-  }
-
-  groupName(groupId: string): ResourceStr {
-    if (groupId.length === 0) {
-      return $r('app.string.ungrouped');
-    }
-    const group = this.groups.find((item: ProfileGroup) => item.id === groupId);
-    return group === undefined ? $r('app.string.ungrouped') : group.name;
-  }
-
-  async moveProfileToGroup(p: Profile, groupId: string): Promise<void> {
-    p.groupId = groupId;
-    p.sortOrder = this.profilesInGroup(groupId).length;
-    p.updatedAt = Date.now();
-    await saveProfiles(this.profiles);
-    this.profiles = this.profiles.slice();
-  }
-
-  async toggleGroupCollapsed(group: ProfileGroup): Promise<void> {
-    group.collapsed = !group.collapsed;
-    group.updatedAt = Date.now();
-    await saveGroups(this.groups);
-    this.groups = this.groups.slice();
-  }
-
-  sourceHost(p: Profile): ResourceStr {
-    if (p.subUrl.length === 0) {
-      return $r('app.string.local_profile');
-    }
-    try {
-      const withoutScheme = p.subUrl.split('://').pop() ?? p.subUrl;
-      return withoutScheme.split('/')[0];
-    } catch (e) {
-      return $r('app.string.subscription_profile');
-    }
-  }
-
-  async togglePinned(p: Profile): Promise<void> {
-    p.pinned = !p.pinned;
-    await saveProfiles(this.profiles);
-    this.profiles = this.profiles.slice();
-  }
-
-  async copyProfileLink(p: Profile): Promise<void> {
-    const link = exportProfileLink(p);
-    if (link.length === 0) {
-      promptAction.showToast({ message: $r('app.string.protocol_export_unsupported') });
-      return;
-    }
-    await setClipboardText(link);
-    promptAction.showToast({ message: $r('app.string.profile_link_copied') });
-  }
-
-  async runUrlTest(p: Profile): Promise<void> {
-    if (!this.isRunning) {
-      promptAction.showToast({ message: $r('app.string.url_test_requires_connection') });
-      return;
-    }
-    const runningId = AppStorage.get<string>('vpnRunningProfileId') ?? '';
-    if (runningId !== p.id) {
-      promptAction.showToast({ message: $r('app.string.url_test_current_profile_only') });
-      return;
-    }
-    try {
-      const delay = await fetchCurrentProxyDelay();
-      const next: Record<string, number> = {};
-      for (const key of Object.keys(this.latencies)) {
-        next[key] = this.latencies[key];
-      }
-      next[p.id] = delay;
-      this.latencies = next;
-      promptAction.showToast({ message: $r('app.string.url_test_result', delay) });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : `${e}`;
-      promptAction.showToast({ message });
-    }
-  }
-
-  deleteProfile(p: Profile): void {
-    AlertDialog.show({
-      message: $r('app.string.confirm_delete_profile_name', p.name),
-      primaryButton: {
-        value: $r('app.string.cancel'), action: () => {
-        }
-      },
-      secondaryButton: {
-        value: $r('app.string.delete'), fontColor: $r('app.color.error'), action: () => {
-          this.profiles = this.profiles.filter(x => x.id !== p.id);
-          saveProfiles(this.profiles);
-        }
-      }
-    });
   }
 
   @Builder
-  profileContextMenu(p: Profile) {
+  private drawerPanel() {
     Column() {
-      MenuItem({ content: p.pinned ? $r('app.string.unpin') : $r('app.string.pin') })
-        .onClick(() => this.togglePinned(p))
-      if (this.settings.profileSortMode === 'manual') {
-        MenuItem({ content: $r('app.string.move_up') })
-          .onClick(() => this.moveProfile(p, -1))
-        MenuItem({ content: $r('app.string.move_down') })
-          .onClick(() => this.moveProfile(p, 1))
+      // 头部:品牌 + 状态
+      Column({ space: 6 }) {
+        Text($r('app.string.brand_name'))
+          .fontSize(18).fontWeight(800).fontColor($r('app.color.text_1')).letterSpacing(2)
+        Row({ space: 6 }) {
+          Circle()
+            .width(8).height(8)
+            .fill(this.isRunning ? $r('app.color.dot_live') : $r('app.color.text_3'))
+          Text(this.statusDisplay())
+            .fontSize(12).fontColor($r('app.color.text_2'))
+            .maxLines(1)
+        }
       }
-      MenuItem({ content: $r('app.string.url_test') })
-        .onClick(() => this.runUrlTest(p))
-      MenuItem({ content: $r('app.string.copy_share_link') })
-        .onClick(() => this.copyProfileLink(p))
-      MenuItem({ content: $r('app.string.share_profile') })
-        .onClick(() => this.openProfileShare(p))
-      MenuItem({ content: $r('app.string.profile_edit_title') })
-        .onClick(() => {
-          AppStorage.setOrCreate('editProfileId', p.id);
-          router.pushUrl({ url: 'pages/ProfileEdit' });
-        })
-      if (p.subUrl.length > 0) {
-        MenuItem({ content: $r('app.string.view_subscription') })
-          .onClick(() => router.pushUrl({ url: 'pages/SubDetailPage', params: { url: p.subUrl } }))
+      .alignItems(HorizontalAlign.Start)
+      .width('100%')
+      .padding({ left: 20, right: 16, top: 30, bottom: 18 })
+
+      Divider().color($r('app.color.hairline')).strokeWidth(UiSpec.HAIRLINE_WIDTH)
+
+      Column() {
+        ForEach(this.drawerItems(), (item: [ResourceStr, string]) => {
+          Row({ space: 12 }) {
+            Row()
+              .width(3).height(18)
+              .borderRadius(1.5)
+              .backgroundColor(this.drawerItemActive(item[1]) ? $r('app.color.primary') : Color.Transparent)
+            Text(item[0])
+              .fontSize(14.5)
+              .fontWeight(this.drawerItemActive(item[1]) ? 700 : 400)
+              .fontColor(this.drawerItemActive(item[1]) ? $r('app.color.mono') : $r('app.color.text_2'))
+          }
+          .width('100%')
+          .height(44)
+          .borderRadius(10)
+              .backgroundColor(this.drawerItemActive(item[1]) ? $r('app.color.surface_selected') : Color.Transparent)
+          .onClick(() => this.onDrawerSelect(item[1]))
+        }, (item: [ResourceStr, string]) => item[1])
       }
-      MenuItem({ content: $r('app.string.delete'), labelInfo: $r('app.string.irreversible') })
-        .onClick(() => this.deleteProfile(p))
+      .width('100%')
+      .padding({ left: 10, right: 10, top: 8 })
+
+      Blank()
+
+      Text($r('app.string.drawer_footer'))
+        .fontSize(10.5).fontColor($r('app.color.text_3'))
+        .width('100%')
+        .padding({ left: 20, bottom: 16 })
+    }
+    .width('78%')
+    .constraintSize({ maxWidth: 320 })
+    .height('100%')
+    .backgroundColor($r('app.color.app_background'))
+    .alignItems(HorizontalAlign.Start)
+    .onClick(() => {
+      // 吞掉点击事件,防止点面板空白处触发遮罩关闭
+    })
+    .shadow({ radius: 24, color: 'rgba(0,0,0,0.25)', offsetY: 0 })
+  }
+
+  @Builder
+  private drawerOverlay() {
+    if (this.drawerOpen) {
+      Row() {
+        this.drawerPanel()
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor('rgba(0,0,0,0.35)')
+      .onClick(() => {
+        this.drawerOpen = false;
+      })
+    }
+  }
+
+  // ---------------------------------------------------------------- 配置页(对齐安卓 ConfigurationFragment)
+
+  @Builder
+  private configToolbar() {
+    Row({ space: 10 }) {
+      Text('≡')
+        .fontSize(20).fontColor($r('app.color.text_1'))
+        .width(36).height(36).textAlign(TextAlign.Center)
+        .onClick(() => { this.drawerOpen = true; })
+      if (this.searchVisible) {
+        TextInput({ text: this.nodeSearch, placeholder: $r('app.string.search_nodes') })
+          .layoutWeight(1).height(36)
+          .backgroundColor(Color.Transparent)
+          .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
+          .onChange((v: string) => { this.nodeSearch = v; })
+        Text($r('app.string.cancel'))
+          .fontSize(13).fontColor($r('app.color.text_2')).padding(6)
+          .onClick(() => {
+            this.nodeSearch = '';
+            this.searchVisible = false;
+          })
+      } else {
+        Text($r('app.string.brand_name'))
+          .fontSize(16).fontWeight(800).fontColor($r('app.color.text_1')).layoutWeight(1)
+        Text('⇅')
+          .fontSize(17).fontColor($r('app.color.text_2'))
+          .width(36).height(36).textAlign(TextAlign.Center)
+          .onClick(() => router.pushUrl({ url: 'pages/ConnectionsPage' }))
+        Text('⌕')
+          .fontSize(19).fontColor($r('app.color.text_2'))
+          .width(36).height(36).textAlign(TextAlign.Center)
+          .onClick(() => { this.searchVisible = true; })
+        Text('＋')
+          .fontSize(19).fontColor($r('app.color.text_1'))
+          .width(36).height(36).textAlign(TextAlign.Center)
+          .onClick(() => this.addEntryDialog.open())
+        Text('⋮')
+          .fontSize(19).fontColor($r('app.color.text_1'))
+          .width(36).height(36).textAlign(TextAlign.Center)
+          .bindMenu(this.configOverflowMenu())
+      }
+    }
+    .width('100%')
+    .padding({ left: UiSpec.PAGE_PADDING - 10, right: UiSpec.PAGE_PADDING - 10, top: 20 })
+  }
+
+  private configOverflowMenu(): Array<MenuElement> {
+    const groupId = this.activeGroupId();
+    const items: Array<MenuElement> = [
+      {
+        value: $r('app.string.test_current_group') as ResourceStr,
+        action: () => {
+          this.runGroupSpeedTest(groupId);
+        }
+      },
+      {
+        value: $r('app.string.clear_test_results') as ResourceStr,
+        action: () => {
+          this.clearTestResults(groupId);
+        }
+      },
+      {
+        value: $r('app.string.dedup_action') as ResourceStr,
+        action: () => {
+          this.dedupGroup(groupId);
+        }
+      },
+      {
+        value: $r('app.string.delete_unavailable') as ResourceStr,
+        action: () => {
+          this.deleteUnavailable(groupId);
+        }
+      },
+      {
+        value: $r('app.string.sort_manual') as ResourceStr,
+        action: () => {
+          this.setSortMode('manual');
+        }
+      },
+      {
+        value: $r('app.string.sort_latency') as ResourceStr,
+        action: () => {
+          this.setSortMode('latency');
+        }
+      },
+      {
+        value: $r('app.string.sort_name') as ResourceStr,
+        action: () => {
+          this.setSortMode('name');
+        }
+      }
+    ];
+    return items;
+  }
+
+  @Builder
+  private modeSwitchRow() {
+    Row({ space: 8 }) {
+      ForEach(OUTBOUND_MODES, (mode: string, index: number) => {
+        Button(OUTBOUND_MODE_LABELS[index])
+          .layoutWeight(1)
+          .height(32)
+          .fontSize(12.5)
+          .backgroundColor(Color.Transparent)
+          .fontColor(this.settings.mode === mode ? $r('app.color.mono') : $r('app.color.text_3'))
+          .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: this.settings.mode === mode ? $r('app.color.mono') : $r('app.color.hairline') })
+          .onClick(() => { void this.switchOutboundMode(mode); })
+      }, (mode: string) => mode)
+    }
+    .width('100%')
+    .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 6 })
+  }
+
+  @Builder
+  private nodeCard(p: Profile) {
+    Row({ space: 10 }) {
+      Row()
+        .width(3)
+        .height(40)
+        .borderRadius(1.5)
+        .backgroundColor(this.selectedId === p.id ? $r('app.color.primary') : Color.Transparent)
+      Column({ space: 2 }) {
+        Row({ space: 6 }) {
+          if (p.pinned) {
+            Text('📌').fontSize(10)
+          }
+          Text(p.name)
+            .fontSize(14.5)
+            .fontWeight(this.selectedId === p.id ? 800 : 600)
+            .fontColor($r('app.color.text_1'))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+        }
+        .width('100%')
+        Row({ space: 6 }) {
+          Text(profileTypeLabel(p.type))
+            .fontSize(10.5).fontColor($r('app.color.mono'))
+          if (this.settings.alwaysShowAddress) {
+            Text(p.server)
+              .fontSize(10.5).fontColor($r('app.color.text_3'))
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .layoutWeight(1)
+          }
+        }
+        .width('100%')
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+
+      Text(this.latencyText(p).toString().length === 0 ? '—' : this.latencyText(p))
+        .fontSize(12.5)
+        .fontColor(this.latencyColor(p))
+      if (this.selectedId === p.id) {
+        Text('✓')
+          .fontSize(15)
+          .fontWeight(800)
+          .fontColor($r('app.color.success'))
+      }
+    }
+    .width('100%')
+    .height(UiSpec.ROW_HEIGHT)
+    .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
+    .onClick(() => this.onNodeTap(p))
+    .bindContextMenu(this.profileContextMenu(p), ResponseType.LongPress)
+  }
+
+  @Builder
+  private nodeListFor(groupId: string) {
+    List() {
+      if (this.visibleProfiles(groupId).length === 0) {
+        ListItem() {
+          Text($r('app.string.group_empty_nodes'))
+            .fontSize(13)
+            .fontColor($r('app.color.text_3'))
+            .width('100%')
+            .padding({ top: 30, bottom: 30 })
+        }
+      }
+      ForEach(this.visibleProfiles(groupId), (profile: Profile) => {
+        ListItem() {
+          this.nodeCard(profile)
+        }
+      }, (profile: Profile) => profile.id)
+    }
+    .layoutWeight(1)
+    .width('100%')
+    .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
+  }
+
+  @Builder
+  private configFragment() {
+    Column() {
+      this.configToolbar()
+      this.modeSwitchRow()
+
+      if (this.profiles.length === 0) {
+        Column({ space: 10 }) {
+          Text($r('app.string.no_profiles_title'))
+            .fontSize(15).fontWeight(600).fontColor($r('app.color.text_2'))
+          Text($r('app.string.no_profiles_hint'))
+            .fontSize(12).fontColor($r('app.color.text_3'))
+          Button($r('app.string.import_link_subscription'))
+            .height(38)
+            .backgroundColor($r('app.color.primary'))
+            .fontColor($r('app.color.surface'))
+            .onClick(() => this.openImportDialog())
+        }
+        .width('100%')
+        .layoutWeight(1)
+        .justifyContent(FlexAlign.Center)
+      } else {
+        if (this.sortedGroupIds().length >= 2) {
+          Tabs({ barPosition: BarPosition.Start, index: this.groupTabIndex }) {
+            ForEach(this.sortedGroupIds(), (groupId: string) => {
+              TabContent() {
+                this.nodeListFor(groupId)
+              }
+              .tabBar(this.groupName(groupId))
+            }, (groupId: string) => groupId)
+          }
+          .barMode(BarMode.Scrollable)
+          .onChange((index: number) => { this.groupTabIndex = index; })
+          .layoutWeight(1)
+          .width('100%')
+        } else {
+          Column() {
+            this.nodeListFor(this.sortedGroupIds().length > 0 ? this.sortedGroupIds()[0] : '')
+          }
+          .width('100%')
+          .margin({ top: 4 })
+        }
+      }
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  private activeGroupId(): string {
+    const entries = this.sortedGroupIds();
+    if (entries.length === 0) {
+      return '';
+    }
+    const index = this.groupTabIndex < entries.length ? this.groupTabIndex : 0;
+    return entries[index];
+  }
+
+  // ---------------------------------------------------------------- 底部 StatsBar + FAB(对齐安卓)
+
+  @Builder
+  private statsBar() {
+    Row({ space: 12 }) {
+      Text(`↑ ${formatSpeed(this.upSpeed)}`)
+        .fontSize(12).fontColor($r('app.color.text_2'))
+        .fontFamily('monospace')
+      Text(`↓ ${formatSpeed(this.downSpeed)}`)
+        .fontSize(12).fontColor($r('app.color.text_2'))
+        .fontFamily('monospace')
+      Row({ space: 6 }) {
+        Circle()
+          .width(7).height(7)
+          .fill(this.isRunning ? $r('app.color.dot_live') : $r('app.color.text_3'))
+        Text(this.statusDisplay())
+          .fontSize(12).fontColor($r('app.color.text_2'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      }
+      .layoutWeight(1)
+      .justifyContent(FlexAlign.End)
+    }
+    .width('100%')
+    .height(44)
+    .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
+    .border({ width: { top: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
+    .onClick(() => {
+      const target = this.selectedProfile();
+      if (target !== undefined && this.isRunning) {
+        this.runUrlTest(target);
+      }
+    })
+  }
+
+  @Builder
+  private fabButton() {
+    Stack() {
+      Circle()
+        .width(56)
+        .height(56)
+        .fill(this.isRunning ? $r('app.color.success') : $r('app.color.primary'))
+        .shadow({ radius: 12, color: 'rgba(0,0,0,0.3)', offsetY: 4 })
+      if (this.statusText === 'connecting' || this.statusText === 'switching') {
+        LoadingProgress()
+          .width(24).height(24).color($r('app.color.surface'))
+      } else {
+        Text(this.isRunning ? '■' : '▶')
+          .fontSize(this.isRunning ? 20 : 18)
+          .fontColor($r('app.color.surface'))
+      }
+    }
+    .width(56)
+    .height(56)
+    .margin({ right: 24, bottom: 58 })
+    .onClick(() => this.toggleVpn())
+  }
+
+  // ---------------------------------------------------------------- 内容切换 + 骨架
+
+  @Builder
+  private activeContent() {
+    if (this.activeTab === 0) {
+      this.configFragment()
+    } else if (this.activeTab === 1) {
+      GroupPage({
+        onDataChanged: () => {
+          this.refresh();
+        }
+      })
+    } else if (this.activeTab === 2) {
+      SettingsPage({
+        onSettingsChanged: (settings: AppSettings) => {
+          this.settings = settings;
+        }
+      })
+    } else if (this.activeTab === 3) {
+      DashboardPage()
+    } else if (this.activeTab === 4) {
+      ToolsPage()
+    } else {
+      AboutPage()
     }
   }
 
   build() {
-    Column() {
-      if (!this.usesSidebar()) {
+    Stack({ alignContent: Alignment.BottomEnd }) {
+      Column() {
         Column() {
           this.activeContent()
         }
         .width('100%')
         .layoutWeight(1)
-        this.bottomNavigation()
-      } else {
-        Row() {
-          this.wideNavigation()
-          Column() {
-            this.activeContent()
-          }
-          .layoutWeight(1)
-          .height('100%')
-        }
-        .width('100%')
-        .height('100%')
+        this.statsBar()
       }
+      .width('100%')
+      .height('100%')
+      .backgroundColor($r('app.color.bg_page'))
+
+      if (this.activeTab === 0) {
+        this.fabButton()
+      }
+
+      this.drawerOverlay()
     }
     .width('100%')
     .height('100%')
@@ -1243,49 +1336,6 @@ struct Index {
 }
 
 /** 分享降级弹窗:SDK 未提供 generateBarcode 时展示 URI 并支持复制。 */
-
-@CustomDialog
-struct SubscriptionGroupDialog {
-  controller?: CustomDialogController;
-  @Link name: string;
-  @Link group: string;
-  onSaved: (name: string, group: string) => void = (_name: string, _group: string) => {};
-
-  build() {
-    Column({ space: 12 }) {
-      Text($r('app.string.sub_group_dialog_title'))
-        .fontSize(16)
-        .fontWeight(600)
-        .width('100%')
-      TextInput({ text: this.name, placeholder: $r('app.string.subscription_name_optional') })
-        .width('100%')
-        .onChange((value: string) => { this.name = value; })
-      TextInput({ text: this.group, placeholder: $r('app.string.sub_group_hint') })
-        .width('100%')
-        .onChange((value: string) => { this.group = value; })
-      Row({ space: 8 }) {
-        Button($r('app.string.cancel'))
-          .layoutWeight(1)
-          .onClick(() => {
-            if (this.controller !== undefined) {
-              this.controller.close();
-            }
-          })
-        Button($r('app.string.save'))
-          .layoutWeight(1)
-          .onClick(() => {
-            this.onSaved(this.name, this.group);
-            if (this.controller !== undefined) {
-              this.controller.close();
-            }
-          })
-      }
-      .width('100%')
-    }
-    .padding(UiSpec.PAGE_PADDING)
-    .width('100%')
-  }
-}
 @CustomDialog
 struct ShareTextDialog {
   controller?: CustomDialogController;
@@ -1388,13 +1438,15 @@ struct ImportDialog {
   }
 }
 
-/** 统一添加入口弹窗:新建节点 / 导入订阅 */
+/** 统一添加入口弹窗:导入订阅 / 新建节点 / 剪贴板导入 */
 @CustomDialog
 struct AddEntryDialog {
   controller?: CustomDialogController;
   onNewProfile: () => void = () => {
   };
   onImportSubscription: () => void = () => {
+  };
+  onImportClipboard: () => void = () => {
   };
 
   build() {
@@ -1409,6 +1461,17 @@ struct AddEntryDialog {
             this.controller.close();
           }
           this.onImportSubscription();
+        })
+      Button($r('app.string.import_from_clipboard'))
+        .width('100%')
+        .height(UiSpec.BTN_HEIGHT)
+        .backgroundColor($r('app.color.surface'))
+        .fontColor($r('app.color.text_primary'))
+        .onClick(() => {
+          if (this.controller !== undefined) {
+            this.controller.close();
+          }
+          this.onImportClipboard();
         })
       Button($r('app.string.profile_new_title'))
         .width('100%')

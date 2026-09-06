@@ -146,3 +146,11 @@
 - [x] 通知轮询在 onDestroy、断开、启动失败、异常回滚、无待启动目标及统一 teardown 路径停止，并同步取消通知。
 - [x] SettingsPage 七组默认展开可折叠，持久控件统一 dirty 保存语义；switchMode 保留即时保存，外观即时应用后标脏，成功保存/恢复清 dirty。
 - [x] 仅执行静态审查；本轮未运行构建、打包或真机测试。
+
+
+## P 轮:对齐安卓 NekoBox for Android(main 分支)—— 状态:✅ 已完成开发并本机编译通过(2026-09-06,versionCode 1001917)
+
+- 基准:MatsuriDayo/NekoBoxForAndroid main 分支源码(本机 nekobox-android/ 目录);视觉沿用 UiSpec 鸿蒙原生观感,信息架构/功能/交互对齐安卓。
+- 已交付:协议 14 种(新增 SSH/ShadowTLS/自定义出站/链式代理及全部 TLS/Mux/端口跳跃等字段)、设置页四大新组(常规/路由/DNS/入站)、抽屉导航 + StatsBar + FAB、分组管理页(GroupFragment 对齐)、工具页(STUN + 恢复出厂)、关于页(检查更新/内核版本)、yacd Dashboard(内置 yacd.zip + external_ui)、链接解析扩展(ssh/socks4/SS 插件)。
+- 真机风险项:FakeDNS、yacd 面板加载、链式代理真实连接、STUN 探测、mixedPort 局域网访问。
+- 内核限制(冻结 sing-box 1.11.9):anytls/mieru/naive/trojan-go 不支持,未导入以避免死节点。

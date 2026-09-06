@@ -88,14 +88,39 @@ export async function loadSettings(): Promise<AppSettings> {
     s.navLayout = 'bottom';
   }
   s.clashApiPort = Math.max(1024, Math.min(65535, s.clashApiPort));
+  // 新设置项校验(非法值回退默认,防止脏数据破坏配置生成)
+  const LOG_LEVELS: Array<string> = ['trace', 'debug', 'info', 'warn', 'error'];
+  if (LOG_LEVELS.indexOf(s.logLevel) < 0) {
+    s.logLevel = 'info';
+  }
+  const SNIFF_MODES: Array<string> = ['off', 'route', 'override'];
+  if (SNIFF_MODES.indexOf(s.sniffMode) < 0) {
+    s.sniffMode = 'route';
+  }
+  const STRATEGIES: Array<string> = ['', 'auto', 'prefer_ipv4', 'prefer_ipv6', 'ipv4_only', 'ipv6_only'];
+  if (STRATEGIES.indexOf(s.remoteDnsStrategy) < 0) {
+    s.remoteDnsStrategy = '';
+  }
+  if (STRATEGIES.indexOf(s.directDnsStrategy) < 0) {
+    s.directDnsStrategy = '';
+  }
+  if (s.mixedPort !== 0) {
+    s.mixedPort = Math.max(1024, Math.min(65535, s.mixedPort));
+  }
+  if (s.testConcurrent < 1 || s.testConcurrent > 20) {
+    s.testConcurrent = 5;
+  }
+  if (s.testUrl.trim().length === 0) {
+    s.testUrl = 'http://cp.cloudflare.com/';
+  }
   if (s.clashApiSecret.length === 0) {
     s.clashApiSecret = `${Date.now().toString(36)}${Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36)}`;
     await pref.put(KEY_SETTINGS, JSON.stringify(s));
     await pref.flush();
   }
-  // 迁移:旧默认的 DoH 远程 DNS 在全局模式下整体失效,迁到 UDP 经代理
-  if (s.remoteDns === 'https://8.8.8.8/dns-query') {
-    s.remoteDns = 'udp://8.8.8.8';
+  // 迁移旧版默认 DNS；仅迁移历史默认值，不覆盖用户自定义地址。
+  if (s.remoteDns === 'https://8.8.8.8/dns-query' || s.remoteDns === 'udp://8.8.8.8') {
+    s.remoteDns = 'tcp://8.8.8.8';
   }
   return s;
 }
@@ -103,6 +128,13 @@ export async function loadSettings(): Promise<AppSettings> {
 export async function saveSettings(s: AppSettings): Promise<void> {
   const pref = await requirePref();
   await pref.put(KEY_SETTINGS, JSON.stringify(s));
+  await pref.flush();
+}
+
+/** 恢复出厂:清空全部配置存储(节点/分组/设置/订阅/规则) */
+export async function resetAllData(): Promise<void> {
+  const pref = await requirePref();
+  await pref.clear();
   await pref.flush();
 }
 

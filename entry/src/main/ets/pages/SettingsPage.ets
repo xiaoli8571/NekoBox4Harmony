@@ -15,6 +15,7 @@ import { exportBackup, importBackup } from '../core/Backup';
 import { getClipboardText } from '../utils/ClipboardHelper';
 import { geoReady, downloadGeoAssets } from '../utils/GeoAssets';
 import { VpnService } from '../core/VpnService';
+import window from '@ohos.window';
 
 const APP_MODES: Array<string> = ['off', 'exclude', 'include'];
 const APP_MODE_LABELS: Array<Resource> = [$r('app.string.per_app_off'), $r('app.string.per_app_exclude'), $r('app.string.per_app_include')];
@@ -23,6 +24,11 @@ const STACKS: Array<string> = ['system'];
 const MODES: Array<string> = ['rule', 'global', 'direct'];
 const MODE_LABELS: Array<Resource> = [$r('app.string.mode_rule'), $r('app.string.mode_global'), $r('app.string.mode_direct')];
 const MODE_SWITCH_TOASTS: Array<Resource> = [$r('app.string.settings_mode_switched_rule'), $r('app.string.settings_mode_switched_global'), $r('app.string.settings_mode_switched_direct')];
+const LOG_LEVELS: Array<string> = ['trace', 'debug', 'info', 'warn', 'error'];
+const SNIFF_MODES: Array<string> = ['off', 'route', 'override'];
+const SNIFF_LABELS: Array<Resource> = [$r('app.string.sniff_off'), $r('app.string.sniff_route'), $r('app.string.sniff_override')];
+const STRATEGIES: Array<string> = ['', 'auto', 'prefer_ipv4', 'prefer_ipv6', 'ipv4_only', 'ipv6_only'];
+const STRATEGY_LABELS: Array<Resource> = [$r('app.string.strategy_default'), $r('app.string.strategy_auto'), $r('app.string.strategy_prefer_ipv4'), $r('app.string.strategy_prefer_ipv6'), $r('app.string.strategy_ipv4_only'), $r('app.string.strategy_ipv6_only')];
 
 class InstalledAppItem {
   bundleName: string = '';
@@ -48,13 +54,16 @@ export struct SettingsPage {
   @State backupFileBusy: boolean = false;
   @State appVersion: string = '';
   @State dirty: boolean = false;
-  @State proxyExpanded: boolean = true;
-  @State networkExpanded: boolean = true;
-  @State appearanceExpanded: boolean = true;
-  @State apiExpanded: boolean = true;
-  @State perAppExpanded: boolean = true;
-  @State backupExpanded: boolean = true;
-  @State otherExpanded: boolean = true;
+  @State proxyExpanded: boolean = false;
+  @State generalExpanded: boolean = false;
+  @State networkExpanded: boolean = false;
+  @State dnsExpanded: boolean = false;
+  @State inboundExpanded: boolean = false;
+  @State appearanceExpanded: boolean = false;
+  @State apiExpanded: boolean = false;
+  @State perAppExpanded: boolean = false;
+  @State backupExpanded: boolean = false;
+  @State otherExpanded: boolean = false;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   onSettingsChanged: (settings: AppSettings) => void = (_settings: AppSettings) => {};
 
@@ -110,13 +119,44 @@ export struct SettingsPage {
     return i < 0 ? 0 : i;
   }
 
-  private applyAppearance(): void {
-    const colorMode = this.s.appearance === 'dark'
-      ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
-      : (this.s.appearance === 'light'
-        ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
-        : ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
-    this.context.setColorMode(colorMode);
+  private colorToString(color: number): string {
+    return `#${(color >>> 0).toString(16).padStart(8, '0').toUpperCase()}`;
+  }
+
+  private async applyAppearance(): Promise<void> {
+    try {
+      await saveSettings(this.s);
+      this.dirty = false;
+      const colorMode = this.s.appearance === 'dark'
+        ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
+        : (this.s.appearance === 'light'
+          ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
+          : ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+      this.context.setColorMode(colorMode);
+
+      const mainWindow = await window.getLastWindow(this.context);
+      const background = this.context.resourceManager.getColorSync($r('app.color.app_background'));
+      const red = (background >> 16) & 0xFF;
+      const green = (background >> 8) & 0xFF;
+      const blue = background & 0xFF;
+      const darkBackground = (red * 299 + green * 587 + blue * 114) / 1000 < 128;
+      const backgroundColor = this.colorToString(background);
+      const contentColor = darkBackground
+        ? UiSpec.STATUS_BAR_CONTENT_DARK_BG
+        : UiSpec.STATUS_BAR_CONTENT_LIGHT_BG;
+      mainWindow.setWindowBackgroundColor(backgroundColor);
+      mainWindow.setWindowSystemBarProperties({
+        statusBarColor: backgroundColor,
+        navigationBarColor: backgroundColor,
+        statusBarContentColor: contentColor,
+        navigationBarContentColor: contentColor
+      });
+      this.onSettingsChanged(this.s);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : `${e}`;
+      LogStore.addLog(`[ui] 即时应用主题失败: ${message}`);
+      promptAction.showToast({ message: $r('app.string.save_failed_reason', message) });
+    }
   }
 
   private markDirty(): void {
@@ -410,30 +450,91 @@ export struct SettingsPage {
 
       Scroll() {
         Column({ space: 14 }) {
-          // 代理
-          this.sectionHeader('▶', $r('app.string.outbound_mode'), this.proxyExpanded, () => { this.proxyExpanded = !this.proxyExpanded; })
-          if (this.proxyExpanded) {
-          Column() {
-            Row({ space: 8 }) {
-              ForEach(MODES, (m: string, idx: number) => {
-                Button(MODE_LABELS[idx])
-                  .layoutWeight(1)
-                  .backgroundColor(this.s.mode === m ? $r('app.color.primary') : $r('app.color.surface'))
-                  .fontColor(this.s.mode === m ? $r('app.color.surface') : $r('app.color.text_primary'))
-                  .onClick(() => {
-                    this.switchMode(m, MODE_SWITCH_TOASTS[idx]);
-                  })
-              }, (m: string) => m)
+          // 常规(对齐 Android General 组)
+          this.sectionHeader('✦', $r('app.string.settings_general'), this.generalExpanded, () => { this.generalExpanded = !this.generalExpanded; })
+          if (this.generalExpanded) {
+          Column({ space: 8 }) {
+            Column() {
+              Text($r('app.string.settings_log_level')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              Select(LOG_LEVELS.map((t: string) => ({ value: t } as SelectOption)))
+                .selected(LOG_LEVELS.indexOf(this.s.logLevel) < 0 ? 2 : LOG_LEVELS.indexOf(this.s.logLevel))
+                .value(this.s.logLevel)
+                .onSelect((index: number) => {
+                  this.s.logLevel = LOG_LEVELS[index];
+                  this.markDirty();
+                })
+            }.alignItems(HorizontalAlign.Start).width('100%')
+
+            Column() {
+              Text($r('app.string.settings_test_url')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              TextInput({ text: this.s.testUrl })
+                .width('100%').height(40)
+                .onChange((v: string) => {
+                  this.s.testUrl = v;
+                  this.markDirty();
+                })
+            }.alignItems(HorizontalAlign.Start).width('100%')
+
+            Column() {
+              Text($r('app.string.settings_test_concurrent')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              TextInput({ text: `${this.s.testConcurrent}` })
+                .type(InputType.Number).width('100%').height(40)
+                .onChange((v: string) => {
+                  const n = parseInt(v);
+                  this.s.testConcurrent = isNaN(n) ? 5 : Math.max(1, Math.min(20, n));
+                  this.markDirty();
+                })
+            }.alignItems(HorizontalAlign.Start).width('100%')
+
+            Row() {
+              Text($r('app.string.settings_always_show_address')).fontSize(14).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.alwaysShowAddress })
+                .onChange((v: boolean) => {
+                  this.s.alwaysShowAddress = v;
+                  this.markDirty();
+                })
             }.width('100%')
-            Text(this.s.mode === 'direct' ? $r('app.string.settings_mode_desc_direct')
-              : this.s.mode === 'global' ? $r('app.string.settings_mode_desc_global') : $r('app.string.settings_mode_desc_rule'))
-              .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+
+            Row() {
+              Text($r('app.string.settings_notification_group')).fontSize(14).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.notificationGroup })
+                .onChange((v: boolean) => {
+                  this.s.notificationGroup = v;
+                  this.markDirty();
+                })
+            }.width('100%')
+
+            Row() {
+              Column() {
+                Text($r('app.string.settings_insecure_tls')).fontSize(14)
+                Text($r('app.string.settings_insecure_tls_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.allowInsecureAll })
+                .onChange((v: boolean) => {
+                  this.s.allowInsecureAll = v;
+                  this.markDirty();
+                })
+            }.width('100%')
+
+            Row() {
+              Column() {
+                Text($r('app.string.settings_sub_allow_insecure')).fontSize(14)
+                Text($r('app.string.settings_sub_allow_insecure_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.subAllowInsecure })
+                .onChange((v: boolean) => {
+                  this.s.subAllowInsecure = v;
+                  this.markDirty();
+                })
+            }.width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
+
+          Blank().height(2)
 
           }
 
-          // 网络
-          this.sectionHeader('▤', $r('app.string.settings_network'), this.networkExpanded, () => { this.networkExpanded = !this.networkExpanded; })
+          // 路由
+          this.sectionHeader('▤', $r('app.string.settings_route'), this.networkExpanded, () => { this.networkExpanded = !this.networkExpanded; })
           if (this.networkExpanded) {
           Row() {
             Column() {
@@ -499,28 +600,6 @@ export struct SettingsPage {
               })
           }.alignItems(HorizontalAlign.Start).width('100%')
 
-          Column() {
-            Text($r('app.string.settings_remote_dns')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            TextInput({ text: this.s.remoteDns })
-              .width('100%').height(40)
-              .onChange((v: string) => {
-                this.s.remoteDns = v;
-                this.markDirty();
-              })
-            Text($r('app.string.settings_remote_dns_hint'))
-              .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-          }.alignItems(HorizontalAlign.Start).width('100%')
-
-          Column() {
-            Text($r('app.string.settings_direct_dns')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            TextInput({ text: this.s.directDns })
-              .width('100%').height(40)
-              .onChange((v: string) => {
-                this.s.directDns = v;
-                this.markDirty();
-              })
-          }.alignItems(HorizontalAlign.Start).width('100%')
-
           Row() {
             Text($r('app.string.settings_enable_ipv6')).fontSize(14).layoutWeight(1)
             Toggle({ type: ToggleType.Switch, isOn: this.s.ipv6 })
@@ -529,6 +608,146 @@ export struct SettingsPage {
                 this.markDirty();
               })
           }.width('100%')
+
+          Row() {
+            Column() {
+              Text($r('app.string.settings_bypass_lan')).fontSize(14)
+              Text($r('app.string.settings_bypass_lan_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
+            }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.s.bypassLan })
+              .onChange((v: boolean) => {
+                this.s.bypassLan = v;
+                this.markDirty();
+              })
+          }.width('100%')
+
+          Column() {
+            Text($r('app.string.settings_sniff')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+            Row({ space: 8 }) {
+              ForEach(SNIFF_MODES, (m: string, idx: number) => {
+                Button(SNIFF_LABELS[idx])
+                  .layoutWeight(1)
+                  .height(34)
+                  .backgroundColor(this.s.sniffMode === m ? $r('app.color.primary') : $r('app.color.surface'))
+                  .fontColor(this.s.sniffMode === m ? $r('app.color.surface') : $r('app.color.text_primary'))
+                  .onClick(() => {
+                    this.s.sniffMode = m;
+                    this.markDirty();
+                  })
+              }, (m: string) => m)
+            }.width('100%')
+          }.alignItems(HorizontalAlign.Start).width('100%')
+
+          Blank().height(2)
+
+          }
+
+          // DNS(对齐 Android DNS 组)
+          this.sectionHeader('◎', $r('app.string.settings_dns'), this.dnsExpanded, () => { this.dnsExpanded = !this.dnsExpanded; })
+          if (this.dnsExpanded) {
+          Column({ space: 8 }) {
+            Column() {
+              Text($r('app.string.settings_remote_dns')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              TextInput({ text: this.s.remoteDns })
+                .width('100%').height(40)
+                .onChange((v: string) => {
+                  this.s.remoteDns = v;
+                  this.markDirty();
+                })
+              Text($r('app.string.settings_remote_dns_hint'))
+                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+            }.alignItems(HorizontalAlign.Start).width('100%')
+
+            Column() {
+              Text($r('app.string.settings_remote_dns_strategy')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              Select(STRATEGIES.map((t: string, i: number) => ({ value: STRATEGY_LABELS[i] } as SelectOption)))
+                .selected(STRATEGIES.indexOf(this.s.remoteDnsStrategy) < 0 ? 0 : STRATEGIES.indexOf(this.s.remoteDnsStrategy))
+                .value(STRATEGY_LABELS[STRATEGIES.indexOf(this.s.remoteDnsStrategy) < 0 ? 0 : STRATEGIES.indexOf(this.s.remoteDnsStrategy)])
+                .onSelect((index: number) => {
+                  this.s.remoteDnsStrategy = STRATEGIES[index];
+                  this.markDirty();
+                })
+            }.alignItems(HorizontalAlign.Start).width('100%')
+
+            Column() {
+              Text($r('app.string.settings_direct_dns')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              TextInput({ text: this.s.directDns })
+                .width('100%').height(40)
+                .onChange((v: string) => {
+                  this.s.directDns = v;
+                  this.markDirty();
+                })
+            }.alignItems(HorizontalAlign.Start).width('100%')
+
+            Column() {
+              Text($r('app.string.settings_direct_dns_strategy')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              Select(STRATEGIES.map((t: string, i: number) => ({ value: STRATEGY_LABELS[i] } as SelectOption)))
+                .selected(STRATEGIES.indexOf(this.s.directDnsStrategy) < 0 ? 0 : STRATEGIES.indexOf(this.s.directDnsStrategy))
+                .value(STRATEGY_LABELS[STRATEGIES.indexOf(this.s.directDnsStrategy) < 0 ? 0 : STRATEGIES.indexOf(this.s.directDnsStrategy)])
+                .onSelect((index: number) => {
+                  this.s.directDnsStrategy = STRATEGIES[index];
+                  this.markDirty();
+                })
+            }.alignItems(HorizontalAlign.Start).width('100%')
+
+            Row() {
+              Column() {
+                Text($r('app.string.settings_dns_routing')).fontSize(14)
+                Text($r('app.string.settings_dns_routing_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.dnsRouting })
+                .onChange((v: boolean) => {
+                  this.s.dnsRouting = v;
+                  this.markDirty();
+                })
+            }.width('100%')
+
+            Row() {
+              Column() {
+                Text($r('app.string.settings_fakedns')).fontSize(14)
+                Text($r('app.string.settings_fakedns_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.fakeDns })
+                .onChange((v: boolean) => {
+                  this.s.fakeDns = v;
+                  this.markDirty();
+                })
+            }.width('100%')
+          }.alignItems(HorizontalAlign.Start).width('100%')
+
+          Blank().height(2)
+
+          }
+
+          // 入站(对齐 Android Inbound 组)
+          this.sectionHeader('⇄', $r('app.string.settings_inbound'), this.inboundExpanded, () => { this.inboundExpanded = !this.inboundExpanded; })
+          if (this.inboundExpanded) {
+          Column({ space: 8 }) {
+            Column() {
+              Text($r('app.string.settings_mixed_port')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              TextInput({ text: `${this.s.mixedPort > 0 ? this.s.mixedPort : ''}`, placeholder: $r('app.string.settings_mixed_port_hint') })
+                .type(InputType.Number).width('100%').height(40)
+                .onChange((v: string) => {
+                  const n = parseInt(v);
+                  this.s.mixedPort = isNaN(n) ? 0 : Math.max(0, Math.min(65535, n));
+                  this.markDirty();
+                })
+            }.alignItems(HorizontalAlign.Start).width('100%')
+
+            Row() {
+              Column() {
+                Text($r('app.string.settings_allow_access')).fontSize(14)
+                Text($r('app.string.settings_allow_access_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.allowAccess })
+                .onChange((v: boolean) => {
+                  this.s.allowAccess = v;
+                  this.markDirty();
+                })
+            }.width('100%')
+            Text($r('app.string.settings_reconnect_note'))
+              .fontSize(12).fontColor($r('app.color.error')).width('100%')
+          }.alignItems(HorizontalAlign.Start).width('100%')
 
           Blank().height(2)
 
@@ -550,20 +769,6 @@ export struct SettingsPage {
                     this.markDirty();
                   })
               }, (mode: string) => mode)
-            }.width('100%')
-            Text($r('app.string.nav_layout')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            Row({ space: 8 }) {
-              ForEach(['bottom', 'side'], (layout: string) => {
-                Button(layout === 'side' ? $r('app.string.nav_layout_side') : $r('app.string.nav_layout_bottom'))
-                  .layoutWeight(1)
-                  .backgroundColor(Color.Transparent)
-                  .fontColor(this.s.navLayout === layout ? $r('app.color.mono') : $r('app.color.text_primary'))
-                  .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: this.s.navLayout === layout ? $r('app.color.mono') : $r('app.color.hairline') })
-                  .onClick(() => {
-                    this.s.navLayout = layout;
-                    this.markDirty();
-                  })
-              }, (layout: string) => layout)
             }.width('100%')
             Text($r('app.string.profile_sort_mode')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
             Row({ space: 8 }) {
@@ -781,18 +986,6 @@ export struct SettingsPage {
           }.alignItems(HorizontalAlign.Start).width('100%')
 
           Blank().height(2)
-
-          Row() {
-            Column() {
-              Text($r('app.string.settings_insecure_tls')).fontSize(14)
-              Text($r('app.string.settings_insecure_tls_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
-            }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-            Toggle({ type: ToggleType.Switch, isOn: this.s.allowInsecureAll })
-              .onChange((v: boolean) => {
-                  this.s.allowInsecureAll = v;
-                  this.markDirty();
-                })
-          }.width('100%')
 
           Text($r('app.string.settings_reconnect_note'))
             .fontSize(12).fontColor($r('app.color.error')).width('100%')

@@ -164,6 +164,12 @@ function exportUserinfoHttp(p: Profile, scheme: string): string {
   return `${scheme}://${userinfo}${hostPort(p)}${fragment(p.name)}`;
 }
 
+// ---------------------------------------------------------------- ssh
+function exportSsh(p: Profile): string {
+  const userinfo = p.username.length > 0 ? `${enc(p.username)}@` : '';
+  return `ssh://${userinfo}${hostPort(p)}${fragment(p.name)}`;
+}
+
 /** 导出单条分享链接;不支持的协议(WireGuard)返回空串 */
 export function exportProfileLink(p: Profile): string {
   switch (p.type) {
@@ -185,6 +191,8 @@ export function exportProfileLink(p: Profile): string {
       return exportUserinfoHttp(p, p.tls ? 'https' : 'http');
     case ProfileType.SOCKS:
       return exportUserinfoHttp(p, 'socks');
+    case ProfileType.SSH:
+      return exportSsh(p);
     default:
       return '';
   }

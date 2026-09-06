@@ -59,8 +59,19 @@ export class VpnService {
       const running: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
       const status: string = AppStorage.get<string>('vpnStatus') ?? '';
       if (!running && status === 'connecting') {
-        AppStorage.setOrCreate('vpnStatus', 'start_timeout');
-        LogStore.addLog('[app] VPN 启动看门狗超时(60s):扩展状态未同步，保留当前 VPN 避免误杀数据面');
+        const upSpeed: number = AppStorage.get<number>('vpnUpSpeed') ?? 0;
+        const downSpeed: number = AppStorage.get<number>('vpnDownSpeed') ?? 0;
+        const totalUp: number = AppStorage.get<number>('vpnTotalUp') ?? 0;
+        const totalDown: number = AppStorage.get<number>('vpnTotalDown') ?? 0;
+        const hasDataPlaneEvidence = upSpeed > 0 || downSpeed > 0 || totalUp > 0 || totalDown > 0;
+        if (hasDataPlaneEvidence) {
+          AppStorage.setOrCreate('vpnRunning', true);
+          AppStorage.setOrCreate('vpnRunningProfileId', profileId);
+          AppStorage.setOrCreate('vpnStatus', 'connected');
+          LogStore.addLog('[app] VPN 状态回调缺失，但已检测到流量，按数据面状态恢复为已连接');
+        } else {
+          LogStore.addLog('[app] VPN 启动 60s 后仍未收到状态回调，保持连接中并等待后续控制面或流量同步');
+        }
       }
     }, 60000);
     })();

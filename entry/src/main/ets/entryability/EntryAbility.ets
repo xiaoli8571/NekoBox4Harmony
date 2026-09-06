@@ -83,6 +83,37 @@ export default class EntryAbility extends UIAbility {
     }
   }
 
+  private colorToString(color: number): string {
+    return `#${(color >>> 0).toString(16).padStart(8, '0').toUpperCase()}`;
+  }
+
+  private async syncWindowAppearance(win?: window.Window): Promise<void> {
+    const target = win ?? this.mainWindow;
+    if (target === undefined) {
+      return;
+    }
+    try {
+      const background = this.context.resourceManager.getColorSync($r('app.color.app_background'));
+      const red = (background >> 16) & 0xFF;
+      const green = (background >> 8) & 0xFF;
+      const blue = background & 0xFF;
+      const darkBackground = (red * 299 + green * 587 + blue * 114) / 1000 < 128;
+      const backgroundColor = this.colorToString(background);
+      const contentColor = darkBackground
+        ? UiSpec.STATUS_BAR_CONTENT_DARK_BG
+        : UiSpec.STATUS_BAR_CONTENT_LIGHT_BG;
+      target.setWindowBackgroundColor(backgroundColor);
+      target.setWindowSystemBarProperties({
+        statusBarColor: backgroundColor,
+        navigationBarColor: backgroundColor,
+        statusBarContentColor: contentColor,
+        navigationBarContentColor: contentColor
+      });
+    } catch (e) {
+      LogStore.addLog(`[app] 同步窗口主题失败: ${e}`);
+    }
+  }
+
   private async applyAppearance(): Promise<void> {
     try {
       await initStore(this.context);
@@ -93,6 +124,7 @@ export default class EntryAbility extends UIAbility {
           ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
           : ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
       this.context.setColorMode(colorMode);
+      await this.syncWindowAppearance();
     } catch (e) {
       LogStore.addLog(`[app] 应用主题失败: ${e}`);
     }
@@ -129,6 +161,11 @@ export default class EntryAbility extends UIAbility {
       AppStorage.setOrCreate('vpnRunning', running);
       AppStorage.setOrCreate('vpnStatus', status);
       AppStorage.setOrCreate('vpnRunningProfileId', profileId);
+    }, (upSpeed: number, downSpeed: number, totalUp: number, totalDown: number) => {
+      AppStorage.setOrCreate('vpnUpSpeed', upSpeed);
+      AppStorage.setOrCreate('vpnDownSpeed', downSpeed);
+      AppStorage.setOrCreate('vpnTotalUp', totalUp);
+      AppStorage.setOrCreate('vpnTotalDown', totalDown);
     });
   }
 
@@ -150,6 +187,7 @@ export default class EntryAbility extends UIAbility {
         this.mainWindow = win;
         this.publishBreakpoint(win.getWindowProperties().windowRect.width);
         win.on('windowSizeChange', this.windowSizeListener);
+        this.syncWindowAppearance(win);
       }).catch((e: Object) => {
         LogStore.addLog(`[ui] 初始化窗口断点失败: ${e}`);
       });

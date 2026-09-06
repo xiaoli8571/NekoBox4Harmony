@@ -68,10 +68,14 @@ function parseOne(line: string): Profile | null {  if (line.startsWith('ss://'))
   if (line.startsWith('tuic://')) {
     return parseUserinfoLink(line, ProfileType.TUIC);
   }
+  if (line.startsWith('ssh://')) {
+    return parseUserinfoLink(line, ProfileType.SSH);
+  }
   if (line.startsWith('http://') || line.startsWith('https://')) {
     return parseUserinfoLink(line, ProfileType.HTTP);
   }
-  if (line.startsWith('socks://') || line.startsWith('socks5://')) {
+  if (line.startsWith('socks://') || line.startsWith('socks5://')
+    || line.startsWith('socks4://') || line.startsWith('socks4a://')) {
     return parseUserinfoLink(line, ProfileType.SOCKS);
   }
   return null;
@@ -241,8 +245,9 @@ function parseShadowsocks(link: string): Profile | null {
     p.server = hp[0];
     p.serverPort = hp[1];
     if (qstr(q, 'plugin').length > 0) {
-      // 插件(simple-obfs/v2ray-plugin)暂不支持
-      return null;
+      // 插件(obfs-local / v2ray-plugin):内核 shadowsocks 出站原生支持 plugin/plugin_opts
+      p.ssPlugin = qstr(q, 'plugin');
+      p.ssPluginOpts = qstr(q, 'plugin-opts');
     }
   } else {
     // 旧版: ss://base64(method:password@host:port)
@@ -403,6 +408,12 @@ function parseUserinfoLink(link: string, type: string): Profile | null {
       p.sni = qstr(q, 'sni');
       p.alpn = qstr(q, 'alpn', 'h3');
       p.allowInsecure = qbool(q, 'allow_insecure') || qbool(q, 'insecure');
+      break;
+    }
+    case ProfileType.SSH: {
+      p.username = decodeURIComponentSafe(userinfo);
+      p.sshAuthType = userinfo.length > 0 ? 'password' : 'none';
+      p.tls = false;
       break;
     }
     case ProfileType.HTTP:

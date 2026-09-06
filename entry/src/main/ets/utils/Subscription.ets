@@ -22,13 +22,8 @@ export interface SubUserInfo {
 }
 
 export async function fetchSubscriptionWithInfo(url: string): Promise<SubFetchResult> {
-  const content = await fetchSubscriptionRaw(url, true);
-  const userinfo = lastResponseUserinfo;
-  const r: SubFetchResult = { content: content, userinfo: userinfo };
-  return r;
+  return await doFetchSubscription(url, true);
 }
-
-let lastResponseUserinfo: string = '';
 
 async function fetchSubscriptionRaw(url: string, withInfo: boolean): Promise<string> {
   const r = await doFetchSubscription(url, withInfo);
@@ -55,20 +50,25 @@ async function doFetchSubscription(url: string, withInfo: boolean): Promise<SubF
     if (resp.responseCode < 200 || resp.responseCode >= 300) {
       throw new Error(`订阅服务器返回 HTTP ${resp.responseCode}`);
     }
+    let responseUserinfo = '';
     if (withInfo) {
-      // 订阅流量/到期信息在响应头 subscription-userinfo 中
+      // 每次请求只读取自身响应头，避免多个订阅之间串用到期信息。
       const respHeaders = resp.header as Record<string, string>;
       if (respHeaders !== undefined && respHeaders !== null) {
         const headerKeys = Object.keys(respHeaders);
         for (const hk of headerKeys) {
           if (hk.toLowerCase() === 'subscription-userinfo') {
-            lastResponseUserinfo = respHeaders[hk];
+            responseUserinfo = respHeaders[hk];
+            break;
           }
         }
       }
     }
     const body: string | Object | ArrayBuffer = resp.result;
-    const result: SubFetchResult = { content: typeof body === 'string' ? body : `${body}`, userinfo: '' };
+    const result: SubFetchResult = {
+      content: typeof body === 'string' ? body : `${body}`,
+      userinfo: responseUserinfo
+    };
     return result;
   } finally {
     client.destroy();

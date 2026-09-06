@@ -431,3 +431,36 @@ Existing notification files reviewed:
 - 通知流量轮询仅在 VPN 已运行且 Clash API 已启用时启动；断开、onDestroy、启动失败、异常回滚、无待启动节点和统一 teardown 均停止轮询并取消通知，异步轮询通过 generation 防止停止后回写。
 - 设置页七组默认展开且可折叠；统一保存按钮仅 dirty 时可用。除 switchMode 继续即时持久化外，所有持久设置控件仅 markDirty；外观切换先即时 applyAppearance 再 markDirty；保存成功及恢复成功后清除 dirty。
 - 本轮仅进行静态验证，未运行构建、打包或真机测试。
+
+
+## 2026-09-06 P 轮:对齐 NekoBoxForAndroid(main 分支)功能与信息架构
+
+> 本轮以安卓版 NekoBox for Android(仓库 main 分支 tarball)为基准做 1:1 功能对齐;视觉沿用已真机验收的鸿蒙原生观感令牌(UiSpec),信息架构与交互对齐安卓。**已在本机 DevEco SDK 编译通过(versionCode 1001917,构建环境:C:\PROGRA~1 短路径 + HVIGOR_USER_HOME=C:\hvigor-home + %USERPROFILE%\.npmrc)**。
+
+### 协议与数据模型
+- ProfileType 新增 ssh / shadowtls / custom(自定义出站 JSON)/ chain(链式代理);Profile 新增字段:ssPlugin/ssPluginOpts、packetEncoding、wsEarlyData/wsEarlyDataHeaderName、certificates、ech/echConfig、muxProtocol/muxMaxStreams/muxPadding、hysteria2 serverPorts/hopInterval、tuic reduceRtt/disableSni、WireGuard wgMtu/reserved、SSH sshAuthType/privateKeyPassphrase/hostKey、shadowtlsVersion、customOutbound、chainIds。
+- ConfigBuilder:新增 SSH/ShadowTLS/自定义出站/链式代理(detour 前置→落地)生成;消费新设置(嗅探三态 sniff/sniff_override_destination、bypassLan 开关、dnsRouting 开关、FakeDNS(fakeip server + dns rule)、远程/直连 DNS 域名策略、mixedPort 混合入站 + allowAccess 监听 0.0.0.0、logLevel、globalCustomConfig 根级浅合并、clash_api external_ui 挂载 yacd);VMess/VLESS packetEncoding、WS 早期数据、TLS 证书数组与 ECH、Mux protocol/max_streams/padding、hysteria2 server_ports/hop_interval、TUIC reduce_rtt/disable_sni、SS plugin/plugin_opts、WireGuard mtu/reserved。导出 buildOutboundJson 供分享菜单「导出配置」。
+- 链接解析:新增 ssh:// scheme、socks4/socks4a;SS 分享链接 plugin 参数不再丢弃(obfs-local/v2ray-plugin 直写内核);导出新增 ssh://。
+
+### 设置页(对齐安卓 global_preferences 分组)
+- 新分组:常规(日志级别/连接测试 URL/测速并发/始终显示地址/通知显示分组名/全局与订阅放行不安全 TLS)、路由(原网络组 + bypassLan/嗅探三选/mixedPort/allowAccess)、DNS(远程/直连 DNS + 域名策略/dnsRouting/FakeDNS)、入站(mixedPort/allowAccess)。
+- Store.loadSettings 对新字段做枚举与数值钳制;移除设置页「导航布局」(抽屉导航替代,AppSettings.navLayout 保留兼容旧备份)。
+
+### 信息架构(对齐安卓 MainActivity 抽屉)
+- Index 重构:自绘抽屉导航(配置/分组/路由/设置/日志/面板/工具/关于)+ 底部 StatsBar(上下行速率 + 状态,点击 URL Test 当前节点)+ 右下 FAB(连接/断开/进度,替代 BigPowerButton 大按钮,组件保留未删)。
+- 配置页:分组 Tabs(Scrollable,≥2 组显示)+ 顶栏(抽屉/连接页/搜索/添加/分组菜单:测速本组/清除测试结果/去重/删除不可用/排序三选)+ 节点卡(置顶标记/类型/地址可开关/延迟色/选中高亮)+ 长按菜单新增「导出 sing-box 配置」。
+- 分组页 GroupPage(新增,对齐 GroupFragment):订阅卡(节点数/最近更新/流量徽标 已用·剩余/到期)+ 手动分组卡;更新全部订阅(汇总 added/removed);单项操作:更新/分享订阅链接/导出全部节点链接/清空分组/删除;新建/删除手动分组(删除组内节点移至未分组)。
+- 工具页 ToolsPage(新增):STUN NAT 行为发现(RFC5389 Binding,公网映射地址/耗时/两次探测映射稳定性启发)+ 恢复出厂(双确认,Store.resetAllData)。
+- 关于页 AboutPage(新增):版本/内核版本/检查更新(GitHub releases API)/项目主页 openLink/开源许可。
+- Dashboard DashboardPage(新增):Web 组件加载 clash_api /ui;yacd 资源由安卓版 assets/yacd.zip(749KB)内置到 resources/rawfile,VpnExtAbility 启动前经 @ohos.zlib 解压到 cacheDir 并把路径传入 external_ui(失败降级提示,不影响连接)。
+- ClashApi:fetchCurrentProxyDelay 支持自定义端口与测试 URL(消费 settings.testUrl)。
+
+### 资源
+- base/en_US string.json 各 +133 键(抽屉/分组/工具/关于/设置新组/新协议表单/错误提示),双语 463=463 对称;tools/check_keys.js 静态扫描 0 缺失。
+- 移除设置页 navLayout UI;BigPowerButton/StatsRow/BottomNavText 组件保留但 Index 不再引用。
+
+### 已知限制
+- 内核冻结(sing-box 1.11.9):anytls/mieru/naive/trojan-go 无法支持(需 1.12/插件 exe);链式代理、自定义出站、SSH、ShadowTLS 均为内核原生能力。
+- FakeDNS 与 resolveDestination 前者为真机验证项,后者仅存档不参与配置生成;通知显示分组名设置存档待 VpnExtAbility 消费。
+- 二维码扫码/生成维持既有降级(纯文本+复制);仅代理服务模式、开机自启、Quick Tile、TV 为安卓平台能力,鸿蒙无对应机制(桌面卡片方案见 docs/U5)。
+- 真机验证点:抽屉导航与 FAB 全断点无溢出、分组 Tabs 切换、STUN 真机探测、yacd 面板加载(/ui + secret)、链式/SSH/ShadowTLS/自定义出站真实连接、FakeDNS 开关、mixedPort 局域网访问。
