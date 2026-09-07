@@ -36,6 +36,10 @@ export async function fetchSubscription(url: string, allowInsecure: boolean = fa
 }
 
 async function doFetchSubscription(url: string, withInfo: boolean, allowInsecure: boolean): Promise<SubFetchResult> {
+  const normalizedUrl = url.trim();
+  if (!normalizedUrl.startsWith('https://') && !normalizedUrl.startsWith('http://')) {
+    throw new Error('订阅地址必须使用 HTTP 或 HTTPS 协议');
+  }
   const client = http.createHttp();
   try {
     const headers: Record<string, string> = { 'User-Agent': SUB_UA };
@@ -50,7 +54,7 @@ async function doFetchSubscription(url: string, withInfo: boolean, allowInsecure
     if (allowInsecure) {
       opts.remoteValidation = 'skip';
     }
-    const resp = await client.request(url, opts);
+    const resp = await client.request(normalizedUrl, opts);
     if (resp.responseCode < 200 || resp.responseCode >= 300) {
       throw new Error(`订阅服务器返回 HTTP ${resp.responseCode}`);
     }

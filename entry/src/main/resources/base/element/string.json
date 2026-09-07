@@ -1,8 +1,8 @@
 {
   "string": [
     {
-      "name": "app_name",
-      "value": "NekoBox"
+      "name": "permission_read_pasteboard_reason",
+      "value": "用于从剪贴板读取并导入订阅链接或节点配置"
     },
     {
       "name": "brand_name",

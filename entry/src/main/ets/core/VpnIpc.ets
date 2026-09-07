@@ -86,16 +86,24 @@ export function publishVpnLatency(profileId: string, nodeName: string, latencyMs
   }
 }
 
+let vpnEventSubscriber: commonEventManager.CommonEventSubscriber | undefined;
+let subscriptionGeneration: number = 0;
+
 /** UI 进程调用:订阅扩展发来的日志、状态与流量 */
 export function subscribeVpnEvents(onLog: (line: string) => void,
   onStatus: (status: string, running: boolean, profileId: string) => void,
   onTraffic: (upSpeed: number, downSpeed: number, totalUp: number, totalDown: number) => void): void {
+  const generation = ++subscriptionGeneration;
   const info: commonEventManager.CommonEventSubscribeInfo = {
     events: [VPN_EVENT_LOG, VPN_EVENT_STATUS, VPN_EVENT_TRAFFIC]
   };
   commonEventManager.createSubscriber(info).then((subscriber: commonEventManager.CommonEventSubscriber) => {
+    if (generation !== subscriptionGeneration) {
+      return;
+    }
+    vpnEventSubscriber = subscriber;
     commonEventManager.subscribe(subscriber, (err: BusinessError, data: commonEventManager.CommonEventData) => {
-      if (err || data === undefined || data === null) {
+      if (generation !== subscriptionGeneration || err || data === undefined || data === null) {
         return;
       }
       if (data.event === VPN_EVENT_LOG && data.data !== undefined) {
@@ -128,4 +136,21 @@ export function subscribeVpnEvents(onLog: (line: string) => void,
   }).catch((e: Object) => {
     // 订阅失败时 UI 退化为看门狗提示
   });
+}
+
+/** UI Ability 销毁时调用，避免重复订阅和失效回调继续更新状态。 */
+export function unsubscribeVpnEvents(): void {
+  subscriptionGeneration++;
+  const subscriber = vpnEventSubscriber;
+  vpnEventSubscriber = undefined;
+  if (subscriber === undefined) {
+    return;
+  }
+  try {
+    commonEventManager.unsubscribe(subscriber, (err: BusinessError) => {
+      // 取消订阅失败不应影响 Ability 销毁流程
+    });
+  } catch (e) {
+    // Ability 销毁期间忽略 CommonEvent 清理异常
+  }
 }

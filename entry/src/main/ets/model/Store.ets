@@ -13,6 +13,27 @@ const KEY_PENDING = 'pending_profile_id';
 export const LOG_EVENT_ID: number = 1001;
 
 let prefInstance: dataPreferences.Preferences | null = null;
+let profileWriteQueue: Promise<void> = Promise.resolve();
+
+/** 串行执行节点读改写，避免订阅更新、编辑和删除操作互相覆盖。 */
+export async function mutateProfiles(
+  mutation: (profiles: Array<Profile>) => Array<Profile>
+): Promise<Array<Profile>> {
+  const previous = profileWriteQueue;
+  let release: () => void = () => {};
+  profileWriteQueue = new Promise<void>((resolve: () => void) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    const profiles = await loadProfiles();
+    const updated = mutation(profiles);
+    await saveProfiles(updated);
+    return updated;
+  } finally {
+    release();
+  }
+}
 
 export async function initStore(context: common.Context): Promise<void> {
   prefInstance = await dataPreferences.getPreferences(context, PREF_NAME);

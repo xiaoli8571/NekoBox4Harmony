@@ -10,7 +10,7 @@ import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 import backgroundTaskManager from '@ohos.resourceschedule.backgroundTaskManager';
 import wantAgent from '@ohos.app.ability.wantAgent';
 import { initStore, loadSettings, LogStore } from '../model/Store';
-import { subscribeVpnEvents } from '../core/VpnIpc';
+import { subscribeVpnEvents, unsubscribeVpnEvents } from '../core/VpnIpc';
 import { VpnService } from '../core/VpnService';
 import { needAutoUpdate, updateSubscription, markSubSuccess, markSubFailure, setAppContext } from '../core/Subscriptions';
 
@@ -187,9 +187,6 @@ export default class EntryAbility extends UIAbility {
     this.handleAction(want);
   }
 
-  onDestroy(): void {
-  }
-
   onWindowStageCreate(windowStage: window.WindowStage): void {
     windowStage.loadContent('pages/Index', (err) => {
       if (err.code) {
@@ -241,6 +238,10 @@ export default class EntryAbility extends UIAbility {
       this.mainWindow.off('windowSizeChange', this.windowSizeListener);
       this.mainWindow = undefined;
     }
+  }
+
+  onDestroy(): void {
+    unsubscribeVpnEvents();
   }
 
   onForeground(): void {
