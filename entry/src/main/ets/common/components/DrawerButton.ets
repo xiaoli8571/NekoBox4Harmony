@@ -7,8 +7,8 @@ export struct DrawerButton {
     Text('≡')
       .fontSize(20)
       .fontColor($r('app.color.text_1'))
-      .width(36)
-      .height(36)
+      .width(48)
+      .height(48)
       .textAlign(TextAlign.Center)
       .onClick(() => this.onOpen())
   }

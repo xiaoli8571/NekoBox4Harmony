@@ -27,9 +27,27 @@ function wantFor(context: common.UIAbilityContext, profileId: string = '', force
 export class VpnService {
   private static operation: Promise<void> = Promise.resolve();
   private static generation: number = 0;
+  private static evidenceWatchdog: number = -1;
+  private static timeoutWatchdog: number = -1;
+
+  private static clearWatchdogs(): void {
+    if (VpnService.evidenceWatchdog >= 0) {
+      clearTimeout(VpnService.evidenceWatchdog);
+      VpnService.evidenceWatchdog = -1;
+    }
+    if (VpnService.timeoutWatchdog >= 0) {
+      clearTimeout(VpnService.timeoutWatchdog);
+      VpnService.timeoutWatchdog = -1;
+    }
+  }
 
   static async connect(context: common.UIAbilityContext, profileId: string, forceRestart: boolean = false): Promise<void> {
     const generation = ++VpnService.generation;
+    VpnService.clearWatchdogs();
+    AppStorage.setOrCreate('vpnUpSpeed', 0);
+    AppStorage.setOrCreate('vpnDownSpeed', 0);
+    AppStorage.setOrCreate('vpnTotalUp', 0);
+    AppStorage.setOrCreate('vpnTotalDown', 0);
     const previous = VpnService.operation;
     VpnService.operation = (async (): Promise<void> => {
       try {
@@ -52,7 +70,8 @@ export class VpnService {
     }
     // 看门狗只报告控制面状态丢失，不再主动断开可能已经正常工作的 VPN。
     // 真机日志已证明 CommonEvent 丢失时 TUN、DNS 和代理数据面仍可能完全可用。
-    setTimeout(() => {
+    VpnService.evidenceWatchdog = setTimeout(() => {
+      VpnService.evidenceWatchdog = -1;
       if (generation !== VpnService.generation) {
         return;
       }
@@ -75,7 +94,8 @@ export class VpnService {
     }, 60000);
     // 长时间闲置后扩展可能对启动请求完全无响应(进程被回收/冻结残留),
     // 120s 仍停留在 connecting 就明确报错并解锁按钮,避免永远转圈。
-    setTimeout(() => {
+    VpnService.timeoutWatchdog = setTimeout(() => {
+      VpnService.timeoutWatchdog = -1;
       if (generation !== VpnService.generation) {
         return;
       }
@@ -93,6 +113,7 @@ export class VpnService {
 
   static async disconnect(context: common.UIAbilityContext): Promise<void> {
     ++VpnService.generation;
+    VpnService.clearWatchdogs();
     const previous = VpnService.operation;
     VpnService.operation = (async (): Promise<void> => {
       try {

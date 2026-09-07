@@ -1,6 +1,6 @@
 import common from '@ohos.app.ability.common';
 import { Profile } from '../model/Profile';
-import { initStore, loadProfiles, saveProfiles, loadSettings, readPrefString, writePrefString } from '../model/Store';
+import { initStore, loadProfiles, saveProfiles, mutateProfiles, loadSettings, readPrefString, writePrefString } from '../model/Store';
 import { fetchSubscriptionWithInfo, parseSubUserInfo, looksLikeClashYaml, parseClashProxies } from '../utils/Subscription';
 import { parseShareText } from '../utils/LinkParser';
 

@@ -164,6 +164,11 @@ static bool LoadCoreLib(std::string &message)
     g_setTunFd = reinterpret_cast<CGoSetFdFunc>(dlsym(handle, "CGoSetTunFd"));
     if (g_start == nullptr || g_stop == nullptr || g_setTunFd == nullptr) {
         message = "libsingbox.so 缺少导出符号(CGoStartSingBox/CGoStopSingBox/CGoSetTunFd)";
+        g_version = nullptr;
+        g_start = nullptr;
+        g_stop = nullptr;
+        g_setTunFd = nullptr;
+        dlclose(handle);
         return false;
     }
     g_coreLib = handle;
@@ -213,7 +218,7 @@ static napi_value StartCoreNative(napi_env env, napi_callback_info info)
     napi_create_threadsafe_function(env, onResult, nullptr, resName, 0, 4, nullptr, nullptr, nullptr,
                                     CallJsString, &tsf);
 
-    std::thread([configPath, tunFd, tsf]() {
+    std::thread([configPath, tunFd, tsf, generation]() {
         std::string message;
         do {
             if (!LoadCoreLib(message)) {
@@ -221,6 +226,10 @@ static napi_value StartCoreNative(napi_env env, napi_callback_info info)
             }
             g_setTunFd(tunFd);
             char *configC = strdup(configPath.c_str());
+            if (configC == nullptr) {
+                message = "failed to allocate config path";
+                break;
+            }
             char *err = g_start(configC);
             free(configC);
             if (err != nullptr && err[0] != '\0') {
@@ -230,10 +239,28 @@ static napi_value StartCoreNative(napi_env env, napi_callback_info info)
             }
             FreeGoString(err);
         } while (false);
-        if (message.empty()) {
+
+        bool cancelled = false;
+        {
+            std::lock_guard<std::mutex> lock(g_stateMutex);
+            cancelled = generation <= g_cancelledGeneration;
+        }
+        if (message.empty() && cancelled) {
+            g_coreState.store(CoreState::Stopping);
+            if (g_stop != nullptr) {
+                char *stopError = g_stop();
+                if (stopError != nullptr && stopError[0] != '\0') {
+                    message = std::string(stopError);
+                }
+                FreeGoString(stopError);
+            }
+            g_coreState.store(CoreState::Stopped);
+            CompleteWaiters(message);
+        } else if (message.empty()) {
             g_coreState.store(CoreState::Running);
         } else {
             g_coreState.store(CoreState::Stopped);
+            CompleteWaiters(message);
         }
         EmitString(tsf, message);
         usleep(200 * 1000);
