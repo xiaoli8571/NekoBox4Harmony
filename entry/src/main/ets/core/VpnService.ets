@@ -67,7 +67,8 @@ export class VpnService {
         if (hasDataPlaneEvidence) {
           AppStorage.setOrCreate('vpnRunning', true);
           AppStorage.setOrCreate('vpnRunningProfileId', profileId);
-          AppStorage.setOrCreate('vpnStatus', 'connected');
+          // 保持与 UI 状态机约定一致：已连接状态必须使用 connected:<描述> 格式。
+          AppStorage.setOrCreate('vpnStatus', 'connected:running');
           LogStore.addLog('[app] VPN 状态回调缺失，但已检测到流量，按数据面状态恢复为已连接');
         }
       }
