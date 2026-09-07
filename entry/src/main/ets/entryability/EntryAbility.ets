@@ -166,6 +166,19 @@ export default class EntryAbility extends UIAbility {
       AppStorage.setOrCreate('vpnDownSpeed', downSpeed);
       AppStorage.setOrCreate('vpnTotalUp', totalUp);
       AppStorage.setOrCreate('vpnTotalDown', totalDown);
+
+      // CommonEvent 是瞬时事件，connected 状态��偶尔可能丢失；流量事件来自已启动的
+      // VPN 内核，可作为数据面已连接的可靠证据，及时修复 UI 一直转圈的问题。
+      const status: string = AppStorage.get<string>('vpnStatus') ?? '';
+      if ((status === 'connecting' || status === 'switching') &&
+        (upSpeed > 0 || downSpeed > 0 || totalUp > 0 || totalDown > 0)) {
+        const profileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
+        AppStorage.setOrCreate('vpnRunning', true);
+        AppStorage.setOrCreate('vpnStatus', 'connected:running');
+        if (profileId.length === 0) {
+          LogStore.addLog('[app] connected 状态回调缺失，已根据 VPN 流量恢复连接状态');
+        }
+      }
     });
   }
 
