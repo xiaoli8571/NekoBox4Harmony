@@ -16,7 +16,7 @@ import { VpnService } from '../core/VpnService';
 import { parseShareText } from '../utils/LinkParser';
 import { getClipboardText, setClipboardText } from '../utils/ClipboardHelper';
 import { fetchSubscriptionWithInfo, looksLikeClashYaml, parseClashProxies, ClashParseResult } from '../utils/Subscription';
-import { testProfiles } from '../utils/LatencyTester';
+import { testProfiles, urlTestProfiles } from '../utils/LatencyTester';
 import { SubInfo, listSubs, upsertSub, needAutoUpdate, updateSubscription, setAppContext, subNameOf, markSubSuccess, markSubFailure } from '../core/Subscriptions';
 import { fetchTrafficTotals, formatSpeed } from '../utils/TrafficStats';
 import { fetchCurrentProxyDelay } from '../utils/ClashApi';
@@ -384,7 +384,7 @@ struct Index {
   private async runProfilesTest(snapshot: Array<Profile>): Promise<void> {
     this.testing = true;
     try {
-      await testProfiles(snapshot, (id: string, ms: number) => {
+      const onOne = (id: string, ms: number): void => {
         const next: Record<string, number> = {};
         const keys = Object.keys(this.latencies);
         for (const k of keys) {
@@ -401,7 +401,13 @@ struct Index {
             publishVpnLatency(id, profile.name, ms);
           }
         }
-      }, this.settings.testConcurrent);
+      };
+      if (this.settings.latencyTestMode === 'tcp') {
+        await testProfiles(snapshot, onOne, this.settings.testConcurrent);
+      } else {
+        await urlTestProfiles(snapshot, this.profiles, this.settings, this.context,
+          onOne, this.settings.testConcurrent);
+      }
       await saveProfiles(this.profiles);
       this.profiles = this.profiles.slice();
       promptAction.showToast({ message: $r('app.string.speed_test_complete') });

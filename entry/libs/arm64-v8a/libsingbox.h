@@ -82,6 +82,9 @@ extern "C" {
 extern void CGoSetTunFd(int fd);
 extern char* CGoStartSingBox(char* configPath);
 extern char* CGoStopSingBox();
+extern char* CGoTestStartSingBox(char* configPath);
+extern char* CGoTestProxySingBox(char* tag, char* testURL, int timeoutMs);
+extern char* CGoTestStopSingBox();
 extern char* CGoSingBoxVersion();
 
 #ifdef __cplusplus

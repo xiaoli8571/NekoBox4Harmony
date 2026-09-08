@@ -5,7 +5,7 @@
 ## 0. 角色分工与工作区(工作区在远程服务器)
 
 - **你(开发 agent)通过 SSH 在服务器工作区实时修改代码**:
-  - 连接:`ssh root@oc1.720820.xyz`(密码 `Lijx.820115`,端口 22;FTP 同账号同密码、PASV 模式,登录根目录即 `/worker`)
+  - 连接:`ssh root@oc1.720820.xyz`(端口 22;FTP 同账号、PASV 模式,登录根目录即 `/worker`。**root 密码存 ZCode 持久记忆 `dev-credentials.md`,禁止写入本仓库任何文件**——本文件旧版曾含明文密码且仓库公开,该密码必须视为已泄露并轮换)
   - 工作目录:`/worker/NekoBox4Harmony`(完整 git 仓库,含冻结内核与构建脚本)
   - 你只改 `entry/src/main/ets/` 与 `entry/src/main/resources/` 下的文件
 - **构建机(ZCode,Windows)** 负责:从服务器收走你的改动 → 编译未签名 HAP → 提交推送 GitHub → 把新基线同步回服务器。构建/打包/git 写操作都归它。

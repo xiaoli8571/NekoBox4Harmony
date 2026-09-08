@@ -28,3 +28,6 @@ dist/
 
 # Session-local task notes
 *_TODO.md
+
+# 内核构建产物:go mod vendor 输出(1.7GB,勿入库)
+core/libsingbox14/vendor/

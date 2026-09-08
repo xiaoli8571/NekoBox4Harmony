@@ -21,6 +21,8 @@
 typedef char *(*CGoStringFunc)(void);
 typedef char *(*CGoStartFunc)(char *);
 typedef void (*CGoSetFdFunc)(int);
+typedef char *(*CGoTestStartFunc)(char *);
+typedef char *(*CGoTestProxyFunc)(char *, char *, int);
 
 enum class CoreState {
     Stopped,
@@ -40,6 +42,9 @@ static CGoStringFunc g_version = nullptr;
 static CGoStartFunc g_start = nullptr;
 static CGoStringFunc g_stop = nullptr;
 static CGoSetFdFunc g_setTunFd = nullptr;
+static CGoTestStartFunc g_testStart = nullptr;
+static CGoTestProxyFunc g_testProxy = nullptr;
+static CGoStringFunc g_testStop = nullptr;
 
 struct TsfData {
     std::string text;
@@ -162,6 +167,9 @@ static bool LoadCoreLib(std::string &message)
     g_start = reinterpret_cast<CGoStartFunc>(dlsym(handle, "CGoStartSingBox"));
     g_stop = reinterpret_cast<CGoStringFunc>(dlsym(handle, "CGoStopSingBox"));
     g_setTunFd = reinterpret_cast<CGoSetFdFunc>(dlsym(handle, "CGoSetTunFd"));
+    g_testStart = reinterpret_cast<CGoTestStartFunc>(dlsym(handle, "CGoTestStartSingBox"));
+    g_testProxy = reinterpret_cast<CGoTestProxyFunc>(dlsym(handle, "CGoTestProxySingBox"));
+    g_testStop = reinterpret_cast<CGoStringFunc>(dlsym(handle, "CGoTestStopSingBox"));
     if (g_start == nullptr || g_stop == nullptr || g_setTunFd == nullptr) {
         message = "libsingbox.so 缺少导出符号(CGoStartSingBox/CGoStopSingBox/CGoSetTunFd)";
         g_version = nullptr;
@@ -270,9 +278,115 @@ static napi_value StartCoreNative(napi_env env, napi_callback_info info)
     return nullptr;
 }
 
-// stopCoreNative(onResult)
-static napi_value StopCoreNative(napi_env env, napi_callback_info info)
+// testStartNative(configPath, onResult) —— 启动独立测速会话(与主实例互不影响)
+static napi_value TestStartNative(napi_env env, napi_callback_info info)
 {
+    std::string configPath;
+    GetArgString(env, info, 0, configPath);
+    size_t argc = 8;
+    napi_value argv[8] = {nullptr};
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    napi_value onResult = argc >= 2 ? argv[1] : nullptr;
+    napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+
+    std::thread([configPath, tsf]() {
+        std::string message;
+        do {
+            std::string loadErr;
+            if (!LoadCoreLib(loadErr)) {
+                message = loadErr;
+                break;
+            }
+            if (g_testStart == nullptr) {
+                message = "内核不支持 URL 测速(libsingbox.so 缺少 CGoTestStartSingBox)";
+                break;
+            }
+            char *pathC = strdup(configPath.c_str());
+            char *err = g_testStart(pathC);
+            free(pathC);
+            if (err != nullptr && err[0] != '\0') {
+                message = std::string(err);
+            }
+            FreeGoString(err);
+        } while (false);
+        EmitString(tsf, message);
+        usleep(200 * 1000);
+        napi_release_threadsafe_function(tsf, napi_tsfn_release);
+    }).detach();
+    return nullptr;
+}
+
+// testProxyNative(tag, url, timeoutMs, onResult) —— 对指定出站做真连接测试,onResult 收到 "ms" 或 "err:..."
+static napi_value TestProxyNative(napi_env env, napi_callback_info info)
+{
+    std::string tag;
+    std::string url;
+    int timeoutMs = 5000;
+    GetArgString(env, info, 0, tag);
+    GetArgString(env, info, 1, url);
+    size_t argc = 8;
+    napi_value argv[8] = {nullptr};
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    GetArgInt(env, argv[2], timeoutMs);
+    napi_value onResult = argc >= 4 ? argv[3] : nullptr;
+    napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+
+    std::thread([tag, url, timeoutMs, tsf]() {
+        std::string message = "err:test session not started";
+        do {
+            std::string loadErr;
+            if (!LoadCoreLib(loadErr)) {
+                message = "err:" + loadErr;
+                break;
+            }
+            if (g_testProxy == nullptr) {
+                message = "err:kernel lacks CGoTestProxySingBox";
+                break;
+            }
+            char *tagC = strdup(tag.c_str());
+            char *urlC = strdup(url.c_str());
+            char *res = g_testProxy(tagC, urlC, timeoutMs);
+            free(tagC);
+            free(urlC);
+            if (res != nullptr) {
+                message = std::string(res);
+            }
+            FreeGoString(res);
+        } while (false);
+        EmitString(tsf, message);
+        usleep(200 * 1000);
+        napi_release_threadsafe_function(tsf, napi_tsfn_release);
+    }).detach();
+    return nullptr;
+}
+
+// testStopNative(onResult)
+static napi_value TestStopNative(napi_env env, napi_callback_info info)
+{
+    size_t argc = 8;
+    napi_value argv[8] = {nullptr};
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    napi_value onResult = argc >= 1 ? argv[0] : nullptr;
+    napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+
+    std::thread([tsf]() {
+        std::string message;
+        if (g_testStop != nullptr) {
+            char *err = g_testStop();
+            if (err != nullptr && err[0] != '\0') {
+                message = std::string(err);
+            }
+            FreeGoString(err);
+        }
+        EmitString(tsf, message);
+        usleep(200 * 1000);
+        napi_release_threadsafe_function(tsf, napi_tsfn_release);
+    }).detach();
+    return nullptr;
+}
+
+// stopCoreNative(onResult)
+static napi_value StopCoreNative(napi_env env, napi_callback_info info){
     size_t argc = 8;
     napi_value argv[8] = {nullptr};
     napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
@@ -342,6 +456,9 @@ static napi_value Init(napi_env env, napi_value exports)
         {"startCoreNative", nullptr, StartCoreNative, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"stopCoreNative", nullptr, StopCoreNative, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"isCoreRunning", nullptr, IsCoreRunning, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"testStartNative", nullptr, TestStartNative, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"testProxyNative", nullptr, TestProxyNative, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"testStopNative", nullptr, TestStopNative, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     return exports;

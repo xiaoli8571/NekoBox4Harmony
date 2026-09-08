@@ -19,6 +19,8 @@ const MODE_LABELS: Array<Resource> = [$r('app.string.mode_rule'), $r('app.string
 const MODE_SWITCH_TOASTS: Array<Resource> = [$r('app.string.settings_mode_switched_rule'), $r('app.string.settings_mode_switched_global'), $r('app.string.settings_mode_switched_direct')];
 const LOG_LEVELS: Array<string> = ['trace', 'debug', 'info', 'warn', 'error'];
 const SNIFF_MODES: Array<string> = ['off', 'route', 'override'];
+const LATENCY_TEST_VALUES: Array<string> = ['url', 'tcp'];
+const LATENCY_TEST_LABELS: Array<string> = ['URL Test(真连接)', 'TCPing(仅握手)'];
 const SNIFF_LABELS: Array<Resource> = [$r('app.string.sniff_off'), $r('app.string.sniff_route'), $r('app.string.sniff_override')];
 const STRATEGIES: Array<string> = ['', 'auto', 'prefer_ipv4', 'prefer_ipv6', 'ipv4_only', 'ipv6_only'];
 const STRATEGY_LABELS: Array<Resource> = [$r('app.string.strategy_default'), $r('app.string.strategy_auto'), $r('app.string.strategy_prefer_ipv4'), $r('app.string.strategy_prefer_ipv6'), $r('app.string.strategy_ipv4_only'), $r('app.string.strategy_ipv6_only')];
@@ -335,6 +337,19 @@ export struct SettingsPage {
             }.alignItems(HorizontalAlign.Start).width('100%')
 
             Column() {
+              Text('测速方式').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              Select(LATENCY_TEST_LABELS.map((t: string) => ({ value: t } as SelectOption)))
+                .selected(LATENCY_TEST_VALUES.indexOf(this.s.latencyTestMode) < 0 ? 0 : LATENCY_TEST_VALUES.indexOf(this.s.latencyTestMode))
+                .value(LATENCY_TEST_LABELS[LATENCY_TEST_VALUES.indexOf(this.s.latencyTestMode) < 0 ? 0 : LATENCY_TEST_VALUES.indexOf(this.s.latencyTestMode)])
+                .onSelect((index: number) => {
+                  this.s.latencyTestMode = LATENCY_TEST_VALUES[index];
+                  this.markDirty();
+                })
+              Text('URL Test 通过代理实际访问下方测试网址,只有全链路可用才计绿;TCPing 仅测服务器端口握手,失效节点也可能显示绿色。')
+                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+            }.alignItems(HorizontalAlign.Start).width('100%')
+
+            Column() {
               Text($r('app.string.settings_test_url')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
               TextInput({ text: this.s.testUrl })
                 .width('100%').height(40)
@@ -342,6 +357,8 @@ export struct SettingsPage {
                   this.s.testUrl = v;
                   this.markDirty();
                 })
+              Text('URL Test 会经节点实际访问此网址;默认 gstatic,若节点出口访问不通可自行改为其他 204/HTTP 地址。')
+                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
             }.alignItems(HorizontalAlign.Start).width('100%')
 
             Column() {

@@ -156,8 +156,9 @@ export class AppSettings {
   allowInsecureAll: boolean = false;   // 全局放行不安全 TLS
   subAllowInsecure: boolean = false;   // 订阅请求放行不安全 TLS
   logLevel: string = 'info';           // trace/debug/info/warn/error
-  testUrl: string = 'http://cp.cloudflare.com/';
+  testUrl: string = 'https://www.gstatic.com/generate_204';
   testConcurrent: number = 5;          // 测速并发数
+  latencyTestMode: string = 'url';     // url(真连接测试,经内核 URLTest) / tcp(TCPing 握手计时)
   alwaysShowAddress: boolean = false;  // 节点卡始终显示服务器地址
   notificationGroup: boolean = false;  // 通知中显示分组名
   autoUpdateSubs: boolean = true;      // 启动时自动更新到期的订阅

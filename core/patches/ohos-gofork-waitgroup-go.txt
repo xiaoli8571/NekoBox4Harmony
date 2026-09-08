@@ -1,0 +1,27 @@
+// Copyright 2024 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// 回植文件:复制到 go1.24.5 OHOS fork 的 src/sync/waitgroup_go125api.go,
+// 然后重跑 make.bat(或删除 bin/pkg 后重建)。
+// sing-box 1.14.0 的依赖树实际调用 sync.WaitGroup.Go(Go 1.25 新增),
+// openharmony 移植分支目前停在 go1.24.5,故把上游 go1.25 的实现逐字回植,
+// 避免逐个 patch 第三方库调用点。
+
+package sync
+
+// Go calls the given function in a new goroutine.
+//
+// The first call to [WaitGroup.Wait] must happen before any Go call.
+//
+// This is the Go 1.25 API backported verbatim for this Go 1.24-based
+// OpenHarmony fork. Semantics are identical to the upstream implementation:
+//
+//	wg.Go(f) is equivalent to wg.Add(1); go func() { defer wg.Done(); f() }()
+func (w *WaitGroup) Go(f func()) {
+	w.Add(1)
+	go func() {
+		defer w.Done()
+		f()
+	}()
+}
