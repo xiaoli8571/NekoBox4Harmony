@@ -9,6 +9,7 @@ set -euo pipefail
 
 FORK_DIR="${OHOS_GO_FORK:-$HOME/ohos-go-build/ohos_golang_go}"
 FORK_URL="${OHOS_GO_FORK_URL:-https://gitcode.com/openharmony-sig/ohos_golang_go.git}"
+FORK_BRANCH="${OHOS_GO_FORK_BRANCH:-release-branch.go1.26}"
 
 if [ -x "$FORK_DIR/bin/go" ] || [ -f "$FORK_DIR/bin/go.exe" ]; then
     echo "==> OHOS Go fork already built at $FORK_DIR"
@@ -19,7 +20,7 @@ mkdir -p "$(dirname "$FORK_DIR")"
 if [ ! -d "$FORK_DIR/.git" ]; then
     echo "==> cloning OHOS Go fork: $FORK_URL"
     rm -rf "$FORK_DIR"
-    git clone --depth 1 --branch release-branch.go1.24 "$FORK_URL" "$FORK_DIR"
+    git clone --depth 1 --branch "$FORK_BRANCH" "$FORK_URL" "$FORK_DIR"
 fi
 
 # 引导工具链 = 本机已安装的 Go

@@ -5,7 +5,7 @@ import http from '@ohos.net.http';
 import { UiSpec } from '../common/UiSpec';
 import { DrawerButton } from '../common/components/DrawerButton';
 
-const CORE_VERSION = 'sing-box 1.11.9 (OHOS c-shared)';
+const CORE_VERSION = 'sing-box 1.14.0 (OHOS c-shared)';
 const GITHUB_URL = 'https://github.com/xiaoli8571/NekoBox4Harmony';
 const RELEASES_API = 'https://api.github.com/repos/xiaoli8571/NekoBox4Harmony/releases/latest';
 

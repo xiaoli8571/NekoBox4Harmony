@@ -69,4 +69,51 @@ export class CoreManager {
   static isCoreRunning(): boolean {
     return nativeCore.isCoreRunning();
   }
+
+  // ---- URL 测速(独立测试会话,跑在 UI 进程内,不影响 VPN 主实例) ----
+
+  static writeTestConfigFile(context: common.Context, configJson: string): string {
+    const coreDir = CoreManager.coreDir(context);
+    if (!fs.accessSync(coreDir)) {
+      fs.mkdirSync(coreDir, true);
+    }
+    const configPath = `${coreDir}/test.json`;
+    const file = fs.openSync(configPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+    try {
+      fs.writeSync(file.fd, configJson);
+    } finally {
+      fs.closeSync(file);
+    }
+    return configPath;
+  }
+
+  static testLogFilePath(context: common.Context): string {
+    return `${CoreManager.coreDir(context)}/test.log`;
+  }
+
+  /** 启动测速会话;resolve '' 成功,否则错误文本 */
+  static testStart(configPath: string): Promise<string> {
+    return new Promise<string>((resolve) => {
+      nativeCore.testStartNative(configPath, (err: string) => {
+        resolve(err);
+      });
+    });
+  }
+
+  /** 对单个出站 tag 做真连接测试;resolve "ms" 或 "err:..." */
+  static testProxy(tag: string, url: string, timeoutMs: number): Promise<string> {
+    return new Promise<string>((resolve) => {
+      nativeCore.testProxyNative(tag, url, timeoutMs, (res: string) => {
+        resolve(res);
+      });
+    });
+  }
+
+  static testStop(): Promise<string> {
+    return new Promise<string>((resolve) => {
+      nativeCore.testStopNative((err: string) => {
+        resolve(err);
+      });
+    });
+  }
 }

@@ -3,7 +3,7 @@ import { CLASH_API_PORT } from '../utils/TrafficStats';
 import { RouteRule, RemoteRuleSet, ruleValueList } from '../model/RouteRule';
 
 /**
- * sing-box 1.11 配置生成器。
+ * sing-box 1.14 配置生成器。
  *
  * 关键设计(与鸿蒙 VPN 框架配合):
  *  - tun 入站 auto_route=false:路由由 @ohos.net.vpnExtension 建立;
@@ -342,9 +342,11 @@ function parseReserved(raw: string): Array<number> {
   return out;
 }
 
-/** 链式代理:返回全部出站(前置→落地);最后一跳出站 tag=proxy。 */
+/** 链式代理:返回全部出站(前置→落地);默认最后一跳出站 tag=proxy。
+ *  URL 测速复用本函数:finalTag/chainPrefix 传唯一前缀,避免多链在测试配置里撞 tag。 */
 function buildChainOutbounds(chainProfile: Profile, s: AppSettings,
-  allProfiles: Array<Profile>): Array<Record<string, Object>> {
+  allProfiles: Array<Profile>, finalTag: string = 'proxy',
+  chainPrefix: string = 'chain_'): Array<Record<string, Object>> {
   const ids = splitCsv(chainProfile.chainIds);
   if (ids.length === 0) {
     throw new Error('链式代理未选择任何节点');
@@ -361,10 +363,10 @@ function buildChainOutbounds(chainProfile: Profile, s: AppSettings,
   }
   const outbounds: Array<Record<string, Object>> = [];
   for (let i = 0; i < hops.length; i++) {
-    const hopTag = i === hops.length - 1 ? 'proxy' : `chain_${i}`;
+    const hopTag = i === hops.length - 1 ? finalTag : `${chainPrefix}${i}`;
     const hop = buildOutbound(hops[i], s, hopTag);
     if (i > 0) {
-      hop['detour'] = `chain_${i - 1}`;
+      hop['detour'] = `${chainPrefix}${i - 1}`;
     }
     outbounds.push(hop);
   }
@@ -401,6 +403,82 @@ export function buildCustomRule(r: RouteRule): Record<string, Object> | null {
   return rule;
 }
 
+/**
+ * sing-box 1.14 新 DNS server 格式:把旧式地址串(scheme://host[:port][/path] 或裸 IP)
+ * 拆解为 {type, server, server_port, path, detour}。1.14 已移除 legacy address 格式。
+ */
+function buildDnsServer(tag: string, addr: string, detour: string): Record<string, Object> {
+  const server: Record<string, Object> = {};
+  server['tag'] = tag;
+  let rest = addr.trim();
+  let type = 'udp';
+  const schemeEnd = rest.indexOf('://');
+  let scheme = '';
+  if (schemeEnd > 0) {
+    scheme = rest.substring(0, schemeEnd).toLowerCase();
+    rest = rest.substring(schemeEnd + 3);
+  }
+  if (scheme.length > 0) {
+    if (scheme === 'dot') {
+      type = 'tls';
+    } else if (scheme === 'doq') {
+      type = 'quic';
+    } else {
+      type = scheme;
+    }
+  }
+  server['type'] = type;
+  if (type === 'udp' || type === 'tcp' || type === 'tls' || type === 'https' || type === 'quic' || type === 'h3') {
+    let hostPort = rest;
+    let path = '';
+    const slash = rest.indexOf('/');
+    if (slash >= 0) {
+      hostPort = rest.substring(0, slash);
+      path = rest.substring(slash);
+    }
+    let host = hostPort;
+    let portStr = '';
+    if (hostPort.startsWith('[')) {
+      const bracket = hostPort.lastIndexOf(']');
+      const colon = hostPort.lastIndexOf(':');
+      host = hostPort.substring(0, bracket + 1);
+      if (colon > bracket) {
+        portStr = hostPort.substring(colon + 1);
+      }
+    } else {
+      const colon = hostPort.lastIndexOf(':');
+      if (colon > 0) {
+        host = hostPort.substring(0, colon);
+        portStr = hostPort.substring(colon + 1);
+      }
+    }
+    server['server'] = host;
+    if (portStr.length > 0) {
+      const pn = parseInt(portStr);
+      if (!isNaN(pn) && pn > 0 && pn <= 65535) {
+        server['server_port'] = pn;
+      }
+    }
+    if (type === 'https' || type === 'h3') {
+      server['path'] = path.length > 0 ? path : '/dns-query';
+    }
+  }
+  if (detour.length > 0 && type !== 'local' && type !== 'hosts' && type !== 'fakeip' && type !== 'dhcp') {
+    server['detour'] = detour;
+  }
+  return server;
+}
+
+/** 生成 geo 本地 rule-set 定义(sing-geo* rule-set 分支的 *.db 为编译二进制 rule set) */
+function buildGeoRuleSet(tag: string, path: string): Record<string, Object> {
+  const def: Record<string, Object> = {};
+  def['tag'] = tag;
+  def['type'] = 'local';
+  def['format'] = 'binary';
+  def['path'] = path;
+  return def;
+}
+
 export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: string,
   logPath: string = '', geositePath: string = '', geoIpPath: string = '',
   customRules: Array<RouteRule> = [], remoteRuleSets: Array<RemoteRuleSet> = [],
@@ -425,8 +503,8 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   tun['auto_route'] = false;   // 路由由鸿蒙 VPN 框架管理
   tun['strict_route'] = false;
   tun['stack'] = s.stack;
-  tun['sniff'] = s.sniffMode !== 'off';
-  tun['sniff_override_destination'] = s.sniffMode === 'override';
+  // 1.13+:inbound 级 sniff/sniff_override_destination 已移除,改为 route action:"sniff"
+  // (新 sniff 动作嗅探成功即覆写目的域名,不再区分 keep/override)
   const inbounds: Array<Object> = [tun];
   if (s.mixedPort > 0) {
     const mixed: Record<string, Object> = {};
@@ -451,20 +529,18 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   // 1.11: block/dns 特殊 outbound 已移除,分流用 rule action(hijack-dns / reject)
   outbounds.push(direct);
 
-  // ---- dns ----
-  const remoteServer: Record<string, Object> = {};
-  remoteServer['tag'] = 'remote';
-  remoteServer['address'] = s.remoteDns;
-  remoteServer['detour'] = 'proxy';
-  const localServer: Record<string, Object> = {};
-  localServer['tag'] = 'local';
-  localServer['address'] = s.directDns.includes('://') ? s.directDns : `udp://${s.directDns}`;
-  localServer['detour'] = 'direct';
-  const dnsServers: Array<Object> = [remoteServer, localServer];
+  // ---- dns(sing-box 1.14 新 server 格式:type + server/server_port/path) ----
+  // 1.14:DNS server 不写 detour 即默认直连(等价空 direct);
+  // 显式 detour 到「空 direct outbound」会被内核判启动失败
+  // (detour to an empty direct outbound makes no sense),故 local 服务器不带 detour。
+  const dnsServers: Array<Object> = [
+    buildDnsServer('remote', s.remoteDns, 'proxy'),
+    buildDnsServer('local', s.directDns, '')
+  ];
   if (s.fakeDns) {
     const fakeServer: Record<string, Object> = {};
+    fakeServer['type'] = 'fakeip';
     fakeServer['tag'] = 'fake';
-    fakeServer['address'] = 'fakeip';
     fakeServer['inet4_range'] = FAKEIP_RANGE_V4;
     if (s.ipv6) {
       fakeServer['inet6_range'] = FAKEIP_RANGE_V6;
@@ -480,17 +556,16 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     dnsRules.push(fakeRule);
   }
   // 规则模式 + DNS 路由开启 + geosite 数据就绪:CN 域名用直连 DNS 解析(CDN 友好)
+  // 1.14:rule 级 geosite 字段已移除,改为引用本地 rule_set
   if (s.mode === 'rule' && s.dnsRouting && geositePath.length > 0) {
     const cnDnsRule: Record<string, Object> = {};
-    cnDnsRule['geosite'] = ['cn'];
+    cnDnsRule['rule_set'] = ['geosite_cn'];
     cnDnsRule['server'] = 'local';
     setIf(cnDnsRule, 'strategy', s.directDnsStrategy);
     dnsRules.push(cnDnsRule);
   }
-  const resolveProxyRule: Record<string, Object> = {};
-  resolveProxyRule['outbound'] = 'proxy';
-  resolveProxyRule['server'] = 'local';
-  dnsRules.push(resolveProxyRule);
+  // 1.14:legacy outbound DNS rule 已弃用,改用 route.default_domain_resolver
+  // (出站服务器域名一律经 local 直连 DNS 解析,语义等价且防泄漏不变)
   const dns: Record<string, Object> = {};
   dns['servers'] = dnsServers;
   dns['rules'] = dnsRules;
@@ -498,10 +573,20 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   setIf(dns, 'strategy', s.remoteDnsStrategy);
 
   // ---- route ----
-  const dnsRule: Record<string, Object> = {};
-  dnsRule['protocol'] = 'dns';
-  dnsRule['action'] = 'hijack-dns';
-  const routeRules: Array<Object> = [dnsRule];
+  // ---- route ----
+  const routeRules: Array<Object> = [];
+  // 1.13+:sniff 由 inbound 字段迁移为 rule action(嗅探成功即覆写目的域名)
+  if (s.sniffMode !== 'off') {
+    const sniffRule: Record<string, Object> = {};
+    sniffRule['inbound'] = 'tun-in';
+    sniffRule['action'] = 'sniff';
+    routeRules.push(sniffRule);
+  }
+  // DNS 劫持:终端 53 报文交给内核 DNS 栈处理(TUN 模式必须)
+  const dnsHijackRule: Record<string, Object> = {};
+  dnsHijackRule['protocol'] = 'dns';
+  dnsHijackRule['action'] = 'hijack-dns';
+  routeRules.push(dnsHijackRule);
   const ruleSetDefinitions: Array<Object> = [];
 
   // 模式:direct(全部直连)/ rule(规则分流)/ global(除 DNS 劫持外全部走代理)
@@ -547,13 +632,13 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     }
     if (geositePath.length > 0) {
       const geositeRule: Record<string, Object> = {};
-      geositeRule['geosite'] = ['cn'];
+      geositeRule['rule_set'] = ['geosite_cn'];
       geositeRule['outbound'] = 'direct';
       routeRules.push(geositeRule);
     }
     if (geoIpPath.length > 0) {
       const geoipRule: Record<string, Object> = {};
-      geoipRule['geoip'] = ['cn'];
+      geoipRule['rule_set'] = ['geoip_cn'];
       geoipRule['outbound'] = 'direct';
       routeRules.push(geoipRule);
     }
@@ -578,33 +663,36 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     }
 
     if (s.resolveDestination) {
-      // 兜底规则前先解析目标地址:IP 类规则(geoip 等)得以匹配域名连接(对齐安卓解析目标地址)
+      // 兜底规则前先解析目标地址:IP 类规则得以匹配域名连接(对齐安卓解析目标地址)
+      // 1.14:布尔 resolve 字段已移除改 action:"resolve";该动作不接受 outbound 选项,
+      // 单独成条(非终止动作,位于直连/规则分流之后、final 之前,行为等价)
       const resolveRule: Record<string, Object> = {};
-      resolveRule['resolve'] = true;
-      resolveRule['outbound'] = finalOutbound;
+      resolveRule['action'] = 'resolve';
       routeRules.push(resolveRule);
     }
   }
 
   const route: Record<string, Object> = {};
   route['rules'] = routeRules;
+  // 1.14:顶层 route.geoip/geosite 仅支持 legacy geo.db;本项目下载的是
+  // sing-geo* rule-set 分支的编译二进制,改为 local rule_set 定义(geo 规则按 tag 引用)
+  if (geositePath.length > 0) {
+    ruleSetDefinitions.unshift(buildGeoRuleSet('geosite_cn', geositePath));
+  }
+  if (geoIpPath.length > 0) {
+    ruleSetDefinitions.unshift(buildGeoRuleSet('geoip_cn', geoIpPath));
+  }
   if (ruleSetDefinitions.length > 0) {
     route['rule_set'] = ruleSetDefinitions;
   }
   route['final'] = finalOutbound;
   route['auto_detect_interface'] = false;
+  // 1.14:出站服务器域名统一经 local(直连 DNS)解析
+  const domainResolver: Record<string, Object> = {};
+  domainResolver['server'] = 'local';
+  route['default_domain_resolver'] = domainResolver;
   if (physicalIfname.length > 0) {
     route['default_interface'] = physicalIfname;
-  }
-  if (geositePath.length > 0) {
-    const geositeOpt: Record<string, Object> = {};
-    geositeOpt['path'] = geositePath;
-    route['geosite'] = geositeOpt;
-  }
-  if (geoIpPath.length > 0) {
-    const geoipOpt: Record<string, Object> = {};
-    geoipOpt['path'] = geoIpPath;
-    route['geoip'] = geoipOpt;
   }
 
   // ---- experimental: clash API(实时速率/流量统计) + cache file ----
@@ -658,4 +746,61 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
 /** 导出单节点 sing-box 出站 JSON(分享菜单「导出配置」用) */
 export function buildOutboundJson(p: Profile, s: AppSettings): string {
   return JSON.stringify(buildOutbound(p, s), null, 2);
+}
+
+/** URL 测速配置:json + 每节点出站 tag(空串=该节点无法构建,调用方直接记 -1) */
+export class LatencyTestConfig {
+  json: string = '';
+  tags: Array<string> = [];
+}
+
+/**
+ * 生成真连接测速专用配置:每个待测节点一个出站(tag=t<i>;链节点展开为 c<i>_* + t<i>),
+ * 无入站/无 TUN/无 clash/无 cache,仅一条直连 DNS 用于解析节点域名。
+ * 内核侧(CGoTestStartSingBox)会再强制清空 inbounds/experimental 做双保险。
+ */
+export function buildLatencyTestConfig(targets: Array<Profile>, allProfiles: Array<Profile>,
+  s: AppSettings, logPath: string): LatencyTestConfig {
+  const result = new LatencyTestConfig();
+  const outbounds: Array<Object> = [];
+  for (let i = 0; i < targets.length; i++) {
+    const p = targets[i];
+    const tag = `t${i}`;
+    try {
+      if (p.type === ProfileType.CHAIN) {
+        const hops = buildChainOutbounds(p, s, allProfiles, tag, `c${i}_`);
+        for (const h of hops) {
+          outbounds.push(h);
+        }
+      } else {
+        outbounds.push(buildOutbound(p, s, tag));
+      }
+      result.tags.push(tag);
+    } catch (e) {
+      result.tags.push('');
+    }
+  }
+  const direct: Record<string, Object> = { 'type': 'direct', 'tag': 'direct' };
+  outbounds.push(direct);
+
+  const cfg: Record<string, Object> = {};
+  if (logPath.length > 0) {
+    const log: Record<string, Object> = { 'level': 'warning', 'timestamp': true, 'output': logPath };
+    cfg['log'] = log;
+  }
+  const dns: Record<string, Object> = {};
+  const probeDns = s.directDns.trim().length > 0 ? s.directDns : '223.5.5.5';
+  dns['servers'] = [buildDnsServer('probe', probeDns, '')];
+  dns['final'] = 'probe';
+  cfg['dns'] = dns;
+  cfg['outbounds'] = outbounds;
+  const route: Record<string, Object> = {};
+  route['rules'] = [];
+  route['final'] = 'direct';
+  route['auto_detect_interface'] = false;
+  const ddr: Record<string, Object> = { 'server': 'probe' };
+  route['default_domain_resolver'] = ddr;
+  cfg['route'] = route;
+  result.json = JSON.stringify(cfg, null, 2);
+  return result;
 }

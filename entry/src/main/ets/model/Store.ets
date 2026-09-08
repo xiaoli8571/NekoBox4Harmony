@@ -132,7 +132,15 @@ export async function loadSettings(): Promise<AppSettings> {
     s.testConcurrent = 5;
   }
   if (s.testUrl.trim().length === 0) {
-    s.testUrl = 'http://cp.cloudflare.com/';
+    s.testUrl = 'https://www.gstatic.com/generate_204';
+  }
+  // 迁移历史默认测试网址(cp.cloudflare.com 在部分网络下经代理也不通,易误红)
+  if (s.testUrl.trim() === 'http://cp.cloudflare.com/' || s.testUrl.trim() === 'https://cp.cloudflare.com/') {
+    s.testUrl = 'https://www.gstatic.com/generate_204';
+  }
+  const TEST_MODES: Array<string> = ['url', 'tcp'];
+  if (TEST_MODES.indexOf(s.latencyTestMode) < 0) {
+    s.latencyTestMode = 'url';
   }
   if (s.clashApiSecret.length === 0) {
     s.clashApiSecret = `${Date.now().toString(36)}${Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36)}`;
