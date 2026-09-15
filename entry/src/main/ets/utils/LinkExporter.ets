@@ -43,6 +43,10 @@ function addTransportQuery(q: Array<string>, p: Profile): void {
   addQuery(q, 'path', p.path);
   addQuery(q, 'host', p.host);
   addQuery(q, 'serviceName', p.serviceName);
+  if (p.wsEarlyData > 0) {
+    q.push(`ed=${p.wsEarlyData}`);
+  }
+  addQuery(q, 'eh', p.wsEarlyDataHeaderName);
 }
 
 /** TLS/REALITY 参数(security/sni/fp/pbk/sid/alpn/allowInsecure/flow) */
@@ -100,7 +104,14 @@ function exportVmess(p: Profile): string {
 // ---------------------------------------------------------------- ss (SIP002)
 function exportShadowsocks(p: Profile): string {
   const userinfo = base64Encode(`${p.method}:${p.password}`);
-  return `ss://${userinfo}@${hostPort(p)}${fragment(p.name)}`;
+  const q: Array<string> = [];
+  if (p.ssPlugin.length > 0) {
+    const plugin = p.ssPluginOpts.length > 0
+      ? `${p.ssPlugin};${p.ssPluginOpts}` : p.ssPlugin;
+    addQuery(q, 'plugin', plugin);
+  }
+  const query = q.length > 0 ? `?${q.join('&')}` : '';
+  return `ss://${userinfo}@${hostPort(p)}${query}${fragment(p.name)}`;
 }
 
 // ---------------------------------------------------------------- trojan
@@ -136,6 +147,10 @@ function exportHysteria2(p: Profile): string {
     q.push(`downmbps=${p.downMbps}`);
   }
   addQuery(q, 'obfs-password', p.obfs);
+  addQuery(q, 'ports', p.serverPorts);
+  if (p.hopInterval > 0) {
+    q.push(`hop-interval=${p.hopInterval}`);
+  }
   addQueryBool(q, 'insecure', p.allowInsecure);
   const query = q.length > 0 ? `?${q.join('&')}` : '';
   return `hysteria2://${enc(p.password)}@${hostPort(p)}${query}${fragment(p.name)}`;
@@ -146,6 +161,8 @@ function exportTuic(p: Profile): string {
   const q: Array<string> = [];
   addQueryIf(q, 'congestion_control', p.congestionControl, 'bbr');
   addQueryIf(q, 'udp_relay_mode', p.udpRelayMode, 'native');
+  addQueryBool(q, 'reduce_rtt', p.reduceRtt);
+  addQueryBool(q, 'disable_sni', p.disableSni);
   addQuery(q, 'sni', p.sni);
   addQueryIf(q, 'alpn', p.alpn, 'h3');
   addQueryBool(q, 'allow_insecure', p.allowInsecure);
@@ -166,7 +183,12 @@ function exportUserinfoHttp(p: Profile, scheme: string): string {
 
 // ---------------------------------------------------------------- ssh
 function exportSsh(p: Profile): string {
-  const userinfo = p.username.length > 0 ? `${enc(p.username)}@` : '';
+  let userinfo = '';
+  if (p.username.length > 0) {
+    userinfo = p.sshAuthType === 'password' && p.password.length > 0
+      ? `${enc(p.username)}:${enc(p.password)}@`
+      : `${enc(p.username)}@`;
+  }
   return `ssh://${userinfo}${hostPort(p)}${fragment(p.name)}`;
 }
 

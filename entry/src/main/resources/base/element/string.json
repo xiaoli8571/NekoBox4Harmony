@@ -529,6 +529,10 @@
       "value": "端口必须是 1 到 65535 之间的整数"
     },
     {
+      "name": "error_loopback_server",
+      "value": "远程代理服务器不能使用 127.0.0.1、localhost 或 ::1，请填写真实服务器地址"
+    },
+    {
       "name": "error_invalid_uuid",
       "value": "请输入有效的 UUID"
     },

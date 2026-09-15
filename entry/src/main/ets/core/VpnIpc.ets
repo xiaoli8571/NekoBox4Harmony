@@ -6,12 +6,12 @@ import BusinessError from '@ohos.base';
  * 与 UI 进程之间通过 CommonEvent 传递日志和 VPN 状态。
  */
 
-export const VPN_EVENT_LOG: string = 'com.nekobox.app.VPN_LOG';
-export const VPN_EVENT_STATUS: string = 'com.nekobox.app.VPN_STATUS';
-export const VPN_EVENT_LATENCY: string = 'com.nekobox.app.VPN_LATENCY';
-export const VPN_EVENT_TRAFFIC: string = 'com.nekobox.app.VPN_TRAFFIC';
+export const VPN_EVENT_LOG: string = 'com.nekobox.app.jynxen.VPN_LOG';
+export const VPN_EVENT_STATUS: string = 'com.nekobox.app.jynxen.VPN_STATUS';
+export const VPN_EVENT_LATENCY: string = 'com.nekobox.app.jynxen.VPN_LATENCY';
+export const VPN_EVENT_TRAFFIC: string = 'com.nekobox.app.jynxen.VPN_TRAFFIC';
 
-const APP_BUNDLE = 'com.nekobox.app';
+const APP_BUNDLE = 'com.nekobox.app.jynxen';
 
 /** 扩展进程调用:把一行日志发到 UI 进程 */
 export function publishVpnLog(line: string): void {

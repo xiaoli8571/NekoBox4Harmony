@@ -236,26 +236,8 @@ function buildOutbound(p: Profile, s: AppSettings, tag: string = 'proxy'): Recor
         o['disable_sni'] = true;
       }
       break;
-    case ProfileType.WIREGUARD: {
-      setIf(o, 'local_address', p.localAddress, false);
-      o['private_key'] = p.privateKey;
-      if (p.wgMtu > 0) {
-        o['mtu'] = p.wgMtu;
-      }
-      const reserved = parseReserved(p.reserved);
-      if (reserved.length === 3) {
-        o['reserved'] = reserved;
-      }
-      const peer: Record<string, Object> = {};
-      peer['public_key'] = p.peerPublicKey;
-      if (p.preSharedKey.length > 0) {
-        peer['pre_shared_key'] = p.preSharedKey;
-      }
-      peer['allowed_ips'] = ['0.0.0.0/0', '::/0'];
-      const peers: Array<Object> = [peer];
-      o['peers'] = peers;
-      break;
-    }
+    case ProfileType.WIREGUARD:
+      throw new Error('WireGuard 必须使用 sing-box 1.14 endpoint 配置生成路径');
     case ProfileType.SSH:
       setIf(o, 'user', p.username);
       if (p.sshAuthType === 'password') {
@@ -342,35 +324,34 @@ function parseReserved(raw: string): Array<number> {
   return out;
 }
 
-/** 链式代理:返回全部出站(前置→落地);默认最后一跳出站 tag=proxy。
- *  URL 测速复用本函数:finalTag/chainPrefix 传唯一前缀,避免多链在测试配置里撞 tag。 */
-function buildChainOutbounds(chainProfile: Profile, s: AppSettings,
-  allProfiles: Array<Profile>, finalTag: string = 'proxy',
-  chainPrefix: string = 'chain_'): Array<Record<string, Object>> {
-  const ids = splitCsv(chainProfile.chainIds);
-  if (ids.length === 0) {
-    throw new Error('链式代理未选择任何节点');
+/** sing-box 1.14 WireGuard 已从 outbound 迁移为顶层 endpoint。 */
+function buildWireGuardEndpoint(p: Profile, tag: string = 'proxy'): Record<string, Object> {
+  const endpoint: Record<string, Object> = {};
+  endpoint['type'] = ProfileType.WIREGUARD;
+  endpoint['tag'] = tag;
+  const addresses = splitCsv(p.localAddress);
+  if (addresses.length === 0) {
+    throw new Error('WireGuard 本地地址不能为空');
   }
-  const hops: Array<Profile> = [];
-  for (const id of ids) {
-    const found = allProfiles.find(x => x.id === id);
-    if (found !== undefined && found.type !== ProfileType.CHAIN) {
-      hops.push(found);
-    }
+  endpoint['address'] = addresses;
+  endpoint['private_key'] = p.privateKey;
+  if (p.wgMtu > 0) {
+    endpoint['mtu'] = p.wgMtu;
   }
-  if (hops.length === 0) {
-    throw new Error('链式代理引用的节点不存在');
+  const peer: Record<string, Object> = {};
+  peer['address'] = p.server;
+  peer['port'] = p.serverPort;
+  peer['public_key'] = p.peerPublicKey;
+  if (p.preSharedKey.length > 0) {
+    peer['pre_shared_key'] = p.preSharedKey;
   }
-  const outbounds: Array<Record<string, Object>> = [];
-  for (let i = 0; i < hops.length; i++) {
-    const hopTag = i === hops.length - 1 ? finalTag : `${chainPrefix}${i}`;
-    const hop = buildOutbound(hops[i], s, hopTag);
-    if (i > 0) {
-      hop['detour'] = `${chainPrefix}${i - 1}`;
-    }
-    outbounds.push(hop);
+  peer['allowed_ips'] = ['0.0.0.0/0', '::/0'];
+  const reserved = parseReserved(p.reserved);
+  if (reserved.length === 3) {
+    peer['reserved'] = reserved;
   }
-  return outbounds;
+  endpoint['peers'] = [peer];
+  return endpoint;
 }
 
 /** 把自定义路由规则生成 sing-box 1.11 rule 对象(reject 出站改用 rule action) */
@@ -515,13 +496,41 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     inbounds.push(mixed);
   }
 
-  // ---- outbounds ----
+  // ---- endpoints / outbounds ----
+  // sing-box 1.14 将 WireGuard 从 outbound 迁移为顶层 endpoint；endpoint tag 仍可作为路由目标。
+  const endpoints: Array<Object> = [];
   const outbounds: Array<Object> = [];
   if (p.type === ProfileType.CHAIN) {
-    const chainOutbounds = buildChainOutbounds(p, s, allProfiles);
-    for (const co of chainOutbounds) {
-      outbounds.push(co);
+    const ids = splitCsv(p.chainIds);
+    const hops: Array<Profile> = [];
+    for (const id of ids) {
+      const found = allProfiles.find(x => x.id === id);
+      if (found !== undefined && found.type !== ProfileType.CHAIN) {
+        hops.push(found);
+      }
     }
+    if (hops.length === 0) {
+      throw new Error('链式代理引用的节点不存在');
+    }
+    for (let i = 0; i < hops.length; i++) {
+      const tag = i === hops.length - 1 ? 'proxy' : `chain_${i}`;
+      const detour = i > 0 ? `chain_${i - 1}` : '';
+      if (hops[i].type === ProfileType.WIREGUARD) {
+        const endpoint = buildWireGuardEndpoint(hops[i], tag);
+        if (detour.length > 0) {
+          endpoint['detour'] = detour;
+        }
+        endpoints.push(endpoint);
+      } else {
+        const outbound = buildOutbound(hops[i], s, tag);
+        if (detour.length > 0) {
+          outbound['detour'] = detour;
+        }
+        outbounds.push(outbound);
+      }
+    }
+  } else if (p.type === ProfileType.WIREGUARD) {
+    endpoints.push(buildWireGuardEndpoint(p));
   } else {
     outbounds.push(buildOutbound(p, s));
   }
@@ -725,6 +734,9 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   config['log'] = log;
   config['dns'] = dns;
   config['inbounds'] = inbounds;
+  if (endpoints.length > 0) {
+    config['endpoints'] = endpoints;
+  }
   config['outbounds'] = outbounds;
   config['route'] = route;
   config['experimental'] = experimental;
@@ -762,16 +774,43 @@ export class LatencyTestConfig {
 export function buildLatencyTestConfig(targets: Array<Profile>, allProfiles: Array<Profile>,
   s: AppSettings, logPath: string): LatencyTestConfig {
   const result = new LatencyTestConfig();
+  const endpoints: Array<Object> = [];
   const outbounds: Array<Object> = [];
   for (let i = 0; i < targets.length; i++) {
     const p = targets[i];
     const tag = `t${i}`;
     try {
       if (p.type === ProfileType.CHAIN) {
-        const hops = buildChainOutbounds(p, s, allProfiles, tag, `c${i}_`);
-        for (const h of hops) {
-          outbounds.push(h);
+        const ids = splitCsv(p.chainIds);
+        const hops: Array<Profile> = [];
+        for (const id of ids) {
+          const found = allProfiles.find(x => x.id === id);
+          if (found !== undefined && found.type !== ProfileType.CHAIN) {
+            hops.push(found);
+          }
         }
+        if (hops.length === 0) {
+          throw new Error('链式代理引用的节点不存在');
+        }
+        for (let j = 0; j < hops.length; j++) {
+          const hopTag = j === hops.length - 1 ? tag : `c${i}_${j}`;
+          const detour = j > 0 ? `c${i}_${j - 1}` : '';
+          if (hops[j].type === ProfileType.WIREGUARD) {
+            const endpoint = buildWireGuardEndpoint(hops[j], hopTag);
+            if (detour.length > 0) {
+              endpoint['detour'] = detour;
+            }
+            endpoints.push(endpoint);
+          } else {
+            const outbound = buildOutbound(hops[j], s, hopTag);
+            if (detour.length > 0) {
+              outbound['detour'] = detour;
+            }
+            outbounds.push(outbound);
+          }
+        }
+      } else if (p.type === ProfileType.WIREGUARD) {
+        endpoints.push(buildWireGuardEndpoint(p, tag));
       } else {
         outbounds.push(buildOutbound(p, s, tag));
       }
@@ -793,6 +832,9 @@ export function buildLatencyTestConfig(targets: Array<Profile>, allProfiles: Arr
   dns['servers'] = [buildDnsServer('probe', probeDns, '')];
   dns['final'] = 'probe';
   cfg['dns'] = dns;
+  if (endpoints.length > 0) {
+    cfg['endpoints'] = endpoints;
+  }
   cfg['outbounds'] = outbounds;
   const route: Record<string, Object> = {};
   route['rules'] = [];

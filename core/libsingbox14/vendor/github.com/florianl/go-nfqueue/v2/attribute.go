@@ -1,0 +1,144 @@
+package nfqueue
+
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"time"
+
+	"github.com/florianl/go-nfqueue/v2/internal/unix"
+
+	"github.com/mdlayher/netlink"
+)
+
+func extractAttribute(log Logger, a *Attribute, data []byte) error {
+	ad, err := netlink.NewAttributeDecoder(data)
+	if err != nil {
+		return err
+	}
+	ad.ByteOrder = binary.BigEndian
+	for ad.Next() {
+		switch ad.Type() {
+		case nfQaPacketHdr:
+			data := ad.Bytes()
+			if len(data) < 7 {
+				return fmt.Errorf("nfQaPacketHdr: insufficient data length: %d", len(data))
+			}
+			packetID := binary.BigEndian.Uint32(data[:4])
+			a.PacketID = &packetID
+			hwProto := binary.BigEndian.Uint16(data[4:6])
+			a.HwProtocol = &hwProto
+			hook := uint8(data[6])
+			a.Hook = &hook
+		case nfQaMark:
+			mark := ad.Uint32()
+			a.Mark = &mark
+		case nfQaTimestamp:
+			data := ad.Bytes()
+			if len(data) < 16 {
+				return fmt.Errorf("nfQaTimestamp: insufficient data length: %d", len(data))
+			}
+			var sec, usec int64
+			r := bytes.NewReader(data[:8])
+			if err := binary.Read(r, binary.BigEndian, &sec); err != nil {
+				return err
+			}
+			r = bytes.NewReader(data[8:])
+			if err := binary.Read(r, binary.BigEndian, &usec); err != nil {
+				return err
+			}
+			timestamp := time.Unix(sec, usec*1000)
+			a.Timestamp = &timestamp
+		case nfQaIfIndexInDev:
+			inDev := ad.Uint32()
+			a.InDev = &inDev
+		case nfQaIfIndexOutDev:
+			outDev := ad.Uint32()
+			a.OutDev = &outDev
+		case nfQaIfIndexPhysInDev:
+			physInDev := ad.Uint32()
+			a.PhysInDev = &physInDev
+		case nfQaIfIndexPhysOutDev:
+			physOutDev := ad.Uint32()
+			a.PhysOutDev = &physOutDev
+		case nfQaHwAddr:
+			data := ad.Bytes()
+			if len(data) < 4 {
+				return fmt.Errorf("nfQaHwAddr: insufficient data length: %d", len(data))
+			}
+			hwAddrLen := binary.BigEndian.Uint16(data[:2])
+			if len(data) < int(4+hwAddrLen) {
+				return fmt.Errorf("nfQaHwAddr: insufficient data for hwAddrLen %d: got %d", hwAddrLen, len(data))
+			}
+			hwAddr := bytes.Clone(data[4 : 4+hwAddrLen])
+			a.HwAddr = &hwAddr
+		case nfQaPayload:
+			payload := bytes.Clone(ad.Bytes())
+			a.Payload = &payload
+		case nfQaCt:
+			ct := bytes.Clone(ad.Bytes())
+			a.Ct = &ct
+		case nfQaCtInfo:
+			ctInfo := ad.Uint32()
+			a.CtInfo = &ctInfo
+		case nfQaCapLen:
+			capLen := ad.Uint32()
+			a.CapLen = &capLen
+		case nfQaSkbInfo:
+			skbInfo := bytes.Clone(ad.Bytes())
+			a.SkbInfo = &skbInfo
+		case nfQaExp:
+			exp := bytes.Clone(ad.Bytes())
+			a.Exp = &exp
+		case nfQaUID:
+			uid := ad.Uint32()
+			a.UID = &uid
+		case nfQaGID:
+			gid := ad.Uint32()
+			a.GID = &gid
+		case nfQaSecCtx:
+			secCtx := ad.String()
+			a.SecCtx = &secCtx
+		case nfQaL2HDR:
+			l2hdr := bytes.Clone(ad.Bytes())
+			a.L2Hdr = &l2hdr
+		case nfQaPriority:
+			skbPrio := ad.Uint32()
+			a.SkbPrio = &skbPrio
+		default:
+			log.Errorf("Unknown attribute Type: 0x%x\tData: %v", ad.Type(), ad.Bytes())
+		}
+	}
+
+	return ad.Err()
+}
+
+func checkHeader(data []byte) (int, error) {
+	if len(data) < 2 {
+		return 0, fmt.Errorf("too less data for header")
+	}
+	if (data[0] == unix.AF_INET || data[0] == unix.AF_INET6) && data[1] == unix.NFNETLINK_V0 {
+		return 4, nil
+	}
+	return 0, fmt.Errorf("invalid header %#v", data[:2])
+}
+
+func extractAttributes(log Logger, msg []byte) (Attribute, error) {
+	attrs := Attribute{}
+
+	if len(msg) == 0 {
+		return attrs, nil
+	}
+
+	offset, err := checkHeader(msg)
+	if err != nil {
+		return attrs, err
+	}
+	if offset >= len(msg) {
+		return attrs, fmt.Errorf("too less data for attribute")
+	}
+	if err := extractAttribute(log, &attrs, msg[offset:]); err != nil {
+		return attrs, err
+	}
+	return attrs, nil
+}

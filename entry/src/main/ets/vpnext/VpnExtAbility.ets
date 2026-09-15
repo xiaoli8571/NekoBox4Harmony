@@ -528,7 +528,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       const latencyText: string = latencyMs >= 0 ? `${latencyMs}ms` : '--';
       const disconnectAgent = await wantAgent.getWantAgent({
         wants: [{
-          bundleName: 'com.nekobox.app',
+          bundleName: 'com.nekobox.app.jynxen',
           abilityName: 'EntryAbility',
           parameters: { 'action': 'disconnect' }
         }],

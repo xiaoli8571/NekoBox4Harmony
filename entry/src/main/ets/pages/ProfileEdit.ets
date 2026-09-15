@@ -88,6 +88,10 @@ struct ProfileEdit {
     if (!Number.isInteger(this.p.serverPort) || this.p.serverPort < 1 || this.p.serverPort > 65535) {
       return $r('app.string.error_port_range');
     }
+    const server = this.p.server.trim().toLowerCase();
+    if (server === '127.0.0.1' || server === 'localhost' || server === '::1' || server === '[::1]') {
+      return $r('app.string.error_loopback_server');
+    }
     const uuidRequired = this.p.type === ProfileType.VMESS || this.p.type === ProfileType.VLESS
       || this.p.type === ProfileType.TUIC;
     if (uuidRequired && !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(this.p.uuid.trim())) {

@@ -1,0 +1,84 @@
+//go:build linux || (darwin && cgo) || windows
+
+package usbip
+
+import (
+	"bytes"
+	"io"
+	"net"
+	"time"
+
+	E "github.com/sagernet/sing/common/exceptions"
+)
+
+const serverHandshakeTimeout = 10 * time.Second
+
+func (s *ServerService) acceptLoop(ln net.Listener) {
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			select {
+			case <-s.ctx.Done():
+				return
+			default:
+			}
+			if E.IsClosed(err) {
+				return
+			}
+			//nolint:staticcheck // net.Error.Temporary predates net.ErrClosed; replacement needs a separate audit.
+			if netError, isNetError := err.(net.Error); isNetError && netError.Temporary() {
+				s.logger.Error("accept: ", err)
+				if !sleepCtx(s.ctx, 200*time.Millisecond) {
+					return
+				}
+				continue
+			}
+			s.logger.Error("accept: ", err)
+			return
+		}
+		go s.dispatchConn(conn)
+	}
+}
+
+func (s *ServerService) dispatchConn(conn net.Conn) {
+	cancelClose := closeConnOnContextDone(s.ctx, conn)
+	defer cancelClose()
+	_ = conn.SetReadDeadline(time.Now().Add(serverHandshakeTimeout))
+	var prefix [controlPrefaceSize]byte
+	_, err := io.ReadFull(conn, prefix[:])
+	if err != nil {
+		s.logger.Debug("read connection preface: ", err)
+		_ = conn.Close()
+		return
+	}
+	if bytes.Equal(prefix[:], controlPreface[:]) {
+		s.handleControlConn(conn)
+		return
+	}
+	s.handleStandardConn(conn, ParseOpHeader(prefix[:]))
+}
+
+func (s *ServerService) readControlConn(sub *exportSubscriber, done chan<- struct{}) {
+	defer close(done)
+	var reader controlReader
+	for {
+		err := sub.conn.SetReadDeadline(time.Now().Add(controlReadTimeout))
+		if err != nil {
+			return
+		}
+		message, err := reader.read(sub.conn)
+		if err != nil {
+			return
+		}
+		frame := message.Frame
+		switch frame.Type {
+		case controlFramePing:
+			s.ledger.enqueueFrame(sub, controlFrame{
+				Type:    controlFramePong,
+				Version: controlProtocolVersion,
+			})
+		default:
+			return
+		}
+	}
+}

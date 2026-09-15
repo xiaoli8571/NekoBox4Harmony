@@ -207,6 +207,14 @@ function applyTransport(p: Profile, q: Record<string, string>): void {
   if (net === 'grpc' && p.serviceName === '') {
     p.serviceName = qstr(q, 'path');
   }
+  const earlyData = qstr(q, 'ed', qstr(q, 'max_early_data', ''));
+  if (earlyData.length > 0) {
+    const value = parseInt(earlyData);
+    if (!isNaN(value) && value > 0) {
+      p.wsEarlyData = value;
+    }
+  }
+  p.wsEarlyDataHeaderName = qstr(q, 'eh', qstr(q, 'early_data_header_name', ''));
 }
 
 // ---------------------------------------------------------------- ss://
@@ -244,10 +252,17 @@ function parseShadowsocks(link: string): Profile | null {
     const hp = hostPortOf(netloc, 443);
     p.server = hp[0];
     p.serverPort = hp[1];
-    if (qstr(q, 'plugin').length > 0) {
-      // 插件(obfs-local / v2ray-plugin):内核 shadowsocks 出站原生支持 plugin/plugin_opts
-      p.ssPlugin = qstr(q, 'plugin');
-      p.ssPluginOpts = qstr(q, 'plugin-opts');
+    const pluginValue = qstr(q, 'plugin');
+    if (pluginValue.length > 0) {
+      // SIP002 标准把插件名和选项合并在 plugin=name;opts 中；同时兼容旧 plugin-opts 参数。
+      const separator = pluginValue.indexOf(';');
+      if (separator >= 0) {
+        p.ssPlugin = pluginValue.substring(0, separator);
+        p.ssPluginOpts = pluginValue.substring(separator + 1);
+      } else {
+        p.ssPlugin = pluginValue;
+        p.ssPluginOpts = qstr(q, 'plugin-opts');
+      }
     }
   } else {
     // 旧版: ss://base64(method:password@host:port)
@@ -333,12 +348,20 @@ function parseHysteria2(link: string): Profile | null {
   p.type = ProfileType.HYSTERIA2;
   p.server = hp[0];
   p.serverPort = hp[1];
-  p.name = newName(name, `:`);
+  p.name = newName(name, `${p.server}:${p.serverPort}`);
   p.password = password;
   p.tls = true;
   p.sni = qstr(q, 'sni');
   p.allowInsecure = qbool(q, 'insecure') || qbool(q, 'allowInsecure');
   p.obfs = qstr(q, 'obfs-password', qstr(q, 'obfspwd'));
+  p.serverPorts = qstr(q, 'ports', qstr(q, 'server_ports', ''));
+  const hopInterval = qstr(q, 'hop-interval', qstr(q, 'hop_interval', ''));
+  if (hopInterval.length > 0) {
+    const value = parseInt(hopInterval);
+    if (!isNaN(value) && value > 0) {
+      p.hopInterval = value;
+    }
+  }
   const up = qstr(q, 'upmbps', qstr(q, 'up', ''));
   const down = qstr(q, 'downmbps', qstr(q, 'down', ''));
   p.upMbps = up.length > 0 ? parseInt(up) : 0;
@@ -404,6 +427,8 @@ function parseUserinfoLink(link: string, type: string): Profile | null {
       }
       p.congestionControl = qstr(q, 'congestion_control', 'bbr');
       p.udpRelayMode = qstr(q, 'udp_relay_mode', 'native');
+      p.reduceRtt = qbool(q, 'reduce_rtt');
+      p.disableSni = qbool(q, 'disable_sni');
       p.tls = true;
       p.sni = qstr(q, 'sni');
       p.alpn = qstr(q, 'alpn', 'h3');
@@ -411,17 +436,26 @@ function parseUserinfoLink(link: string, type: string): Profile | null {
       break;
     }
     case ProfileType.SSH: {
-      p.username = decodeURIComponentSafe(userinfo);
-      p.sshAuthType = userinfo.length > 0 ? 'password' : 'none';
+      const ci = userinfo.indexOf(':');
+      if (ci >= 0) {
+        p.username = decodeURIComponentSafe(userinfo.substring(0, ci));
+        p.password = decodeURIComponentSafe(userinfo.substring(ci + 1));
+        p.sshAuthType = p.password.length > 0 ? 'password' : 'none';
+      } else {
+        p.username = decodeURIComponentSafe(userinfo);
+        p.sshAuthType = 'none';
+      }
       p.tls = false;
       break;
     }
     case ProfileType.HTTP:
     case ProfileType.SOCKS: {
       const ci = userinfo.indexOf(':');
-      if (ci > 0) {
+      if (ci >= 0) {
         p.username = decodeURIComponentSafe(userinfo.substring(0, ci));
         p.password = decodeURIComponentSafe(userinfo.substring(ci + 1));
+      } else {
+        p.username = decodeURIComponentSafe(userinfo);
       }
       p.tls = link.startsWith('https://');
       break;

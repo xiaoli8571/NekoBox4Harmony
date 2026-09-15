@@ -1,9 +1,9 @@
 {
   "app": {
-    "bundleName": "com.nekobox.app",
+    "bundleName": "com.nekobox.app.jynxen",
     "vendor": "nekobox4harmony",
-    "versionCode": 1001926,
-    "versionName": "1.9.0",
+    "versionCode": 1001927,
+    "versionName": "1.9.1",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }
