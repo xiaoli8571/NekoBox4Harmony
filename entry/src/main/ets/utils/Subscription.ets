@@ -456,6 +456,13 @@ function profileFromClash(m: Record<string, Object> | null): Profile | null {
       p.tls = true;
       p.allowInsecure = mBool(m, 'skip-cert-verify');
       break;
+    case 'snell':
+      p.type = ProfileType.SNELL;
+      p.password = mStr(m, 'psk', mStr(m, 'password'));
+      p.obfs = mStr(m, 'obfs');
+      p.host = mStr(m, 'obfs-host');
+      p.tls = false;
+      break;
     default:
       // ssr 等内核不支持的类型跳过
       return null;

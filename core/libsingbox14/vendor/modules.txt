@@ -409,6 +409,7 @@ github.com/sagernet/sing-box/protocol/hysteria2
 github.com/sagernet/sing-box/protocol/mixed
 github.com/sagernet/sing-box/protocol/shadowsocks
 github.com/sagernet/sing-box/protocol/shadowtls
+github.com/sagernet/sing-box/protocol/snell
 github.com/sagernet/sing-box/protocol/socks
 github.com/sagernet/sing-box/protocol/ssh
 github.com/sagernet/sing-box/protocol/trojan
@@ -466,6 +467,13 @@ github.com/sagernet/sing-shadowsocks2/shadowstream
 # github.com/sagernet/sing-shadowtls v0.2.1
 ## explicit; go 1.20
 github.com/sagernet/sing-shadowtls
+# github.com/sagernet/sing-snell v0.0.0-20260829071736-20f2eaec77c3
+## explicit; go 1.24
+github.com/sagernet/sing-snell
+github.com/sagernet/sing-snell/internal/reuse
+github.com/sagernet/sing-snell/snellv4
+github.com/sagernet/sing-snell/snellv5
+github.com/sagernet/sing-snell/snellv6
 # github.com/sagernet/sing-tun v0.9.0-beta.4 => C:/Users/xiaoli/Downloads/Agent-WorkerSpaces/NekoBox4Harmony-publish-1.9.1/core/build/libsingbox-ohos/sing-tun-patched
 ## explicit; go 1.24
 github.com/sagernet/sing-tun
@@ -556,6 +564,7 @@ go.uber.org/zap/exp/zapslog
 go4.org/netipx
 # golang.org/x/crypto v0.54.0
 ## explicit; go 1.24
+golang.org/x/crypto/argon2
 golang.org/x/crypto/blake2b
 golang.org/x/crypto/blake2s
 golang.org/x/crypto/blowfish

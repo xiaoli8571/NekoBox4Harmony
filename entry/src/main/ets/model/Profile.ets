@@ -17,6 +17,7 @@ export class ProfileType {
   static readonly SSH: string = 'ssh';
   static readonly SHADOWTLS: string = 'shadowtls';
   static readonly ANYTLS: string = 'anytls';
+  static readonly SNELL: string = 'snell';
   static readonly CUSTOM: string = 'custom';
   static readonly CHAIN: string = 'chain';
 }
@@ -192,6 +193,7 @@ export function profileTypeLabel(type: string): string {
     case ProfileType.SSH: return 'SSH';
     case ProfileType.SHADOWTLS: return 'ShadowTLS';
     case ProfileType.ANYTLS: return 'AnyTLS';
+    case ProfileType.SNELL: return 'Snell';
     case ProfileType.CUSTOM: return 'Custom';
     case ProfileType.CHAIN: return 'Chain';
     default: return type;
