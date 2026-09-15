@@ -1749,6 +1749,10 @@
       "value": "Custom outbound JSON missing \"type\""
     },
     {
+      "name": "error_custom_type_unsupported",
+      "value": "Custom protocol type not supported by the core: %s"
+    },
+    {
       "name": "error_chain_empty",
       "value": "Chain requires at least one node"
     },

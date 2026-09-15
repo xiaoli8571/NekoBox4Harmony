@@ -1745,6 +1745,10 @@
       "value": "自定义出站 JSON 缺少 type 字段"
     },
     {
+      "name": "error_custom_type_unsupported",
+      "value": "内核不支持该自定义协议类型: %s"
+    },
+    {
       "name": "error_chain_empty",
       "value": "链式代理至少选择一个节点"
     },

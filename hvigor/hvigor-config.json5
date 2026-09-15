@@ -5,7 +5,8 @@
     "@ohos/hvigor-ohos-plugin": "file:C:/Program Files/Huawei/DevEco Studio/tools/hvigor/hvigor-ohos-plugin"
   },
   "properties": {
-    "hvigor.dependency.useNpm": false
+    "hvigor.dependency.useNpm": false,
+    "ohos.pack.compressLevel": "standard"
   },
   "execution": {},
   "logging": {},

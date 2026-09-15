@@ -7,6 +7,9 @@
     "deviceTypes": ["phone", "tablet"],
     "deliveryWithInstall": true,
     "installationFree": false,
+    // HAP 内原生库(zip deflate)压缩:libsingbox.so 约 35MB,压缩后 HAP 从 ~38.5MB 降到 ~24MB。
+    // 安装时由系统解压到应用原生库目录,运行不受影响(需真机回归验证一次)。
+    "compressNativeLibs": true,
     "pages": "$profile:main_pages",
     "abilities": [
       {

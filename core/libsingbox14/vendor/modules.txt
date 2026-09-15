@@ -1,66 +1,10 @@
-# filippo.io/edwards25519 v1.2.0
-## explicit; go 1.24
-filippo.io/edwards25519
-filippo.io/edwards25519/field
-# github.com/RyuaNerin/go-krypto v1.3.0
-## explicit; go 1.20
-github.com/RyuaNerin/go-krypto/aria
-github.com/RyuaNerin/go-krypto/internal/golang.org/x/sys/cpu
-github.com/RyuaNerin/go-krypto/internal/memory
-github.com/RyuaNerin/go-krypto/seed
 # github.com/ajg/form v1.5.1
 ## explicit
 github.com/ajg/form
-# github.com/akutz/memconn v0.1.0
-## explicit
-github.com/akutz/memconn
-# github.com/alexbrainman/sspi v0.0.0-20231016080023-1a75b4708caa
-## explicit; go 1.13
-github.com/alexbrainman/sspi
-github.com/alexbrainman/sspi/internal/common
-github.com/alexbrainman/sspi/negotiate
-# github.com/anchore/go-lzo v0.1.0
-## explicit; go 1.24
-github.com/anchore/go-lzo
 # github.com/andybalholm/brotli v1.1.0
 ## explicit; go 1.13
 github.com/andybalholm/brotli
 github.com/andybalholm/brotli/matchfinder
-# github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
-## explicit; go 1.13
-github.com/anmitsu/go-shlex
-# github.com/anthropics/anthropic-sdk-go v1.26.0
-## explicit; go 1.23.0
-github.com/anthropics/anthropic-sdk-go
-github.com/anthropics/anthropic-sdk-go/internal
-github.com/anthropics/anthropic-sdk-go/internal/apierror
-github.com/anthropics/anthropic-sdk-go/internal/apiform
-github.com/anthropics/anthropic-sdk-go/internal/apijson
-github.com/anthropics/anthropic-sdk-go/internal/apiquery
-github.com/anthropics/anthropic-sdk-go/internal/encoding/json
-github.com/anthropics/anthropic-sdk-go/internal/encoding/json/sentinel
-github.com/anthropics/anthropic-sdk-go/internal/encoding/json/shims
-github.com/anthropics/anthropic-sdk-go/internal/paramutil
-github.com/anthropics/anthropic-sdk-go/internal/requestconfig
-github.com/anthropics/anthropic-sdk-go/option
-github.com/anthropics/anthropic-sdk-go/packages/jsonl
-github.com/anthropics/anthropic-sdk-go/packages/pagination
-github.com/anthropics/anthropic-sdk-go/packages/param
-github.com/anthropics/anthropic-sdk-go/packages/respjson
-github.com/anthropics/anthropic-sdk-go/packages/ssestream
-github.com/anthropics/anthropic-sdk-go/shared
-github.com/anthropics/anthropic-sdk-go/shared/constant
-# github.com/anytls/sing-anytls v0.0.11
-## explicit; go 1.23.1
-github.com/anytls/sing-anytls
-github.com/anytls/sing-anytls/padding
-github.com/anytls/sing-anytls/pipe
-github.com/anytls/sing-anytls/session
-github.com/anytls/sing-anytls/skiplist
-github.com/anytls/sing-anytls/util
-# github.com/axiomhq/hyperloglog v0.0.0-20240319100328-84253e514e02
-## explicit; go 1.12
-github.com/axiomhq/hyperloglog
 # github.com/caddyserver/certmagic v0.25.3-0.20260421143802-60d9d8b415d6
 ## explicit; go 1.24
 github.com/caddyserver/certmagic
@@ -68,56 +12,14 @@ github.com/caddyserver/certmagic/internal/atomicfile
 # github.com/caddyserver/zerossl v0.1.5
 ## explicit; go 1.21.0
 github.com/caddyserver/zerossl
-# github.com/coder/websocket v1.8.14
-## explicit; go 1.23
-github.com/coder/websocket
-github.com/coder/websocket/internal/bpool
-github.com/coder/websocket/internal/errd
-github.com/coder/websocket/internal/util
-github.com/coder/websocket/internal/wsjs
-# github.com/coreos/go-iptables v0.7.1-0.20240112124308-65c67c9f46e6
-## explicit; go 1.16
-github.com/coreos/go-iptables/iptables
-# github.com/coreos/go-oidc/v3 v3.17.0
-## explicit; go 1.24
-github.com/coreos/go-oidc/v3/oidc
-# github.com/creack/pty v1.1.24
-## explicit; go 1.18
-github.com/creack/pty
-# github.com/cretz/bine v0.2.0
-## explicit; go 1.15
-github.com/cretz/bine/control
-github.com/cretz/bine/process
-github.com/cretz/bine/tor
-github.com/cretz/bine/torutil
-github.com/cretz/bine/torutil/ed25519
-github.com/cretz/bine/torutil/ed25519/internal/edwards25519
+# github.com/cilium/ebpf v0.16.0
+## explicit; go 1.21
 # github.com/database64128/netx-go v0.1.1
 ## explicit; go 1.23.0
 github.com/database64128/netx-go
 # github.com/database64128/tfo-go/v2 v2.3.2
 ## explicit; go 1.24
 github.com/database64128/tfo-go/v2
-# github.com/dblohm7/wingoes v0.0.0-20240119213807-a09d6be7affa
-## explicit; go 1.21
-github.com/dblohm7/wingoes
-github.com/dblohm7/wingoes/com
-github.com/dblohm7/wingoes/com/automation
-github.com/dblohm7/wingoes/internal
-github.com/dblohm7/wingoes/pe
-# github.com/dgryski/go-camellia v0.0.0-20191119043421-69a8a13fb23d
-## explicit
-github.com/dgryski/go-camellia
-# github.com/dgryski/go-metro v0.0.0-20180109044635-280f6062b5bc
-## explicit
-github.com/dgryski/go-metro
-# github.com/ebitengine/purego v0.10.0
-## explicit; go 1.18
-github.com/ebitengine/purego
-github.com/ebitengine/purego/internal/cgo
-github.com/ebitengine/purego/internal/fakecgo
-github.com/ebitengine/purego/internal/strings
-github.com/ebitengine/purego/internal/xreflect
 # github.com/florianl/go-nfqueue/v2 v2.1.0
 ## explicit; go 1.24
 github.com/florianl/go-nfqueue/v2
@@ -126,21 +28,6 @@ github.com/florianl/go-nfqueue/v2/internal/unix
 ## explicit; go 1.17
 github.com/fsnotify/fsnotify
 github.com/fsnotify/fsnotify/internal
-# github.com/fxamacker/cbor/v2 v2.9.0
-## explicit; go 1.20
-github.com/fxamacker/cbor/v2
-# github.com/gaissmai/bart v0.26.1
-## explicit; go 1.24
-github.com/gaissmai/bart
-github.com/gaissmai/bart/internal/allot
-github.com/gaissmai/bart/internal/art
-github.com/gaissmai/bart/internal/bitset
-github.com/gaissmai/bart/internal/lpm
-github.com/gaissmai/bart/internal/nodes
-github.com/gaissmai/bart/internal/sparse
-github.com/gaissmai/bart/internal/tests/golden
-github.com/gaissmai/bart/internal/tests/random
-github.com/gaissmai/bart/internal/value
 # github.com/go-chi/chi/v5 v5.2.5
 ## explicit; go 1.22
 github.com/go-chi/chi/v5
@@ -148,18 +35,10 @@ github.com/go-chi/chi/v5/middleware
 # github.com/go-chi/render v1.0.3
 ## explicit; go 1.16
 github.com/go-chi/render
-# github.com/go-jose/go-jose/v4 v4.1.3
-## explicit; go 1.24
-github.com/go-jose/go-jose/v4
-github.com/go-jose/go-jose/v4/cipher
-github.com/go-jose/go-jose/v4/json
 # github.com/go-ole/go-ole v1.3.0
 ## explicit; go 1.12
 github.com/go-ole/go-ole
 github.com/go-ole/go-ole/oleutil
-# github.com/go4org/hashtriemap v0.0.0-20251130024219-545ba229f689
-## explicit; go 1.24
-github.com/go4org/hashtriemap
 # github.com/gobwas/httphead v0.1.0
 ## explicit; go 1.15
 github.com/gobwas/httphead
@@ -175,18 +54,9 @@ github.com/godbus/dbus/v5
 # github.com/gofrs/uuid/v5 v5.5.1
 ## explicit; go 1.24
 github.com/gofrs/uuid/v5
-# github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8
-## explicit; go 1.20
-github.com/golang/groupcache/lru
 # github.com/google/btree v1.1.3
 ## explicit; go 1.18
 github.com/google/btree
-# github.com/google/certificate-transparency-go v1.3.2
-## explicit; go 1.23.0
-github.com/google/certificate-transparency-go/asn1
-github.com/google/certificate-transparency-go/tls
-github.com/google/certificate-transparency-go/x509
-github.com/google/certificate-transparency-go/x509/pkix
 # github.com/google/go-cmp v0.7.0
 ## explicit; go 1.21
 github.com/google/go-cmp/cmp
@@ -197,23 +67,9 @@ github.com/google/go-cmp/cmp/internal/value
 # github.com/google/gopacket v1.1.19
 ## explicit; go 1.12
 github.com/google/gopacket/routing
-# github.com/google/nftables v0.2.1-0.20240414091927-5e242ec57806
-## explicit; go 1.21
-github.com/google/nftables
-github.com/google/nftables/alignedbuff
-github.com/google/nftables/binaryutil
-github.com/google/nftables/expr
-github.com/google/nftables/internal/parseexprfunc
-github.com/google/nftables/xt
-# github.com/google/uuid v1.6.0
-## explicit
-github.com/google/uuid
 # github.com/hashicorp/yamux v0.1.2
 ## explicit; go 1.20
 github.com/hashicorp/yamux
-# github.com/hdevalence/ed25519consensus v0.2.0
-## explicit; go 1.19
-github.com/hdevalence/ed25519consensus
 # github.com/huin/goupnp v1.3.0
 ## explicit; go 1.14
 github.com/huin/goupnp
@@ -236,13 +92,9 @@ github.com/jackpal/go-nat-pmp
 ## explicit; go 1.20
 github.com/jsimonetti/rtnetlink
 github.com/jsimonetti/rtnetlink/internal/unix
-# github.com/keybase/go-keychain v0.0.1
-## explicit; go 1.21
-github.com/keybase/go-keychain
 # github.com/klauspost/compress v1.19.1
 ## explicit; go 1.24
 github.com/klauspost/compress
-github.com/klauspost/compress/flate
 github.com/klauspost/compress/fse
 github.com/klauspost/compress/huff0
 github.com/klauspost/compress/internal/cpuinfo
@@ -258,9 +110,6 @@ github.com/klauspost/cpuid/v2
 github.com/koron/go-ssdp
 github.com/koron/go-ssdp/internal/multicast
 github.com/koron/go-ssdp/internal/ssdplog
-# github.com/kr/fs v0.1.0
-## explicit
-github.com/kr/fs
 # github.com/libdns/acmedns v0.5.0
 ## explicit; go 1.17
 github.com/libdns/acmedns
@@ -314,33 +163,6 @@ github.com/mholt/acmez/v3/acme
 # github.com/miekg/dns v1.1.72
 ## explicit; go 1.24
 github.com/miekg/dns
-# github.com/mitchellh/go-ps v1.0.0
-## explicit; go 1.13
-github.com/mitchellh/go-ps
-# github.com/openai/openai-go/v3 v3.26.0
-## explicit; go 1.22
-github.com/openai/openai-go/v3
-github.com/openai/openai-go/v3/conversations
-github.com/openai/openai-go/v3/internal
-github.com/openai/openai-go/v3/internal/apierror
-github.com/openai/openai-go/v3/internal/apiform
-github.com/openai/openai-go/v3/internal/apijson
-github.com/openai/openai-go/v3/internal/apiquery
-github.com/openai/openai-go/v3/internal/encoding/json
-github.com/openai/openai-go/v3/internal/encoding/json/sentinel
-github.com/openai/openai-go/v3/internal/encoding/json/shims
-github.com/openai/openai-go/v3/internal/paramutil
-github.com/openai/openai-go/v3/internal/requestconfig
-github.com/openai/openai-go/v3/option
-github.com/openai/openai-go/v3/packages/pagination
-github.com/openai/openai-go/v3/packages/param
-github.com/openai/openai-go/v3/packages/respjson
-github.com/openai/openai-go/v3/packages/ssestream
-github.com/openai/openai-go/v3/realtime
-github.com/openai/openai-go/v3/responses
-github.com/openai/openai-go/v3/shared
-github.com/openai/openai-go/v3/shared/constant
-github.com/openai/openai-go/v3/webhooks
 # github.com/pierrec/lz4/v4 v4.1.26
 ## explicit; go 1.17
 github.com/pierrec/lz4/v4
@@ -348,51 +170,9 @@ github.com/pierrec/lz4/v4/internal/lz4block
 github.com/pierrec/lz4/v4/internal/lz4errors
 github.com/pierrec/lz4/v4/internal/lz4stream
 github.com/pierrec/lz4/v4/internal/xxh32
-# github.com/pion/dtls/v3 v3.1.5
-## explicit; go 1.24
-github.com/pion/dtls/v3
-github.com/pion/dtls/v3/internal/ciphersuite
-github.com/pion/dtls/v3/internal/ciphersuite/types
-github.com/pion/dtls/v3/internal/closer
-github.com/pion/dtls/v3/internal/net
-github.com/pion/dtls/v3/internal/net/udp
-github.com/pion/dtls/v3/internal/util
-github.com/pion/dtls/v3/pkg/crypto/ccm
-github.com/pion/dtls/v3/pkg/crypto/ciphersuite
-github.com/pion/dtls/v3/pkg/crypto/clientcertificate
-github.com/pion/dtls/v3/pkg/crypto/elliptic
-github.com/pion/dtls/v3/pkg/crypto/hash
-github.com/pion/dtls/v3/pkg/crypto/prf
-github.com/pion/dtls/v3/pkg/crypto/signature
-github.com/pion/dtls/v3/pkg/crypto/signaturehash
-github.com/pion/dtls/v3/pkg/net
-github.com/pion/dtls/v3/pkg/protocol
-github.com/pion/dtls/v3/pkg/protocol/alert
-github.com/pion/dtls/v3/pkg/protocol/extension
-github.com/pion/dtls/v3/pkg/protocol/handshake
-github.com/pion/dtls/v3/pkg/protocol/recordlayer
-# github.com/pion/logging v0.2.4
-## explicit; go 1.20
-github.com/pion/logging
-# github.com/pion/transport/v4 v4.0.2
-## explicit; go 1.24
-github.com/pion/transport/v4/deadline
-github.com/pion/transport/v4/netctx
-github.com/pion/transport/v4/replaydetector
-# github.com/pires/go-proxyproto v0.8.1
-## explicit; go 1.24
-github.com/pires/go-proxyproto
-# github.com/pkg/sftp v1.13.10
-## explicit; go 1.23.0
-github.com/pkg/sftp
-github.com/pkg/sftp/internal/encoding/ssh/filexfer
-github.com/pkg/sftp/internal/encoding/ssh/filexfer/openssh
 # github.com/quic-go/qpack v0.6.0
 ## explicit; go 1.24
 github.com/quic-go/qpack
-# github.com/safchain/ethtool v0.3.0
-## explicit; go 1.16
-github.com/safchain/ethtool
 # github.com/sagernet/bbolt v0.0.0-20260823094646-e24805439c9c
 ## explicit; go 1.24
 github.com/sagernet/bbolt
@@ -402,107 +182,9 @@ github.com/sagernet/bbolt/internal/freelist
 # github.com/sagernet/cors v1.2.1
 ## explicit; go 1.14
 github.com/sagernet/cors
-# github.com/sagernet/cronet-go v0.0.0-20260831031307-45832ab07484
-## explicit; go 1.24
-github.com/sagernet/cronet-go
-github.com/sagernet/cronet-go/include
-github.com/sagernet/cronet-go/internal/cronet
-# github.com/sagernet/cronet-go/all v0.0.0-20260831031307-45832ab07484
-## explicit; go 1.24
-github.com/sagernet/cronet-go/all
-# github.com/sagernet/cronet-go/lib/android_386 v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/android_386
-# github.com/sagernet/cronet-go/lib/android_amd64 v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/android_amd64
-# github.com/sagernet/cronet-go/lib/android_arm v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/android_arm
-# github.com/sagernet/cronet-go/lib/android_arm64 v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/android_arm64
-# github.com/sagernet/cronet-go/lib/darwin_amd64 v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/darwin_amd64
-# github.com/sagernet/cronet-go/lib/darwin_arm64 v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/darwin_arm64
-# github.com/sagernet/cronet-go/lib/ios_amd64_simulator v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/ios_amd64_simulator
-# github.com/sagernet/cronet-go/lib/ios_arm64 v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/ios_arm64
-# github.com/sagernet/cronet-go/lib/ios_arm64_simulator v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/ios_arm64_simulator
-# github.com/sagernet/cronet-go/lib/linux_386 v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/linux_386
-# github.com/sagernet/cronet-go/lib/linux_386_musl v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/linux_386_musl
-# github.com/sagernet/cronet-go/lib/linux_amd64 v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/linux_amd64
-# github.com/sagernet/cronet-go/lib/linux_amd64_musl v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/linux_amd64_musl
-# github.com/sagernet/cronet-go/lib/linux_arm v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/linux_arm
-# github.com/sagernet/cronet-go/lib/linux_arm64 v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/linux_arm64
-# github.com/sagernet/cronet-go/lib/linux_arm64_musl v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/linux_arm64_musl
-# github.com/sagernet/cronet-go/lib/linux_arm_musl v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/linux_arm_musl
-# github.com/sagernet/cronet-go/lib/linux_loong64 v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/linux_loong64
-# github.com/sagernet/cronet-go/lib/linux_loong64_musl v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/linux_loong64_musl
-# github.com/sagernet/cronet-go/lib/linux_mips64le v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/linux_mips64le
-# github.com/sagernet/cronet-go/lib/linux_mipsle v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/linux_mipsle
-# github.com/sagernet/cronet-go/lib/linux_mipsle_musl v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/linux_mipsle_musl
-# github.com/sagernet/cronet-go/lib/linux_riscv64 v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/linux_riscv64
-# github.com/sagernet/cronet-go/lib/linux_riscv64_musl v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/linux_riscv64_musl
-# github.com/sagernet/cronet-go/lib/tvos_amd64_simulator v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/tvos_amd64_simulator
-# github.com/sagernet/cronet-go/lib/tvos_arm64 v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/tvos_arm64
-# github.com/sagernet/cronet-go/lib/tvos_arm64_simulator v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/tvos_arm64_simulator
-# github.com/sagernet/cronet-go/lib/windows_amd64 v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/windows_amd64
-# github.com/sagernet/cronet-go/lib/windows_arm64 v0.0.0-20260831030607-f80ef37265e5
-## explicit; go 1.20
-github.com/sagernet/cronet-go/lib/windows_arm64
 # github.com/sagernet/fswatch v0.1.2
 ## explicit; go 1.20
 github.com/sagernet/fswatch
-# github.com/sagernet/gliderssh v0.3.4-0.20260531100337-2194faca5648
-## explicit; go 1.20
-github.com/sagernet/gliderssh
 # github.com/sagernet/gvisor v0.0.0-20241123041152-536d05261cff
 ## explicit; go 1.20
 github.com/sagernet/gvisor/pkg/atomicbitops
@@ -651,7 +333,7 @@ github.com/sagernet/sing/protocol/socks/socks5
 github.com/sagernet/sing/service
 github.com/sagernet/sing/service/filemanager
 github.com/sagernet/sing/service/pause
-# github.com/sagernet/sing-box v1.14.0 => C:/Users/xiaoli/.dsh/NekoBox4Harmony-main/core/sing-box-1.14
+# github.com/sagernet/sing-box v1.14.0 => C:/Users/xiaoli/Downloads/Agent-WorkerSpaces/NekoBox4Harmony-publish-1.9.1/core/sing-box-1.14
 ## explicit; go 1.24
 github.com/sagernet/sing-box
 github.com/sagernet/sing-box/adapter
@@ -674,7 +356,6 @@ github.com/sagernet/sing-box/common/ktls
 github.com/sagernet/sing-box/common/listener
 github.com/sagernet/sing-box/common/mux
 github.com/sagernet/sing-box/common/netns
-github.com/sagernet/sing-box/common/networkquality
 github.com/sagernet/sing-box/common/process
 github.com/sagernet/sing-box/common/proxybridge
 github.com/sagernet/sing-box/common/redir
@@ -683,7 +364,6 @@ github.com/sagernet/sing-box/common/settings
 github.com/sagernet/sing-box/common/sniff
 github.com/sagernet/sing-box/common/sniff/internal/qtls
 github.com/sagernet/sing-box/common/srs
-github.com/sagernet/sing-box/common/stun
 github.com/sagernet/sing-box/common/taskmonitor
 github.com/sagernet/sing-box/common/tls
 github.com/sagernet/sing-box/common/tlsfragment
@@ -695,7 +375,6 @@ github.com/sagernet/sing-box/common/windivert
 github.com/sagernet/sing-box/common/winmutex
 github.com/sagernet/sing-box/constant
 github.com/sagernet/sing-box/constant/goos
-github.com/sagernet/sing-box/daemon
 github.com/sagernet/sing-box/dns
 github.com/sagernet/sing-box/dns/transport
 github.com/sagernet/sing-box/dns/transport/dhcp
@@ -710,14 +389,8 @@ github.com/sagernet/sing-box/experimental/cachefile
 github.com/sagernet/sing-box/experimental/clashapi
 github.com/sagernet/sing-box/experimental/deprecated
 github.com/sagernet/sing-box/experimental/locale
-github.com/sagernet/sing-box/experimental/v2rayapi
-github.com/sagernet/sing-box/include
 github.com/sagernet/sing-box/log
 github.com/sagernet/sing-box/option
-github.com/sagernet/sing-box/protocol/anytls
-github.com/sagernet/sing-box/protocol/block
-github.com/sagernet/sing-box/protocol/bridge
-github.com/sagernet/sing-box/protocol/cloudflare
 github.com/sagernet/sing-box/protocol/direct
 github.com/sagernet/sing-box/protocol/dns
 github.com/sagernet/sing-box/protocol/group
@@ -725,19 +398,10 @@ github.com/sagernet/sing-box/protocol/http
 github.com/sagernet/sing-box/protocol/hysteria
 github.com/sagernet/sing-box/protocol/hysteria2
 github.com/sagernet/sing-box/protocol/mixed
-github.com/sagernet/sing-box/protocol/naive
-github.com/sagernet/sing-box/protocol/naive/quic
-github.com/sagernet/sing-box/protocol/openconnect
-github.com/sagernet/sing-box/protocol/openvpn
-github.com/sagernet/sing-box/protocol/redirect
 github.com/sagernet/sing-box/protocol/shadowsocks
 github.com/sagernet/sing-box/protocol/shadowtls
-github.com/sagernet/sing-box/protocol/snell
 github.com/sagernet/sing-box/protocol/socks
 github.com/sagernet/sing-box/protocol/ssh
-github.com/sagernet/sing-box/protocol/tailscale
-github.com/sagernet/sing-box/protocol/tailscale/tailssh
-github.com/sagernet/sing-box/protocol/tor
 github.com/sagernet/sing-box/protocol/trojan
 github.com/sagernet/sing-box/protocol/tuic
 github.com/sagernet/sing-box/protocol/tun
@@ -747,19 +411,8 @@ github.com/sagernet/sing-box/protocol/wireguard
 github.com/sagernet/sing-box/route
 github.com/sagernet/sing-box/route/rule
 github.com/sagernet/sing-box/schema
-github.com/sagernet/sing-box/service/acme
-github.com/sagernet/sing-box/service/api
-github.com/sagernet/sing-box/service/ccm
-github.com/sagernet/sing-box/service/derp
-github.com/sagernet/sing-box/service/ocm
-github.com/sagernet/sing-box/service/oomkiller
-github.com/sagernet/sing-box/service/origin_ca
 github.com/sagernet/sing-box/service/powerreport
 github.com/sagernet/sing-box/service/resolved
-github.com/sagernet/sing-box/service/ssmapi
-github.com/sagernet/sing-box/service/usbip
-github.com/sagernet/sing-box/transport/openconnect
-github.com/sagernet/sing-box/transport/openvpn
 github.com/sagernet/sing-box/transport/simple-obfs
 github.com/sagernet/sing-box/transport/sip003
 github.com/sagernet/sing-box/transport/trojan
@@ -772,27 +425,9 @@ github.com/sagernet/sing-box/transport/v2rayhttpupgrade
 github.com/sagernet/sing-box/transport/v2rayquic
 github.com/sagernet/sing-box/transport/v2raywebsocket
 github.com/sagernet/sing-box/transport/wireguard
-# github.com/sagernet/sing-cloudflared v0.1.3-0.20260706062323-d9787e794aa3
-## explicit; go 1.24
-github.com/sagernet/sing-cloudflared
-github.com/sagernet/sing-cloudflared/internal/config
-github.com/sagernet/sing-cloudflared/internal/control
-github.com/sagernet/sing-cloudflared/internal/datagram
-github.com/sagernet/sing-cloudflared/internal/discovery
-github.com/sagernet/sing-cloudflared/internal/icmp
-github.com/sagernet/sing-cloudflared/internal/protocol
-github.com/sagernet/sing-cloudflared/internal/transport
-github.com/sagernet/sing-cloudflared/internal/tunnelrpc
 # github.com/sagernet/sing-mux v0.3.5
 ## explicit; go 1.18
 github.com/sagernet/sing-mux
-# github.com/sagernet/sing-openconnect v0.0.0-20260810065514-53aa8058f8df
-## explicit; go 1.24
-github.com/sagernet/sing-openconnect
-# github.com/sagernet/sing-openvpn v0.0.0-20260729104525-103eb5fe5eb6
-## explicit; go 1.24
-github.com/sagernet/sing-openvpn
-github.com/sagernet/sing-openvpn/proto
 # github.com/sagernet/sing-quic v0.7.0-beta.4
 ## explicit; go 1.24
 github.com/sagernet/sing-quic
@@ -822,14 +457,7 @@ github.com/sagernet/sing-shadowsocks2/shadowstream
 # github.com/sagernet/sing-shadowtls v0.2.1
 ## explicit; go 1.20
 github.com/sagernet/sing-shadowtls
-# github.com/sagernet/sing-snell v0.0.0-20260829071736-20f2eaec77c3
-## explicit; go 1.24
-github.com/sagernet/sing-snell
-github.com/sagernet/sing-snell/internal/reuse
-github.com/sagernet/sing-snell/snellv4
-github.com/sagernet/sing-snell/snellv5
-github.com/sagernet/sing-snell/snellv6
-# github.com/sagernet/sing-tun v0.9.0-beta.4 => C:/Users/xiaoli/.dsh/NekoBox4Harmony-main/core/build/libsingbox-ohos/sing-tun-patched
+# github.com/sagernet/sing-tun v0.9.0-beta.4 => C:/Users/xiaoli/Downloads/Agent-WorkerSpaces/NekoBox4Harmony-publish-1.9.1/core/build/libsingbox-ohos/sing-tun-patched
 ## explicit; go 1.24
 github.com/sagernet/sing-tun
 github.com/sagernet/sing-tun/gtcpip
@@ -862,233 +490,6 @@ github.com/sagernet/sing-vmess/vless
 # github.com/sagernet/smux v1.5.50-sing-box-mod.1
 ## explicit; go 1.18
 github.com/sagernet/smux
-# github.com/sagernet/tailscale v1.102.1-sing-box-1.14-mod.4
-## explicit; go 1.24
-github.com/sagernet/tailscale
-github.com/sagernet/tailscale/appc
-github.com/sagernet/tailscale/atomicfile
-github.com/sagernet/tailscale/client/local
-github.com/sagernet/tailscale/client/tailscale
-github.com/sagernet/tailscale/client/tailscale/apitype
-github.com/sagernet/tailscale/client/web
-github.com/sagernet/tailscale/control/controlbase
-github.com/sagernet/tailscale/control/controlclient
-github.com/sagernet/tailscale/control/controlhttp
-github.com/sagernet/tailscale/control/controlhttp/controlhttpcommon
-github.com/sagernet/tailscale/control/controlknobs
-github.com/sagernet/tailscale/control/ts2021
-github.com/sagernet/tailscale/derp
-github.com/sagernet/tailscale/derp/derpconst
-github.com/sagernet/tailscale/derp/derphttp
-github.com/sagernet/tailscale/derp/derpserver
-github.com/sagernet/tailscale/disco
-github.com/sagernet/tailscale/drive
-github.com/sagernet/tailscale/envknob
-github.com/sagernet/tailscale/envknob/featureknob
-github.com/sagernet/tailscale/feature
-github.com/sagernet/tailscale/feature/acme
-github.com/sagernet/tailscale/feature/buildfeatures
-github.com/sagernet/tailscale/feature/c2n
-github.com/sagernet/tailscale/feature/condlite/expvar
-github.com/sagernet/tailscale/feature/condregister/netlog
-github.com/sagernet/tailscale/feature/condregister/oauthkey
-github.com/sagernet/tailscale/feature/condregister/osrouter
-github.com/sagernet/tailscale/feature/condregister/portmapper
-github.com/sagernet/tailscale/feature/condregister/useproxy
-github.com/sagernet/tailscale/feature/netlog
-github.com/sagernet/tailscale/feature/oauthkey
-github.com/sagernet/tailscale/feature/portmapper
-github.com/sagernet/tailscale/feature/relayserver
-github.com/sagernet/tailscale/feature/serviceclientprefs/serviceclient
-github.com/sagernet/tailscale/feature/useproxy
-github.com/sagernet/tailscale/health
-github.com/sagernet/tailscale/health/healthmsg
-github.com/sagernet/tailscale/hostinfo
-github.com/sagernet/tailscale/internal/client/tailscale
-github.com/sagernet/tailscale/internal/godown/github.com/go-json-experiment/json
-github.com/sagernet/tailscale/internal/godown/github.com/go-json-experiment/json/internal
-github.com/sagernet/tailscale/internal/godown/github.com/go-json-experiment/json/internal/jsonflags
-github.com/sagernet/tailscale/internal/godown/github.com/go-json-experiment/json/internal/jsonopts
-github.com/sagernet/tailscale/internal/godown/github.com/go-json-experiment/json/internal/jsonwire
-github.com/sagernet/tailscale/internal/godown/github.com/go-json-experiment/json/jsontext
-github.com/sagernet/tailscale/internal/godown/github.com/go-json-experiment/json/v1
-github.com/sagernet/tailscale/internal/godown/std/errors
-github.com/sagernet/tailscale/internal/godown/std/net/netip
-github.com/sagernet/tailscale/internal/godown/std/reflect
-github.com/sagernet/tailscale/ipn
-github.com/sagernet/tailscale/ipn/conffile
-github.com/sagernet/tailscale/ipn/ipnauth
-github.com/sagernet/tailscale/ipn/ipnext
-github.com/sagernet/tailscale/ipn/ipnlocal
-github.com/sagernet/tailscale/ipn/ipnlocal/netmapcache
-github.com/sagernet/tailscale/ipn/ipnstate
-github.com/sagernet/tailscale/ipn/localapi
-github.com/sagernet/tailscale/ipn/store
-github.com/sagernet/tailscale/ipn/store/mem
-github.com/sagernet/tailscale/kube/kubetypes
-github.com/sagernet/tailscale/licenses
-github.com/sagernet/tailscale/log/filelogger
-github.com/sagernet/tailscale/log/sockstatlog
-github.com/sagernet/tailscale/logpolicy
-github.com/sagernet/tailscale/logtail
-github.com/sagernet/tailscale/logtail/filch
-github.com/sagernet/tailscale/metrics
-github.com/sagernet/tailscale/net/bakedroots
-github.com/sagernet/tailscale/net/batching
-github.com/sagernet/tailscale/net/dns
-github.com/sagernet/tailscale/net/dns/publicdns
-github.com/sagernet/tailscale/net/dns/resolvconffile
-github.com/sagernet/tailscale/net/dns/resolver
-github.com/sagernet/tailscale/net/dnscache
-github.com/sagernet/tailscale/net/dnsfallback
-github.com/sagernet/tailscale/net/flowtrack
-github.com/sagernet/tailscale/net/ipset
-github.com/sagernet/tailscale/net/memnet
-github.com/sagernet/tailscale/net/netaddr
-github.com/sagernet/tailscale/net/netcheck
-github.com/sagernet/tailscale/net/neterror
-github.com/sagernet/tailscale/net/netkernelconf
-github.com/sagernet/tailscale/net/netknob
-github.com/sagernet/tailscale/net/netmon
-github.com/sagernet/tailscale/net/netns
-github.com/sagernet/tailscale/net/netutil
-github.com/sagernet/tailscale/net/netx
-github.com/sagernet/tailscale/net/packet
-github.com/sagernet/tailscale/net/packet/checksum
-github.com/sagernet/tailscale/net/ping
-github.com/sagernet/tailscale/net/portmapper
-github.com/sagernet/tailscale/net/portmapper/portmappertype
-github.com/sagernet/tailscale/net/proxymux
-github.com/sagernet/tailscale/net/routecheck
-github.com/sagernet/tailscale/net/routecheck/peernode
-github.com/sagernet/tailscale/net/routemanager
-github.com/sagernet/tailscale/net/sockopts
-github.com/sagernet/tailscale/net/socks5
-github.com/sagernet/tailscale/net/sockstats
-github.com/sagernet/tailscale/net/stun
-github.com/sagernet/tailscale/net/tcpinfo
-github.com/sagernet/tailscale/net/tlsdial
-github.com/sagernet/tailscale/net/tlsdial/blockblame
-github.com/sagernet/tailscale/net/traffic
-github.com/sagernet/tailscale/net/tsaddr
-github.com/sagernet/tailscale/net/tsdial
-github.com/sagernet/tailscale/net/tshttpproxy
-github.com/sagernet/tailscale/net/tstun
-github.com/sagernet/tailscale/net/udprelay
-github.com/sagernet/tailscale/net/udprelay/endpoint
-github.com/sagernet/tailscale/net/udprelay/status
-github.com/sagernet/tailscale/net/wsconn
-github.com/sagernet/tailscale/omit
-github.com/sagernet/tailscale/paths
-github.com/sagernet/tailscale/proxymap
-github.com/sagernet/tailscale/safesocket
-github.com/sagernet/tailscale/sessionrecording
-github.com/sagernet/tailscale/syncs
-github.com/sagernet/tailscale/tailcfg
-github.com/sagernet/tailscale/tempfork/acme
-github.com/sagernet/tailscale/tempfork/heap
-github.com/sagernet/tailscale/tempfork/httprec
-github.com/sagernet/tailscale/tka
-github.com/sagernet/tailscale/tsconst
-github.com/sagernet/tailscale/tsd
-github.com/sagernet/tailscale/tsnet
-github.com/sagernet/tailscale/tstime
-github.com/sagernet/tailscale/tstime/mono
-github.com/sagernet/tailscale/tstime/rate
-github.com/sagernet/tailscale/tsweb
-github.com/sagernet/tailscale/tsweb/varz
-github.com/sagernet/tailscale/types/appctype
-github.com/sagernet/tailscale/types/bools
-github.com/sagernet/tailscale/types/dnstype
-github.com/sagernet/tailscale/types/empty
-github.com/sagernet/tailscale/types/events
-github.com/sagernet/tailscale/types/ipproto
-github.com/sagernet/tailscale/types/key
-github.com/sagernet/tailscale/types/lazy
-github.com/sagernet/tailscale/types/logger
-github.com/sagernet/tailscale/types/logid
-github.com/sagernet/tailscale/types/mapx
-github.com/sagernet/tailscale/types/netlogfunc
-github.com/sagernet/tailscale/types/netlogtype
-github.com/sagernet/tailscale/types/netmap
-github.com/sagernet/tailscale/types/nettype
-github.com/sagernet/tailscale/types/opt
-github.com/sagernet/tailscale/types/persist
-github.com/sagernet/tailscale/types/preftype
-github.com/sagernet/tailscale/types/result
-github.com/sagernet/tailscale/types/structs
-github.com/sagernet/tailscale/types/tkatype
-github.com/sagernet/tailscale/types/views
-github.com/sagernet/tailscale/util/backoff
-github.com/sagernet/tailscale/util/bufiox
-github.com/sagernet/tailscale/util/checkchange
-github.com/sagernet/tailscale/util/cibuild
-github.com/sagernet/tailscale/util/clientmetric
-github.com/sagernet/tailscale/util/cloudenv
-github.com/sagernet/tailscale/util/cloudinfo
-github.com/sagernet/tailscale/util/cmpver
-github.com/sagernet/tailscale/util/ctxkey
-github.com/sagernet/tailscale/util/deephash
-github.com/sagernet/tailscale/util/def
-github.com/sagernet/tailscale/util/dirwalk
-github.com/sagernet/tailscale/util/dnsname
-github.com/sagernet/tailscale/util/eventbus
-github.com/sagernet/tailscale/util/execqueue
-github.com/sagernet/tailscale/util/goroutines
-github.com/sagernet/tailscale/util/groupmember
-github.com/sagernet/tailscale/util/hashx
-github.com/sagernet/tailscale/util/httphdr
-github.com/sagernet/tailscale/util/httpm
-github.com/sagernet/tailscale/util/lineiter
-github.com/sagernet/tailscale/util/linuxfw
-github.com/sagernet/tailscale/util/mak
-github.com/sagernet/tailscale/util/must
-github.com/sagernet/tailscale/util/nocasemaps
-github.com/sagernet/tailscale/util/osdiag
-github.com/sagernet/tailscale/util/osdiag/internal/wsc
-github.com/sagernet/tailscale/util/osuser
-github.com/sagernet/tailscale/util/race
-github.com/sagernet/tailscale/util/racebuild
-github.com/sagernet/tailscale/util/rands
-github.com/sagernet/tailscale/util/ringlog
-github.com/sagernet/tailscale/util/set
-github.com/sagernet/tailscale/util/singleflight
-github.com/sagernet/tailscale/util/slicesx
-github.com/sagernet/tailscale/util/syspolicy/internal
-github.com/sagernet/tailscale/util/syspolicy/internal/loggerx
-github.com/sagernet/tailscale/util/syspolicy/internal/metrics
-github.com/sagernet/tailscale/util/syspolicy/pkey
-github.com/sagernet/tailscale/util/syspolicy/policyclient
-github.com/sagernet/tailscale/util/syspolicy/ptype
-github.com/sagernet/tailscale/util/syspolicy/rsop
-github.com/sagernet/tailscale/util/syspolicy/setting
-github.com/sagernet/tailscale/util/syspolicy/source
-github.com/sagernet/tailscale/util/testenv
-github.com/sagernet/tailscale/util/truncate
-github.com/sagernet/tailscale/util/usermetric
-github.com/sagernet/tailscale/util/vizerror
-github.com/sagernet/tailscale/util/winutil
-github.com/sagernet/tailscale/util/winutil/authenticode
-github.com/sagernet/tailscale/util/winutil/conpty
-github.com/sagernet/tailscale/util/winutil/gp
-github.com/sagernet/tailscale/util/winutil/policy
-github.com/sagernet/tailscale/util/winutil/winenv
-github.com/sagernet/tailscale/util/zstdframe
-github.com/sagernet/tailscale/version
-github.com/sagernet/tailscale/version/distro
-github.com/sagernet/tailscale/wgengine
-github.com/sagernet/tailscale/wgengine/filter
-github.com/sagernet/tailscale/wgengine/filter/filtertype
-github.com/sagernet/tailscale/wgengine/magicsock
-github.com/sagernet/tailscale/wgengine/netlog
-github.com/sagernet/tailscale/wgengine/netstack
-github.com/sagernet/tailscale/wgengine/netstack/gro
-github.com/sagernet/tailscale/wgengine/router
-github.com/sagernet/tailscale/wgengine/router/osrouter
-github.com/sagernet/tailscale/wgengine/wgcfg
-github.com/sagernet/tailscale/wgengine/wgint
-github.com/sagernet/tailscale/wgengine/wglog
-github.com/sagernet/tailscale/wgengine/winnet
 # github.com/sagernet/wireguard-go v0.0.5-0.20260823125007-8bd032a91a30
 ## explicit; go 1.24
 github.com/sagernet/wireguard-go/conn
@@ -1105,48 +506,6 @@ github.com/sagernet/wireguard-go/tun
 ## explicit; go 1.15
 github.com/sagernet/ws
 github.com/sagernet/ws/wsutil
-# github.com/smallstep/pkcs7 v0.1.1
-## explicit; go 1.14
-github.com/smallstep/pkcs7
-github.com/smallstep/pkcs7/internal/legacy/x509
-# github.com/tailscale/certstore v0.1.1-0.20260409135935-3638fb84b77d
-## explicit; go 1.20
-github.com/tailscale/certstore
-# github.com/tailscale/go-winio v0.0.0-20231025203758-c4f33415bf55
-## explicit; go 1.17
-github.com/tailscale/go-winio
-github.com/tailscale/go-winio/internal/fs
-github.com/tailscale/go-winio/internal/socket
-github.com/tailscale/go-winio/internal/stringbuffer
-github.com/tailscale/go-winio/pkg/guid
-# github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd
-## explicit; go 1.23
-github.com/tailscale/hujson
-# github.com/tailscale/netlink v1.1.1-0.20240822203006-4d49adab4de7
-## explicit; go 1.12
-github.com/tailscale/netlink
-github.com/tailscale/netlink/nl
-# github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc
-## explicit; go 1.18
-github.com/tailscale/peercred
-# github.com/tailscale/web-client-prebuilt v0.0.0-20250124233751-d4cd19a26976
-## explicit; go 1.21
-github.com/tailscale/web-client-prebuilt
-# github.com/tidwall/gjson v1.18.0
-## explicit; go 1.12
-github.com/tidwall/gjson
-# github.com/tidwall/match v1.1.1
-## explicit; go 1.15
-github.com/tidwall/match
-# github.com/tidwall/pretty v1.2.1
-## explicit; go 1.16
-github.com/tidwall/pretty
-# github.com/tidwall/sjson v1.2.5
-## explicit; go 1.14
-github.com/tidwall/sjson
-# github.com/tjfoc/gmsm v1.4.1
-## explicit; go 1.14
-github.com/tjfoc/gmsm/sm4
 # github.com/u-root/uio v0.0.0-20240224005618-d2acac8f3701
 ## explicit; go 1.21
 github.com/u-root/uio/rand
@@ -1154,12 +513,6 @@ github.com/u-root/uio/uio
 # github.com/vishvananda/netns v0.0.5
 ## explicit; go 1.17
 github.com/vishvananda/netns
-# github.com/x448/float16 v0.8.4
-## explicit; go 1.11
-github.com/x448/float16
-# github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78
-## explicit; go 1.17
-github.com/youmark/pkcs8
 # github.com/zeebo/blake3 v0.2.4
 ## explicit; go 1.18
 github.com/zeebo/blake3
@@ -1189,44 +542,30 @@ go.uber.org/zap/zapcore
 # go.uber.org/zap/exp v0.3.0
 ## explicit; go 1.19
 go.uber.org/zap/exp/zapslog
-# go4.org/mem v0.0.0-20240501181205-ae6ca9944745
-## explicit; go 1.14
-go4.org/mem
 # go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 ## explicit; go 1.18
 go4.org/netipx
 # golang.org/x/crypto v0.54.0
 ## explicit; go 1.24
-golang.org/x/crypto/argon2
 golang.org/x/crypto/blake2b
 golang.org/x/crypto/blake2s
 golang.org/x/crypto/blowfish
-golang.org/x/crypto/cast5
 golang.org/x/crypto/chacha20
 golang.org/x/crypto/chacha20poly1305
 golang.org/x/crypto/cryptobyte
 golang.org/x/crypto/cryptobyte/asn1
 golang.org/x/crypto/curve25519
-golang.org/x/crypto/ed25519
 golang.org/x/crypto/hkdf
 golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
-golang.org/x/crypto/nacl/box
-golang.org/x/crypto/nacl/secretbox
 golang.org/x/crypto/ocsp
-golang.org/x/crypto/pbkdf2
 golang.org/x/crypto/poly1305
-golang.org/x/crypto/ripemd160
-golang.org/x/crypto/salsa20/salsa
-golang.org/x/crypto/scrypt
 golang.org/x/crypto/sha3
 golang.org/x/crypto/ssh
-golang.org/x/crypto/ssh/agent
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
 # golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f
 ## explicit; go 1.24
 golang.org/x/exp/constraints
-golang.org/x/exp/maps
 golang.org/x/exp/slices
 # golang.org/x/mod v0.37.0
 ## explicit; go 1.24
@@ -1234,34 +573,21 @@ golang.org/x/mod/semver
 # golang.org/x/net v0.57.0
 ## explicit; go 1.24
 golang.org/x/net/bpf
-golang.org/x/net/context
-golang.org/x/net/dns/dnsmessage
-golang.org/x/net/html
-golang.org/x/net/html/atom
 golang.org/x/net/http/httpguts
-golang.org/x/net/http/httpproxy
 golang.org/x/net/http2
 golang.org/x/net/http2/h2c
 golang.org/x/net/http2/hpack
-golang.org/x/net/icmp
 golang.org/x/net/idna
 golang.org/x/net/internal/httpcommon
 golang.org/x/net/internal/httpsfv
 golang.org/x/net/internal/iana
 golang.org/x/net/internal/socket
-golang.org/x/net/internal/socks
 golang.org/x/net/internal/timeseries
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
-golang.org/x/net/proxy
 golang.org/x/net/publicsuffix
 golang.org/x/net/route
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.36.0
-## explicit; go 1.24
-golang.org/x/oauth2
-golang.org/x/oauth2/clientcredentials
-golang.org/x/oauth2/internal
 # golang.org/x/sync v0.22.0
 ## explicit; go 1.24
 golang.org/x/sync/errgroup
@@ -1270,15 +596,9 @@ golang.org/x/sync/singleflight
 # golang.org/x/sys v0.47.0
 ## explicit; go 1.24
 golang.org/x/sys/cpu
-golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-golang.org/x/sys/windows/svc
-golang.org/x/sys/windows/svc/mgr
-# golang.org/x/term v0.45.0
-## explicit; go 1.24
-golang.org/x/term
 # golang.org/x/text v0.40.0
 ## explicit; go 1.24
 golang.org/x/text/internal/language
@@ -1316,9 +636,6 @@ golang.org/x/tools/internal/versions
 # golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2
 ## explicit; go 1.17
 golang.zx2c4.com/wintun
-# golang.zx2c4.com/wireguard/windows v0.5.3
-## explicit; go 1.18
-golang.zx2c4.com/wireguard/windows/tunnel/winipcfg
 # google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217
 ## explicit; go 1.24
 google.golang.org/genproto/googleapis/rpc/status
@@ -1346,8 +663,6 @@ google.golang.org/grpc/encoding/proto
 google.golang.org/grpc/experimental/stats
 google.golang.org/grpc/grpclog
 google.golang.org/grpc/grpclog/internal
-google.golang.org/grpc/health
-google.golang.org/grpc/health/grpc_health_v1
 google.golang.org/grpc/internal
 google.golang.org/grpc/internal/backoff
 google.golang.org/grpc/internal/balancer/gracefulswitch
@@ -1381,10 +696,6 @@ google.golang.org/grpc/keepalive
 google.golang.org/grpc/mem
 google.golang.org/grpc/metadata
 google.golang.org/grpc/peer
-google.golang.org/grpc/reflection
-google.golang.org/grpc/reflection/grpc_reflection_v1
-google.golang.org/grpc/reflection/grpc_reflection_v1alpha
-google.golang.org/grpc/reflection/internal
 google.golang.org/grpc/resolver
 google.golang.org/grpc/resolver/dns
 google.golang.org/grpc/serviceconfig
@@ -1400,7 +711,6 @@ google.golang.org/protobuf/internal/descfmt
 google.golang.org/protobuf/internal/descopts
 google.golang.org/protobuf/internal/detrand
 google.golang.org/protobuf/internal/editiondefaults
-google.golang.org/protobuf/internal/editionssupport
 google.golang.org/protobuf/internal/encoding/defval
 google.golang.org/protobuf/internal/encoding/json
 google.golang.org/protobuf/internal/encoding/messageset
@@ -1420,37 +730,17 @@ google.golang.org/protobuf/internal/strs
 google.golang.org/protobuf/internal/version
 google.golang.org/protobuf/proto
 google.golang.org/protobuf/protoadapt
-google.golang.org/protobuf/reflect/protodesc
 google.golang.org/protobuf/reflect/protoreflect
 google.golang.org/protobuf/reflect/protoregistry
 google.golang.org/protobuf/runtime/protoiface
 google.golang.org/protobuf/runtime/protoimpl
-google.golang.org/protobuf/types/descriptorpb
-google.golang.org/protobuf/types/gofeaturespb
 google.golang.org/protobuf/types/known/anypb
 google.golang.org/protobuf/types/known/durationpb
-google.golang.org/protobuf/types/known/emptypb
 google.golang.org/protobuf/types/known/timestamppb
 # lukechampine.com/blake3 v1.3.0
 ## explicit; go 1.17
 lukechampine.com/blake3
 lukechampine.com/blake3/bao
 lukechampine.com/blake3/guts
-# zombiezen.com/go/capnproto2 v2.18.2+incompatible
-## explicit
-zombiezen.com/go/capnproto2
-zombiezen.com/go/capnproto2/encoding/text
-zombiezen.com/go/capnproto2/internal/fulfiller
-zombiezen.com/go/capnproto2/internal/nodemap
-zombiezen.com/go/capnproto2/internal/packed
-zombiezen.com/go/capnproto2/internal/queue
-zombiezen.com/go/capnproto2/internal/schema
-zombiezen.com/go/capnproto2/internal/strquote
-zombiezen.com/go/capnproto2/pogs
-zombiezen.com/go/capnproto2/rpc
-zombiezen.com/go/capnproto2/rpc/internal/refcount
-zombiezen.com/go/capnproto2/schemas
-zombiezen.com/go/capnproto2/server
-zombiezen.com/go/capnproto2/std/capnp/rpc
-# github.com/sagernet/sing-box => C:/Users/xiaoli/.dsh/NekoBox4Harmony-main/core/sing-box-1.14
-# github.com/sagernet/sing-tun => C:/Users/xiaoli/.dsh/NekoBox4Harmony-main/core/build/libsingbox-ohos/sing-tun-patched
+# github.com/sagernet/sing-box => C:/Users/xiaoli/Downloads/Agent-WorkerSpaces/NekoBox4Harmony-publish-1.9.1/core/sing-box-1.14
+# github.com/sagernet/sing-tun => C:/Users/xiaoli/Downloads/Agent-WorkerSpaces/NekoBox4Harmony-publish-1.9.1/core/build/libsingbox-ohos/sing-tun-patched

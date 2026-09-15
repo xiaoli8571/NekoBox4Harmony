@@ -6,6 +6,7 @@ import { Profile, ProfileType, profileTypeLabel, supportsTransport, needsTlsByDe
 import { initStore, loadProfiles, saveProfiles, loadGroups, readPrefString } from '../model/Store';
 import { getClipboardText } from '../utils/ClipboardHelper';
 import { parseSingleLink, parseShareText } from '../utils/LinkParser';
+import { isCustomOutboundTypeSupported } from '../core/ConfigBuilder';
 
 const ALL_TYPES: Array<string> = [
   ProfileType.SHADOWSOCKS, ProfileType.VMESS, ProfileType.VLESS, ProfileType.TROJAN,
@@ -70,6 +71,10 @@ struct ProfileEdit {
         const parsed = JSON.parse(this.p.customOutbound) as Record<string, Object>;
         if (parsed['type'] === undefined) {
           return $r('app.string.error_custom_outbound_type');
+        }
+        const customType = `${parsed['type']}`;
+        if (!isCustomOutboundTypeSupported(customType)) {
+          return $r('app.string.error_custom_type_unsupported', customType);
         }
       } catch (e) {
         return $r('app.string.error_extra_json');

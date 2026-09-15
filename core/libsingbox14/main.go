@@ -26,7 +26,6 @@ import (
 
 	box "github.com/sagernet/sing-box"
 	urltest "github.com/sagernet/sing-box/common/urltest"
-	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/json"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -73,7 +72,7 @@ func CGoStartSingBox(configPath *C.char) *C.char {
 	if err != nil {
 		return cErr(E.Cause(err, "read config"))
 	}
-	ctx := include.Context(context.Background())
+	ctx := leanContext(context.Background())
 	options, err := json.UnmarshalExtendedContext[option.Options](ctx, content)
 	if err != nil {
 		return cErr(E.Cause(err, "parse config"))
@@ -134,14 +133,16 @@ func CGoTestStartSingBox(configPath *C.char) *C.char {
 	if err != nil {
 		return cErr(E.Cause(err, "read test config"))
 	}
-	ctx := include.Context(context.Background())
+	ctx := leanContext(context.Background())
 	options, err := json.UnmarshalExtendedContext[option.Options](ctx, content)
 	if err != nil {
 		return cErr(E.Cause(err, "parse test config"))
 	}
-	// 测试实例不带任何入站(clash/cache 也要求配置侧省略,避免与运行中实例抢资源)
+	// 测试实例不带任何入站(clash/cache 也要求配置侧省略,避免与运行中实例抢资源)。
+	// Endpoints 必须保留:WireGuard 节点与含 WireGuard 跳点的链依赖 endpoint tag,
+	// 清空会导致这些配置的测速引用找不到目标;WireGuard endpoint 使用随机本地
+	// 端口,与运行中的主实例不冲突。
 	options.Inbounds = nil
-	options.Endpoints = nil
 	options.Experimental = nil
 	os.Unsetenv("SING_BOX_TUN_FD")
 	runCtx, cancelFunc := context.WithCancel(ctx)
@@ -173,7 +174,7 @@ func CGoTestProxySingBox(tag *C.char, testURL *C.char, timeoutMs C.int) *C.char 
 	if !loaded {
 		return C.CString("err:outbound not found: " + tagStr)
 	}
-	ctx := include.Context(context.Background())
+	ctx := leanContext(context.Background())
 	timeout := time.Duration(int(timeoutMs)) * time.Millisecond
 	if timeout <= 0 {
 		timeout = 5 * time.Second

@@ -18,6 +18,20 @@ const TUN_ADDR_V6 = 'fdfe:dcba:9876::1/126';
 const FAKEIP_RANGE_V4 = '198.18.0.0/15';
 const FAKEIP_RANGE_V6 = 'fc00::/18';
 
+/**
+ * 精简内核(libsingbox.so)注册的自定义出站类型白名单。
+ * Custom 配置仅接受这些 type;WireGuard 必须使用原生节点类型(生成 endpoint)。
+ * 与 core/libsingbox14/lean_context.go 的 OutboundRegistry 保持一致。
+ */
+export const CUSTOM_SUPPORTED_OUTBOUND_TYPES: Array<string> = [
+  'direct', 'shadowsocks', 'vmess', 'vless', 'trojan',
+  'hysteria', 'hysteria2', 'tuic', 'http', 'socks', 'ssh', 'shadowtls'
+];
+
+export function isCustomOutboundTypeSupported(type: string): boolean {
+  return CUSTOM_SUPPORTED_OUTBOUND_TYPES.indexOf(type) >= 0;
+}
+
 function setIf(o: Record<string, Object>, key: string, value: Object, skipEmpty: boolean = true): void {
   if (!skipEmpty || `${value}`.length > 0) {
     o[key] = value;
