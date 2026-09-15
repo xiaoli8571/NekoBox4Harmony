@@ -17,6 +17,7 @@ import (
 	"github.com/sagernet/sing-box/dns/transport/local"
 	"github.com/sagernet/sing-box/dns/transport/quic"
 	_ "github.com/sagernet/sing-box/experimental/clashapi"
+	"github.com/sagernet/sing-box/protocol/anytls"
 	"github.com/sagernet/sing-box/protocol/direct"
 	"github.com/sagernet/sing-box/protocol/http"
 	"github.com/sagernet/sing-box/protocol/hysteria"
@@ -60,6 +61,7 @@ func leanContext(ctx context.Context) context.Context {
 	socks.RegisterOutbound(outboundRegistry)
 	ssh.RegisterOutbound(outboundRegistry)
 	shadowtls.RegisterOutbound(outboundRegistry)
+	anytls.RegisterOutbound(outboundRegistry)
 
 	endpointRegistry := endpoint.NewRegistry()
 	wireguard.RegisterEndpoint(endpointRegistry)

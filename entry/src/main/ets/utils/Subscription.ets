@@ -449,6 +449,13 @@ function profileFromClash(m: Record<string, Object> | null): Profile | null {
       p.disableSni = mBool(m, 'disable-sni');
       p.alpn = mStr(m, 'alpn');
       break;
+    case 'anytls':
+      p.type = ProfileType.ANYTLS;
+      p.password = mStr(m, 'password');
+      p.sni = mStr(m, 'sni', mStr(m, 'servername'));
+      p.tls = true;
+      p.allowInsecure = mBool(m, 'skip-cert-verify');
+      break;
     default:
       // ssr 等内核不支持的类型跳过
       return null;

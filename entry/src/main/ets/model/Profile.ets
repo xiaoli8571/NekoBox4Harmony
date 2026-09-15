@@ -16,6 +16,7 @@ export class ProfileType {
   static readonly SOCKS: string = 'socks';
   static readonly SSH: string = 'ssh';
   static readonly SHADOWTLS: string = 'shadowtls';
+  static readonly ANYTLS: string = 'anytls';
   static readonly CUSTOM: string = 'custom';
   static readonly CHAIN: string = 'chain';
 }
@@ -190,6 +191,7 @@ export function profileTypeLabel(type: string): string {
     case ProfileType.SOCKS: return 'Socks';
     case ProfileType.SSH: return 'SSH';
     case ProfileType.SHADOWTLS: return 'ShadowTLS';
+    case ProfileType.ANYTLS: return 'AnyTLS';
     case ProfileType.CUSTOM: return 'Custom';
     case ProfileType.CHAIN: return 'Chain';
     default: return type;
@@ -200,7 +202,8 @@ export function needsTlsByDefault(type: string): boolean {
   return type === ProfileType.TROJAN || type === ProfileType.HYSTERIA
     || type === ProfileType.HYSTERIA2
     || type === ProfileType.TUIC
-    || type === ProfileType.SHADOWTLS;
+    || type === ProfileType.SHADOWTLS
+    || type === ProfileType.ANYTLS;
 }
 
 export function supportsTransport(type: string): boolean {

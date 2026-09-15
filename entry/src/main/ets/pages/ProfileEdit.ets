@@ -12,7 +12,7 @@ const ALL_TYPES: Array<string> = [
   ProfileType.SHADOWSOCKS, ProfileType.VMESS, ProfileType.VLESS, ProfileType.TROJAN,
   ProfileType.HYSTERIA, ProfileType.HYSTERIA2, ProfileType.TUIC, ProfileType.WIREGUARD,
   ProfileType.HTTP, ProfileType.SOCKS, ProfileType.SSH, ProfileType.SHADOWTLS,
-  ProfileType.CUSTOM, ProfileType.CHAIN
+  ProfileType.ANYTLS, ProfileType.CUSTOM, ProfileType.CHAIN
 ];
 const TRANSPORTS: Array<string> = ['', 'ws', 'grpc', 'http', 'httpupgrade', 'quic'];
 const SS_METHODS: Array<string> = [
@@ -111,7 +111,8 @@ struct ProfileEdit {
       }
     }
     if ((this.p.type === ProfileType.TROJAN || this.p.type === ProfileType.HYSTERIA
-      || this.p.type === ProfileType.HYSTERIA2) && this.p.password.length === 0) {
+      || this.p.type === ProfileType.HYSTERIA2 || this.p.type === ProfileType.ANYTLS)
+      && this.p.password.length === 0) {
       return $r('app.string.error_auth_password_required');
     }
     if (this.p.type === ProfileType.TUIC && this.p.password.length === 0) {
@@ -349,6 +350,9 @@ struct ProfileEdit {
             }
             if (this.p.type === ProfileType.SHADOWTLS) {
               this.ShadowTlsFields()
+            }
+            if (this.p.type === ProfileType.ANYTLS) {
+              this.PasswordFields($r('app.string.password_anytls'))
             }
             if (this.p.type === ProfileType.HTTP || this.p.type === ProfileType.SOCKS) {
               this.UserPassFields()

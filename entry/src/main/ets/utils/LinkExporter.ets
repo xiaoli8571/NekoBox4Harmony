@@ -171,6 +171,16 @@ function exportTuic(p: Profile): string {
 }
 
 // ---------------------------------------------------------------- http / socks
+function exportAnytls(p: Profile): string {
+  const q: Array<string> = [];
+  addQuery(q, 'sni', p.sni);
+  addQueryIf(q, 'alpn', p.alpn, '');
+  addQueryBool(q, 'insecure', p.allowInsecure);
+  const query = q.length > 0 ? `?${q.join('&')}` : '';
+  return `anytls://${enc(p.password)}@${hostPort(p)}${query}${fragment(p.name)}`;
+}
+
+// ---------------------------------------------------------------- http / socks
 function exportUserinfoHttp(p: Profile, scheme: string): string {
   let userinfo = '';
   if (p.username.length > 0) {
@@ -215,6 +225,8 @@ export function exportProfileLink(p: Profile): string {
       return exportUserinfoHttp(p, 'socks');
     case ProfileType.SSH:
       return exportSsh(p);
+    case ProfileType.ANYTLS:
+      return exportAnytls(p);
     default:
       return '';
   }

@@ -5,6 +5,14 @@ github.com/ajg/form
 ## explicit; go 1.13
 github.com/andybalholm/brotli
 github.com/andybalholm/brotli/matchfinder
+# github.com/anytls/sing-anytls v0.0.11
+## explicit; go 1.23.1
+github.com/anytls/sing-anytls
+github.com/anytls/sing-anytls/padding
+github.com/anytls/sing-anytls/pipe
+github.com/anytls/sing-anytls/session
+github.com/anytls/sing-anytls/skiplist
+github.com/anytls/sing-anytls/util
 # github.com/caddyserver/certmagic v0.25.3-0.20260421143802-60d9d8b415d6
 ## explicit; go 1.24
 github.com/caddyserver/certmagic
@@ -391,6 +399,7 @@ github.com/sagernet/sing-box/experimental/deprecated
 github.com/sagernet/sing-box/experimental/locale
 github.com/sagernet/sing-box/log
 github.com/sagernet/sing-box/option
+github.com/sagernet/sing-box/protocol/anytls
 github.com/sagernet/sing-box/protocol/direct
 github.com/sagernet/sing-box/protocol/dns
 github.com/sagernet/sing-box/protocol/group
