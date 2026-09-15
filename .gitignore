@@ -24,7 +24,13 @@ core/hilog-live*.txt
 core/toolchain-build.log
 core/build
 dist/
+/build
 .hermes/
+
+# 签名材料与本地发布产物(严禁入库)
+/签名材料/
+/release-1.9.1/
+/NekoBox应用截图/
 
 # Session-local task notes
 *_TODO.md

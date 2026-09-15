@@ -104,8 +104,10 @@ echo "==> sing-box OHOS patches verified"
 cd "$WRAPPER"
 "$GO126" mod edit -replace "github.com/sagernet/sing-box=$SB"
 "$GO126" mod edit -dropreplace github.com/sagernet/sing-tun 2>/dev/null || true
-"$GO126" mod download
-SINGTUN_VER="$("$GO126" list -m -f '{{.Version}}' github.com/sagernet/sing-tun)"
+# Existing vendor metadata may reference a previous checkout. Force module mode
+# while resolving and regenerating vendor so stale vendor/modules.txt is ignored.
+GOFLAGS=-mod=mod "$GO126" mod download
+SINGTUN_VER="$(GOFLAGS=-mod=mod "$GO126" list -m -f '{{.Version}}' github.com/sagernet/sing-tun)"
 [ -n "$SINGTUN_VER" ] || { echo "ERROR: cannot resolve sing-tun"; exit 1; }
 STDIR="$("$GO126" env GOMODCACHE)/github.com/sagernet/sing-tun@$SINGTUN_VER"
 [ -f "$STDIR/monitor_linux.go" ] || { echo "ERROR: sing-tun@${SINGTUN_VER} monitor_linux.go missing"; exit 1; }
@@ -219,13 +221,26 @@ CGO_CFLAGS="${CGO_CFLAGS:--ftls-model=global-dynamic}" \
 "$GO124" build -mod=vendor \
     -tags "$BUILD_TAGS" \
     -trimpath \
-    -ldflags "-s -w -X github.com/sagernet/sing-box/constant.Version=v1.14.0 -checklinkname=0 -linkmode external -extldflags '-Wl,--version-script=$EXPORTS_FILE_WIN -Wl,-z,lazy'" \
+    -ldflags "-s -w -buildid= -X github.com/sagernet/sing-box/constant.Version=v1.14.0 -checklinkname=0 -linkmode external -extldflags '-Wl,--version-script=$EXPORTS_FILE_WIN -Wl,--gc-sections -Wl,-z,lazy'" \
     -buildmode=c-shared \
     -o "$OUT_DIR/libsingbox.so" .
 
-# ---- 构建后校验(全部 fail-closed;二进制用固定串匹配) ----
+# ---- 发布体积优化:移除非运行必需的静态符号,动态导出随后逐项校验 ----
 SO="$OUT_DIR/libsingbox.so"
 [ -f "$SO" ] || { echo "ERROR: no .so produced"; exit 1; }
+STRIP="$SDK_NATIVE/llvm/bin/llvm-strip.exe"
+[ -f "$STRIP" ] || STRIP="$SDK_NATIVE/llvm/bin/llvm-strip"
+if [ -x "$STRIP" ] || [ -f "$STRIP" ]; then
+  SIZE_BEFORE_STRIP=$(wc -c < "$SO")
+  "$STRIP" --strip-all "$SO"
+  SIZE_AFTER_STRIP=$(wc -c < "$SO")
+  echo "==> llvm-strip: ${SIZE_BEFORE_STRIP} -> ${SIZE_AFTER_STRIP} bytes"
+else
+  echo "ERROR: llvm-strip not found in OHOS native SDK" >&2
+  exit 1
+fi
+
+# ---- 构建后校验(全部 fail-closed;二进制用固定串匹配) ----
 grep -aqF "route subscribe" "$SO"     || { echo "ERROR: .so lacks sing-tun netlink patch marker"; exit 1; }
 grep -aqF "SING_BOX_BIND_IFNAME" "$SO" || { echo "ERROR: .so lacks forcebind marker"; exit 1; }
 grep -aqF "SING_BOX_TUN_FD" "$SO"     || { echo "ERROR: .so lacks tun-fd marker"; exit 1; }
