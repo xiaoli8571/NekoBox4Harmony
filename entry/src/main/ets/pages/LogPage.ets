@@ -182,6 +182,7 @@ export struct LogPanel {
           }
         }, (line: string, idx: number) => `${idx}_${line}`)
       }
+        .edgeEffect(EdgeEffect.Spring)
       .layoutWeight(1)
       .width('100%')
       .backgroundColor('#111111')

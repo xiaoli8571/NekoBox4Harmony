@@ -1,4 +1,4 @@
-{
+﻿{
   "color": [
     {
       "name": "start_window_background",
@@ -30,7 +30,7 @@
     },
     {
       "name": "text_secondary",
-      "value": "#667085"
+      "value": "#5D6B7E"
     },
     {
       "name": "divider",
@@ -38,7 +38,7 @@
     },
     {
       "name": "success",
-      "value": "#12A150"
+      "value": "#0C7A3D"
     },
     {
       "name": "warning",
@@ -70,7 +70,7 @@
     },
     {
       "name": "protocol_tuic",
-      "value": "#16A34A"
+      "value": "#15803D"
     },
     {
       "name": "text_disabled",
@@ -110,11 +110,11 @@
     },
     {
       "name": "text_2",
-      "value": "#6D7278"
+      "value": "#5F646B"
     },
     {
       "name": "text_3",
-      "value": "#B3B0A9"
+      "value": "#6E6A63"
     },
     {
       "name": "hairline",
@@ -146,3 +146,5 @@
     }
   ]
 }
+
+
