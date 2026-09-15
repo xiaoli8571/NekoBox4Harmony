@@ -25,7 +25,7 @@ const FAKEIP_RANGE_V6 = 'fc00::/18';
  */
 export const CUSTOM_SUPPORTED_OUTBOUND_TYPES: Array<string> = [
   'direct', 'shadowsocks', 'vmess', 'vless', 'trojan',
-  'hysteria', 'hysteria2', 'tuic', 'http', 'socks', 'ssh', 'shadowtls', 'anytls'
+  'hysteria', 'hysteria2', 'tuic', 'http', 'socks', 'ssh', 'shadowtls', 'anytls', 'snell'
 ];
 
 export function isCustomOutboundTypeSupported(type: string): boolean {
@@ -277,6 +277,16 @@ function buildOutbound(p: Profile, s: AppSettings, tag: string = 'proxy'): Recor
       break;
     case ProfileType.ANYTLS:
       setIf(o, 'password', p.password);
+      break;
+    case ProfileType.SNELL:
+      // Snell v4:sing-box 字段为 version=4 + psk;obfs_mode 可选 http/tls,
+      // http 混淆的伪装主机复用 transport host 字段(p.host)。
+      o['version'] = 4;
+      setIf(o, 'psk', p.password);
+      if (p.obfs === 'http' || p.obfs === 'tls') {
+        o['obfs_mode'] = p.obfs;
+        setIf(o, 'name', p.host);
+      }
       break;
     case ProfileType.HTTP:
     case ProfileType.SOCKS:

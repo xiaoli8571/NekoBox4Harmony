@@ -597,6 +597,10 @@
       "value": "密码 (AnyTLS)"
     },
     {
+      "name": "password_snell",
+      "value": "密码 (Snell v4)"
+    },
+    {
       "name": "encryption_method",
       "value": "加密方式"
     },

@@ -25,6 +25,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/mixed"
 	"github.com/sagernet/sing-box/protocol/shadowsocks"
 	"github.com/sagernet/sing-box/protocol/shadowtls"
+	"github.com/sagernet/sing-box/protocol/snell"
 	"github.com/sagernet/sing-box/protocol/socks"
 	"github.com/sagernet/sing-box/protocol/ssh"
 	"github.com/sagernet/sing-box/protocol/trojan"
@@ -62,6 +63,7 @@ func leanContext(ctx context.Context) context.Context {
 	ssh.RegisterOutbound(outboundRegistry)
 	shadowtls.RegisterOutbound(outboundRegistry)
 	anytls.RegisterOutbound(outboundRegistry)
+	snell.RegisterOutbound(outboundRegistry)
 
 	endpointRegistry := endpoint.NewRegistry()
 	wireguard.RegisterEndpoint(endpointRegistry)

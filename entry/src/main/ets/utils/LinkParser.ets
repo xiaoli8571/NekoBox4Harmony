@@ -71,6 +71,9 @@ function parseOne(line: string): Profile | null {  if (line.startsWith('ss://'))
   if (line.startsWith('anytls://')) {
     return parseUserinfoLink(line, ProfileType.ANYTLS);
   }
+  if (line.startsWith('snell://')) {
+    return parseUserinfoLink(line, ProfileType.SNELL);
+  }
   if (line.startsWith('ssh://')) {
     return parseUserinfoLink(line, ProfileType.SSH);
   }
@@ -444,6 +447,12 @@ function parseUserinfoLink(link: string, type: string): Profile | null {
       p.sni = qstr(q, 'sni');
       p.alpn = qstr(q, 'alpn');
       p.allowInsecure = qbool(q, 'insecure') || qbool(q, 'allow_insecure');
+      break;
+    case ProfileType.SNELL:
+      p.password = decodeURIComponentSafe(userinfo);
+      p.tls = false;
+      p.obfs = qstr(q, 'obfs');
+      p.host = qstr(q, 'obfs-host', qstr(q, 'name'));
       break;
     case ProfileType.SSH: {
       const ci = userinfo.indexOf(':');

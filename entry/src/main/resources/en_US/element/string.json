@@ -601,6 +601,10 @@
       "value": "Password (AnyTLS)"
     },
     {
+      "name": "password_snell",
+      "value": "Password (Snell v4)"
+    },
+    {
       "name": "encryption_method",
       "value": "Encryption method"
     },

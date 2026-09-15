@@ -180,6 +180,15 @@ function exportAnytls(p: Profile): string {
   return `anytls://${enc(p.password)}@${hostPort(p)}${query}${fragment(p.name)}`;
 }
 
+// ---------------------------------------------------------------- snell
+function exportSnell(p: Profile): string {
+  const q: Array<string> = ['version=4'];
+  addQueryIf(q, 'obfs', p.obfs, '');
+  addQueryIf(q, 'obfs-host', p.host, '');
+  const query = q.length > 0 ? `?${q.join('&')}` : '';
+  return `snell://${enc(p.password)}@${hostPort(p)}${query}${fragment(p.name)}`;
+}
+
 // ---------------------------------------------------------------- http / socks
 function exportUserinfoHttp(p: Profile, scheme: string): string {
   let userinfo = '';
@@ -227,6 +236,8 @@ export function exportProfileLink(p: Profile): string {
       return exportSsh(p);
     case ProfileType.ANYTLS:
       return exportAnytls(p);
+    case ProfileType.SNELL:
+      return exportSnell(p);
     default:
       return '';
   }
