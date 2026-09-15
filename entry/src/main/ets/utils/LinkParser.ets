@@ -68,6 +68,9 @@ function parseOne(line: string): Profile | null {  if (line.startsWith('ss://'))
   if (line.startsWith('tuic://')) {
     return parseUserinfoLink(line, ProfileType.TUIC);
   }
+  if (line.startsWith('anytls://')) {
+    return parseUserinfoLink(line, ProfileType.ANYTLS);
+  }
   if (line.startsWith('ssh://')) {
     return parseUserinfoLink(line, ProfileType.SSH);
   }
@@ -435,6 +438,13 @@ function parseUserinfoLink(link: string, type: string): Profile | null {
       p.allowInsecure = qbool(q, 'allow_insecure') || qbool(q, 'insecure');
       break;
     }
+    case ProfileType.ANYTLS:
+      p.password = decodeURIComponentSafe(userinfo);
+      p.tls = true;
+      p.sni = qstr(q, 'sni');
+      p.alpn = qstr(q, 'alpn');
+      p.allowInsecure = qbool(q, 'insecure') || qbool(q, 'allow_insecure');
+      break;
     case ProfileType.SSH: {
       const ci = userinfo.indexOf(':');
       if (ci >= 0) {

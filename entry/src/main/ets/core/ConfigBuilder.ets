@@ -25,7 +25,7 @@ const FAKEIP_RANGE_V6 = 'fc00::/18';
  */
 export const CUSTOM_SUPPORTED_OUTBOUND_TYPES: Array<string> = [
   'direct', 'shadowsocks', 'vmess', 'vless', 'trojan',
-  'hysteria', 'hysteria2', 'tuic', 'http', 'socks', 'ssh', 'shadowtls'
+  'hysteria', 'hysteria2', 'tuic', 'http', 'socks', 'ssh', 'shadowtls', 'anytls'
 ];
 
 export function isCustomOutboundTypeSupported(type: string): boolean {
@@ -273,6 +273,9 @@ function buildOutbound(p: Profile, s: AppSettings, tag: string = 'proxy'): Recor
       break;
     case ProfileType.SHADOWTLS:
       o['version'] = p.shadowtlsVersion === 2 ? 2 : 3;
+      setIf(o, 'password', p.password);
+      break;
+    case ProfileType.ANYTLS:
       setIf(o, 'password', p.password);
       break;
     case ProfileType.HTTP:

@@ -593,6 +593,10 @@
       "value": "密码 (Trojan)"
     },
     {
+      "name": "password_anytls",
+      "value": "密码 (AnyTLS)"
+    },
+    {
       "name": "encryption_method",
       "value": "加密方式"
     },

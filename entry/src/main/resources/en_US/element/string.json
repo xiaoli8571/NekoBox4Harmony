@@ -597,6 +597,10 @@
       "value": "Password (Trojan)"
     },
     {
+      "name": "password_anytls",
+      "value": "Password (AnyTLS)"
+    },
+    {
       "name": "encryption_method",
       "value": "Encryption method"
     },
