@@ -533,6 +533,10 @@
       "value": "Port must be an integer from 1 to 65535."
     },
     {
+      "name": "error_loopback_server",
+      "value": "A remote proxy server cannot use 127.0.0.1, localhost, or ::1. Enter the actual server address."
+    },
+    {
       "name": "error_invalid_uuid",
       "value": "Enter a valid UUID."
     },
