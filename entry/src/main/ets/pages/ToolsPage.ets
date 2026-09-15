@@ -337,6 +337,7 @@ export struct ToolsPage {
         .width('100%')
         .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, bottom: 20 })
       }
+        .edgeEffect(EdgeEffect.Spring)
       .layoutWeight(1)
       .align(Alignment.Top)
     }

@@ -376,6 +376,7 @@ struct ProfileEdit {
         .width('100%')
         .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: UiSpec.GAP_MD, bottom: UiSpec.GAP_MD })
       }
+        .edgeEffect(EdgeEffect.Spring)
       .layoutWeight(1)
       .align(Alignment.Top)
     }
@@ -616,6 +617,7 @@ struct ProfileEdit {
           }
         }, (cand: Profile) => cand.id)
       }
+        .edgeEffect(EdgeEffect.Spring)
       .width('100%')
       .height(240)
     }

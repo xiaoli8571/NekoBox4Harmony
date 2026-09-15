@@ -1196,6 +1196,7 @@ struct Index {
         }
       }, (profile: Profile) => profile.id)
     }
+      .edgeEffect(EdgeEffect.Spring)
     .layoutWeight(1)
     .width('100%')
     .padding({ left: 14, right: 14, top: 6 })

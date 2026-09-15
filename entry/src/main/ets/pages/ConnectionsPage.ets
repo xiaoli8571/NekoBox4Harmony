@@ -265,6 +265,7 @@ struct ConnectionsPage {
           }
         }, (c: ConnItem) => c.id)
       }
+        .edgeEffect(EdgeEffect.Spring)
       .layoutWeight(1)
       .width('100%')
       .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })

@@ -207,6 +207,7 @@ struct SubDetailPage {
           .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: UiSpec.GAP_MD, bottom: UiSpec.GAP_MD })
           .alignItems(HorizontalAlign.Start)
         }.layoutWeight(1).width('100%')
+          .edgeEffect(EdgeEffect.Spring)
       }
     }
     .width('100%')

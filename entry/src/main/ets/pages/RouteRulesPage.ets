@@ -299,6 +299,7 @@ export struct RouteRulesPanel {
           }
         }, (rule: RouteRule, index: number) => `${index}_${rule.remark}_${rule.type}`)
       }
+        .edgeEffect(EdgeEffect.Spring)
       .layoutWeight(1)
       .width('100%')
       .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
