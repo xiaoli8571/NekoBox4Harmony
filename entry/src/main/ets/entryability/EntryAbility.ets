@@ -13,6 +13,7 @@ import { initStore, loadSettings, LogStore } from '../model/Store';
 import { subscribeVpnEvents, unsubscribeVpnEvents } from '../core/VpnIpc';
 import { VpnService } from '../core/VpnService';
 import { needAutoUpdate, updateSubscription, markSubSuccess, markSubFailure, setAppContext } from '../core/Subscriptions';
+import { subErrorText } from '../utils/Subscription';
 
 export default class EntryAbility extends UIAbility {
   private backgroundUpdating: boolean = false;
@@ -66,7 +67,7 @@ export default class EntryAbility extends UIAbility {
           LogStore.addLog(`[app] 后台更新订阅 ${sub.name}:新增 ${result.added},移除 ${result.removed}`);
         } catch (e) {
           await markSubFailure(sub.url);
-          LogStore.addLog(`[app] 后台更新订阅 ${sub.name} 失败: ${e}`);
+          LogStore.addLog(`[app] 后台更新订阅 ${sub.name} 失败: ${subErrorText(e as Object)}`);
         }
       }
     } catch (e) {

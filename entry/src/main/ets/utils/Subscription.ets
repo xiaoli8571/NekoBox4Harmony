@@ -3,11 +3,15 @@ import { Profile, ProfileType } from '../model/Profile';
 
 /**
  * 订阅链接支持:
- *  - 下载订阅(HTTP GET,UA 伪装 v2rayNG,服务商通常回 base64 的分享链接列表)
- *  - 若服务商返回 Clash YAML(proxies:),用内置的轻量解析器提取节点
+ *  - 下载订阅(UA 伪装 clash.meta:绝大多数机场返回 Clash YAML;v2rayNG UA 会被部分机场
+ *    拒绝并返回"你的客户端不支持本站协议"文本)
+ *  - 服务商返回 Clash YAML(proxies:)时用内置轻量解析器提取节点
+ *  - 服务商/订阅转换返回 sing-box JSON 配置(outbounds/endpoints)时直接映射节点
+ *  - 其余按 base64 分享链接列表解析
+ *  - HTTP 强制 1.1:规避 Cloudflare 前置在 HTTP/2 连接复用下的 421 Misdirected Request
  */
 
-const SUB_UA = 'v2rayNG/1.9.16';
+const SUB_UA = 'clash.meta/1.19.0';
 
 export interface SubFetchResult {
   content: string;
@@ -47,6 +51,7 @@ async function doFetchSubscription(url: string, withInfo: boolean, allowInsecure
       method: http.RequestMethod.GET,
       header: headers,
       expectDataType: http.HttpDataType.STRING,
+      usingProtocol: http.HttpProtocol.HTTP1_1,
       connectTimeout: 15000,
       readTimeout: 30000
     };
@@ -56,7 +61,12 @@ async function doFetchSubscription(url: string, withInfo: boolean, allowInsecure
     }
     const resp = await client.request(normalizedUrl, opts);
     if (resp.responseCode < 200 || resp.responseCode >= 300) {
-      throw new Error(`订阅服务器返回 HTTP ${resp.responseCode}`);
+      let snippet = '';
+      const rb = resp.result;
+      if (typeof rb === 'string' && rb.length > 0) {
+        snippet = rb.replace(/\s+/g, ' ').trim().substring(0, 120);
+      }
+      throw new Error(`订阅服务器返回 HTTP ${resp.responseCode}${snippet.length > 0 ? ': ' + snippet : ''}`);
     }
     let responseUserinfo = '';
     if (withInfo) {
@@ -468,4 +478,271 @@ function profileFromClash(m: Record<string, Object> | null): Profile | null {
       return null;
   }
   return p;
+}
+
+// ---------------------------------------------------------------- sing-box JSON
+
+export function looksLikeSingBoxJson(text: string): boolean {
+  const t = text.trim();
+  return t.startsWith('{') && t.includes('"outbounds"');
+}
+
+/** 统一订阅链路错误文本(裸对象不再显示 [object Object]) */
+export function subErrorText(e: Object): string {
+  if (e instanceof Error) {
+    return e.message;
+  }
+  if (typeof e === 'object' && e !== null) {
+    const m = (e as Record<string, Object>)['message'];
+    if (m !== undefined && m !== null && `${m}`.length > 0) {
+      return `${m}`;
+    }
+    try {
+      const s = JSON.stringify(e);
+      if (s !== undefined && s !== null && s.length > 0 && s !== '{}') {
+        return s.length > 160 ? s.substring(0, 160) : s;
+      }
+    } catch (err) {
+      // ignore
+    }
+  }
+  return `${e}`;
+}
+
+function sbStr(o: Record<string, Object>, k: string, dflt: string = ''): string {
+  const v = o[k];
+  if (v === undefined || v === null) {
+    return dflt;
+  }
+  return `${v}`;
+}
+
+function sbNum(o: Record<string, Object>, k: string): number {
+  const v = o[k];
+  if (typeof v === 'number') {
+    return v;
+  }
+  const x = Number(`${v}`);
+  return isNaN(x) ? 0 : x;
+}
+
+function sbBool(o: Record<string, Object>, k: string): boolean {
+  return o[k] === true || `${o[k]}` === 'true';
+}
+
+function sbApplyTls(p: Profile, tlsObj: Object): void {
+  const tls = tlsObj as Record<string, Object>;
+  p.tls = tls['enabled'] !== false;
+  p.sni = sbStr(tls, 'server_name');
+  p.allowInsecure = sbBool(tls, 'insecure');
+  const alpnRaw = tls['alpn'];
+  if (alpnRaw !== undefined && alpnRaw !== null) {
+    const parts: Array<string> = [];
+    for (const a of alpnRaw as Array<string>) {
+      parts.push(`${a}`);
+    }
+    p.alpn = parts.join(',');
+  }
+  const utls = tls['utls'];
+  if (utls !== undefined && utls !== null) {
+    p.fingerprint = sbStr(utls as Record<string, Object>, 'fingerprint');
+  }
+  const reality = tls['reality'];
+  if (reality !== undefined && reality !== null) {
+    const r = reality as Record<string, Object>;
+    p.realityPublicKey = sbStr(r, 'public_key');
+    p.realityShortId = sbStr(r, 'short_id');
+    p.tls = true;
+  }
+}
+
+function profileFromSingBoxOutbound(o: Record<string, Object>): Profile | null {
+  const type = sbStr(o, 'type');
+  const p = new Profile();
+  p.name = sbStr(o, 'tag');
+  p.server = sbStr(o, 'server');
+  p.serverPort = sbNum(o, 'server_port');
+  if (p.server.length === 0 || p.serverPort <= 0) {
+    return null;
+  }
+  switch (type) {
+    case 'shadowsocks':
+      p.type = ProfileType.SHADOWSOCKS;
+      p.method = sbStr(o, 'method');
+      p.password = sbStr(o, 'password');
+      break;
+    case 'vmess':
+      p.type = ProfileType.VMESS;
+      p.uuid = sbStr(o, 'uuid');
+      p.alterId = sbNum(o, 'alter_id');
+      p.security = sbStr(o, 'security', 'auto');
+      break;
+    case 'vless':
+      p.type = ProfileType.VLESS;
+      p.uuid = sbStr(o, 'uuid');
+      p.flow = sbStr(o, 'flow');
+      break;
+    case 'trojan':
+      p.type = ProfileType.TROJAN;
+      p.password = sbStr(o, 'password');
+      break;
+    case 'hysteria':
+      p.type = ProfileType.HYSTERIA;
+      p.password = sbStr(o, 'password', sbStr(o, 'auth'));
+      p.upMbps = sbNum(o, 'up_mbps');
+      p.downMbps = sbNum(o, 'down_mbps');
+      p.obfs = sbStr(o, 'obfs');
+      break;
+    case 'hysteria2': {
+      p.type = ProfileType.HYSTERIA2;
+      p.password = sbStr(o, 'password');
+      const obfs = o['obfs'];
+      if (obfs !== undefined && obfs !== null) {
+        if (typeof obfs === 'string') {
+          p.obfs = `${obfs}`;
+        } else {
+          p.obfs = sbStr(obfs as Record<string, Object>, 'password');
+        }
+      }
+      p.serverPorts = sbStr(o, 'server_ports').replace(/:/g, '-');
+      break;
+    }
+    case 'tuic':
+      p.type = ProfileType.TUIC;
+      p.uuid = sbStr(o, 'uuid');
+      p.password = sbStr(o, 'password');
+      p.congestionControl = sbStr(o, 'congestion_control', 'bbr');
+      p.udpRelayMode = sbStr(o, 'udp_relay_mode', 'native');
+      break;
+    case 'http':
+      p.type = ProfileType.HTTP;
+      p.username = sbStr(o, 'username');
+      p.password = sbStr(o, 'password');
+      break;
+    case 'socks':
+      p.type = ProfileType.SOCKS;
+      p.username = sbStr(o, 'username');
+      p.password = sbStr(o, 'password');
+      break;
+    case 'ssh': {
+      p.type = ProfileType.SSH;
+      p.username = sbStr(o, 'user');
+      p.password = sbStr(o, 'password');
+      p.privateKey = sbStr(o, 'private_key');
+      p.privateKeyPassphrase = sbStr(o, 'private_key_passphrase');
+      p.sshAuthType = p.privateKey.length > 0 ? 'private_key'
+        : (p.password.length > 0 ? 'password' : 'none');
+      const hk = o['host_key'];
+      if (hk !== undefined && hk !== null) {
+        const parts: Array<string> = [];
+        for (const k of hk as Array<string>) {
+          parts.push(`${k}`);
+        }
+        p.hostKey = parts.join(',');
+      }
+      break;
+    }
+    case 'shadowtls':
+      p.type = ProfileType.SHADOWTLS;
+      p.shadowtlsVersion = sbNum(o, 'version') === 2 ? 2 : 3;
+      p.password = sbStr(o, 'password');
+      break;
+    case 'anytls':
+      p.type = ProfileType.ANYTLS;
+      p.password = sbStr(o, 'password');
+      break;
+    case 'snell':
+      p.type = ProfileType.SNELL;
+      p.password = sbStr(o, 'psk');
+      p.obfs = sbStr(o, 'obfs_mode');
+      p.host = sbStr(o, 'name');
+      break;
+    default:
+      // selector/urltest/direct/block/dns 等非节点出站跳过
+      return null;
+  }
+  const tlsObj = o['tls'];
+  if (tlsObj !== undefined && tlsObj !== null) {
+    sbApplyTls(p, tlsObj);
+  }
+  return p;
+}
+
+function profileFromSingBoxEndpoint(ep: Record<string, Object>): Profile | null {
+  if (sbStr(ep, 'type') !== 'wireguard') {
+    return null;
+  }
+  const p = new Profile();
+  p.type = ProfileType.WIREGUARD;
+  p.name = sbStr(ep, 'tag');
+  p.server = sbStr(ep, 'server');
+  p.serverPort = sbNum(ep, 'server_port');
+  if (p.server.length === 0 || p.serverPort <= 0) {
+    return null;
+  }
+  p.privateKey = sbStr(ep, 'private_key');
+  p.wgMtu = sbNum(ep, 'mtu') > 0 ? sbNum(ep, 'mtu') : 1420;
+  const la = ep['local_address'];
+  if (la !== undefined && la !== null) {
+    const parts: Array<string> = [];
+    for (const a of la as Array<string>) {
+      parts.push(`${a}`);
+    }
+    p.localAddress = parts.join(',');
+  }
+  const peers = ep['peers'];
+  if (peers !== undefined && peers !== null) {
+    const list = peers as Array<Record<string, Object>>;
+    if (list.length > 0) {
+      const peer = list[0];
+      p.peerPublicKey = sbStr(peer, 'public_key');
+      p.preSharedKey = sbStr(peer, 'pre_shared_key');
+      const res = peer['reserved'];
+      if (res !== undefined && res !== null) {
+        if (typeof res === 'string') {
+          p.reserved = `${res}`;
+        } else {
+          const parts: Array<string> = [];
+          for (const n of res as Array<number>) {
+            parts.push(`${n}`);
+          }
+          p.reserved = parts.join(',');
+        }
+      }
+    }
+  }
+  return p;
+}
+
+export function parseSingBoxConfig(text: string): ClashParseResult {
+  const result: ClashParseResult = { profiles: [], skipped: 0 };
+  let obj: Record<string, Object>;
+  try {
+    obj = JSON.parse(text) as Record<string, Object>;
+  } catch (e) {
+    return result;
+  }
+  const endpoints = obj['endpoints'];
+  if (endpoints !== undefined && endpoints !== null) {
+    for (const ep of endpoints as Array<Record<string, Object>>) {
+      const p = profileFromSingBoxEndpoint(ep);
+      if (p === null) {
+        result.skipped++;
+      } else {
+        result.profiles.push(p);
+      }
+    }
+  }
+  const outbounds = obj['outbounds'];
+  if (outbounds !== undefined && outbounds !== null) {
+    for (const o of outbounds as Array<Record<string, Object>>) {
+      const p = profileFromSingBoxOutbound(o);
+      if (p === null) {
+        result.skipped++;
+      } else {
+        result.profiles.push(p);
+      }
+    }
+  }
+  return result;
 }

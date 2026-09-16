@@ -4,6 +4,7 @@ import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
 import { initStore, loadProfiles, saveProfiles } from '../model/Store';
 import { SubInfo, listSubs, removeSub, updateSubscription, markSubSuccess, markSubFailure } from '../core/Subscriptions';
+import { subErrorText } from '../utils/Subscription';
 import { formatBytes } from '../utils/TrafficStats';
 import { setClipboardText } from '../utils/ClipboardHelper';
 
@@ -80,7 +81,7 @@ struct SubDetailPage {
       promptAction.showToast({ message: $r('app.string.sub_update_result', result.added, result.removed) });
     } catch (e) {
       await markSubFailure(this.sub.url);
-      const message = e instanceof Error ? e.message : `${e}`;
+      const message = subErrorText(e as Object);
       promptAction.showToast({ message: $r('app.string.update_failed_reason', message) });
     } finally {
       this.updating = false;
