@@ -42,11 +42,11 @@
     },
     {
       "name": "warning",
-      "value": "#F79009"
+      "value": "#A85B00"
     },
     {
       "name": "error",
-      "value": "#D92D20"
+      "value": "#C5221B"
     },
     {
       "name": "protocol_vmess",
@@ -146,5 +146,6 @@
     }
   ]
 }
+
 
 

@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "com.nekobox.app.jynxen",
     "vendor": "nekobox4harmony",
-    "versionCode": 1001928,
-    "versionName": "1.9.2",
+    "versionCode": 1001929,
+    "versionName": "1.9.3",
     "icon": "$media:layered_image",
     "label": "$string:app_name"
   }
