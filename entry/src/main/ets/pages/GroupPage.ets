@@ -5,6 +5,7 @@ import { DrawerButton } from '../common/components/DrawerButton';
 import { Profile, ProfileGroup } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, LogStore } from '../model/Store';
 import { SubInfo, listSubs, saveSubs, removeSub, updateSubscription, markSubSuccess, markSubFailure } from '../core/Subscriptions';
+import { subErrorText } from '../utils/Subscription';
 import { exportProfileLink } from '../utils/LinkExporter';
 import { setClipboardText } from '../utils/ClipboardHelper';
 
@@ -83,7 +84,7 @@ export struct GroupPage {
       this.onDataChanged();
     } catch (e) {
       await markSubFailure(sub.url);
-      promptAction.showToast({ message: $r('app.string.update_failed_reason', e instanceof Error ? e.message : `${e}`) });
+      promptAction.showToast({ message: $r('app.string.update_failed_reason', subErrorText(e as Object)) });
       await this.refresh();
     } finally {
       this.updatingUrl = '';

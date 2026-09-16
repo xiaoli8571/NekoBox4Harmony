@@ -15,7 +15,7 @@ import { initStore, loadProfiles, saveProfiles, loadGroups, loadSettings, saveSe
 import { VpnService } from '../core/VpnService';
 import { parseShareText } from '../utils/LinkParser';
 import { getClipboardText, setClipboardText } from '../utils/ClipboardHelper';
-import { fetchSubscriptionWithInfo, looksLikeClashYaml, parseClashProxies, ClashParseResult } from '../utils/Subscription';
+import { fetchSubscriptionWithInfo, looksLikeClashYaml, parseClashProxies, looksLikeSingBoxJson, parseSingBoxConfig, ClashParseResult, subErrorText } from '../utils/Subscription';
 import { testProfiles, urlTestProfiles } from '../utils/LatencyTester';
 import { SubInfo, listSubs, upsertSub, needAutoUpdate, updateSubscription, setAppContext, subNameOf, markSubSuccess, markSubFailure } from '../core/Subscriptions';
 import { fetchTrafficTotals, formatSpeed } from '../utils/TrafficStats';
@@ -162,7 +162,7 @@ struct Index {
           this.refresh();
         } catch (e) {
           await markSubFailure(sub.url);
-          LogStore.addLog(`[app] 订阅 ${sub.name} 自动更新失败: ${e}`);
+          LogStore.addLog(`[app] 订阅 ${sub.name} 自动更新失败: ${subErrorText(e as Object)}`);
         }
       }
     } catch (e) {
@@ -827,6 +827,15 @@ struct Index {
             });
             return;
           }
+        } else if (looksLikeSingBoxJson(content)) {
+          const r: ClashParseResult = parseSingBoxConfig(content);
+          parsed = r.profiles;
+          if (parsed.length === 0) {
+            promptAction.showToast({
+              message: $r('app.string.clash_skipped_count', r.skipped)
+            });
+            return;
+          }
         } else {
           parsed = parseShareText(content);
         }
@@ -862,7 +871,7 @@ struct Index {
       }
       this.refresh();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : `${e}`;
+      const msg = subErrorText(e as Object);
       LogStore.addLog(`[ui] 导入失败: ${msg}`);
       promptAction.showToast({ message: $r('app.string.import_failed_reason', msg) });
     }

@@ -1,7 +1,7 @@
 import common from '@ohos.app.ability.common';
 import { Profile } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, mutateProfiles, loadSettings, readPrefString, writePrefString } from '../model/Store';
-import { fetchSubscriptionWithInfo, parseSubUserInfo, looksLikeClashYaml, parseClashProxies } from '../utils/Subscription';
+import { fetchSubscriptionWithInfo, parseSubUserInfo, looksLikeClashYaml, parseClashProxies, looksLikeSingBoxJson, parseSingBoxConfig } from '../utils/Subscription';
 import { parseShareText } from '../utils/LinkParser';
 
 /** 订阅管理:记录订阅来源、更新节点(按 subUrl 原子替换)。 */
@@ -192,6 +192,8 @@ export async function updateSubscription(url: string): Promise<SubUpdateResult> 
   let parsed: Array<Profile> = [];
   if (looksLikeClashYaml(content)) {
     parsed = parseClashProxies(content).profiles;
+  } else if (looksLikeSingBoxJson(content)) {
+    parsed = parseSingBoxConfig(content).profiles;
   } else {
     parsed = parseShareText(content);
   }
