@@ -61,7 +61,7 @@ if [ ! -f "$SB/go.mod" ]; then
   git clone --depth 1 --branch "$SINGBOX_TAG" https://github.com/SagerNet/sing-box.git "$SB"
 fi
 cd "$SB"
-[ -d .git ] && git config core.autocrlf false || true
+# Do not change repository configuration during a build.
 
 # 补丁 1:TUN fd 注入(SING_BOX_TUN_FD)
 if ! grep -q "SING_BOX_TUN_FD" protocol/tun/inbound.go; then
@@ -93,6 +93,16 @@ if ! grep -q "InterfaceMonitor() == nil" protocol/direct/outbound.go; then
   perl -0pi -e 's/func \(h \*Outbound\) fetchMyAddresses\(\) \{\n/\1\t\/\/ OHOS: auto_detect_interface=false 时 InterfaceMonitor 为 nil(route\/network.go 补丁 2 早退),\n\t\/\/ nil 接口调方法直接 SIGSEGV;上游 dhcp.go 也做了同样的判空。\n\tif h.network.InterfaceMonitor() == nil {\n\t\treturn\n\t}\n/' protocol/direct/outbound.go
 fi
 grep -q "InterfaceMonitor() == nil" protocol/direct/outbound.go || { echo "ERROR: direct fetchMyAddresses nil-guard patch failed"; exit 1; }
+
+# 补丁 6:restore explicit sniff override (Android route vs override modes).
+if ! grep -q 'json:"override_destination,omitempty"' option/rule_action.go; then
+  perl -0pi -e 's/(type RouteActionSniff struct \{\n)/$1\tOverrideDestination bool `json:"override_destination,omitempty"`\n/' option/rule_action.go
+fi
+if ! grep -q 'OverrideDestination: action.SniffOptions.OverrideDestination' route/rule/rule_action.go; then
+  perl -0pi -e 's/(sniffAction := &RuleActionSniff\{\n)/$1\t\t\tOverrideDestination: action.SniffOptions.OverrideDestination,\n/' route/rule/rule_action.go
+fi
+grep -q 'json:"override_destination,omitempty"' option/rule_action.go || { echo "ERROR: sniff override schema patch failed"; exit 1; }
+grep -q 'OverrideDestination: action.SniffOptions.OverrideDestination' route/rule/rule_action.go || { echo "ERROR: sniff override wiring patch failed"; exit 1; }
 
 # 补丁 4:zz_ohos 平台常量与钩子实现(openharmony build tag 隔离)
 for f in common/dialer/zz_ohos_forcebind.go common/dialer/zz_ohos_forcebind_other.go route/zz_ohos_openharmony.go route/zz_ohos_other.go; do
@@ -212,6 +222,8 @@ cat > "$EXPORTS_FILE" <<'MAP'
 MAP
 EXPORTS_FILE_WIN="$(cygpath -d "$EXPORTS_FILE")"
 
+# Keep runtime registry aligned with generated selector configurations.
+grep -qF 'group.RegisterSelector(outboundRegistry)' lean_context.go || { echo "ERROR: production wrapper lacks selector registration"; exit 1; }
 BUILD_TAGS="with_utls,with_clash_api,with_quic"
 echo "==> build tags: $BUILD_TAGS"
 rm -f "$OUT_DIR/libsingbox.so"
@@ -241,6 +253,7 @@ else
 fi
 
 # ---- 构建后校验(全部 fail-closed;二进制用固定串匹配) ----
+grep -aqF 'json:"override_destination,omitempty"' "$SO" || { echo "ERROR: .so lacks sniff override schema marker"; exit 1; }
 grep -aqF "route subscribe" "$SO"     || { echo "ERROR: .so lacks sing-tun netlink patch marker"; exit 1; }
 grep -aqF "SING_BOX_BIND_IFNAME" "$SO" || { echo "ERROR: .so lacks forcebind marker"; exit 1; }
 grep -aqF "SING_BOX_TUN_FD" "$SO"     || { echo "ERROR: .so lacks tun-fd marker"; exit 1; }

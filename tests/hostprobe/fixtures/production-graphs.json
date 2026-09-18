@@ -1,0 +1,212 @@
+[
+  {
+    "name": "wrapped-rule-target",
+    "config": {
+      "log": {
+        "level": "info",
+        "timestamp": true
+      },
+      "dns": {
+        "servers": [
+          {
+            "tag": "remote",
+            "type": "udp",
+            "server": "127.0.0.1",
+            "detour": "proxy"
+          },
+          {
+            "tag": "local",
+            "type": "udp",
+            "server": "127.0.0.1"
+          }
+        ],
+        "rules": [],
+        "final": "remote",
+        "strategy": "ipv4_only"
+      },
+      "outbounds": [
+        {
+          "tag": "proxy@hop0",
+          "type": "socks",
+          "server": "front.test",
+          "server_port": 1080
+        },
+        {
+          "tag": "proxy@hop1",
+          "type": "socks",
+          "server": "a.test",
+          "server_port": 1080,
+          "detour": "proxy@hop0"
+        },
+        {
+          "tag": "proxy",
+          "type": "socks",
+          "server": "landing.test",
+          "server_port": 1080,
+          "detour": "proxy@hop1"
+        },
+        {
+          "tag": "profile-b@hop0",
+          "type": "socks",
+          "server": "front.test",
+          "server_port": 1080
+        },
+        {
+          "tag": "profile-b",
+          "type": "socks",
+          "server": "b.test",
+          "server_port": 1080,
+          "detour": "profile-b@hop0"
+        },
+        {
+          "type": "direct",
+          "tag": "direct"
+        }
+      ],
+      "route": {
+        "rules": [
+          {
+            "protocol": "dns",
+            "action": "hijack-dns"
+          },
+          {
+            "domain": [
+              "target.test"
+            ],
+            "outbound": "profile-b"
+          },
+          {
+            "ip_cidr": [
+              "224.0.0.0/3",
+              "ff00::/8"
+            ],
+            "source_ip_cidr": [
+              "224.0.0.0/3",
+              "ff00::/8"
+            ],
+            "action": "reject"
+          }
+        ],
+        "final": "proxy",
+        "auto_detect_interface": false,
+        "default_domain_resolver": {
+          "server": "local",
+          "strategy": "prefer_ipv4"
+        }
+      }
+    }
+  },
+  {
+    "name": "selector-target",
+    "config": {
+      "log": {
+        "level": "info",
+        "timestamp": true
+      },
+      "dns": {
+        "servers": [
+          {
+            "tag": "remote",
+            "type": "udp",
+            "server": "127.0.0.1",
+            "detour": "proxy"
+          },
+          {
+            "tag": "local",
+            "type": "udp",
+            "server": "127.0.0.1"
+          }
+        ],
+        "rules": [],
+        "final": "remote",
+        "strategy": "ipv4_only"
+      },
+      "outbounds": [
+        {
+          "type": "selector",
+          "tag": "proxy",
+          "outbounds": [
+            "profile-c",
+            "profile-a"
+          ],
+          "default": "profile-a"
+        },
+        {
+          "tag": "profile-c@hop0",
+          "type": "socks",
+          "server": "front.test",
+          "server_port": 1080
+        },
+        {
+          "tag": "profile-c@hop1",
+          "type": "socks",
+          "server": "127.0.0.1",
+          "server_port": 1080,
+          "detour": "profile-c@hop0"
+        },
+        {
+          "tag": "profile-c",
+          "type": "socks",
+          "server": "landing.test",
+          "server_port": 1080,
+          "detour": "profile-c@hop1"
+        },
+        {
+          "tag": "profile-a@hop0",
+          "type": "socks",
+          "server": "front.test",
+          "server_port": 1080
+        },
+        {
+          "tag": "profile-a@hop1",
+          "type": "socks",
+          "server": "a.test",
+          "server_port": 1080,
+          "detour": "profile-a@hop0"
+        },
+        {
+          "tag": "profile-a",
+          "type": "socks",
+          "server": "landing.test",
+          "server_port": 1080,
+          "detour": "profile-a@hop1"
+        },
+        {
+          "type": "direct",
+          "tag": "direct"
+        }
+      ],
+      "route": {
+        "rules": [
+          {
+            "protocol": "dns",
+            "action": "hijack-dns"
+          },
+          {
+            "domain": [
+              "target.test"
+            ],
+            "outbound": "profile-c"
+          },
+          {
+            "ip_cidr": [
+              "224.0.0.0/3",
+              "ff00::/8"
+            ],
+            "source_ip_cidr": [
+              "224.0.0.0/3",
+              "ff00::/8"
+            ],
+            "action": "reject"
+          }
+        ],
+        "final": "proxy",
+        "auto_detect_interface": false,
+        "default_domain_resolver": {
+          "server": "local",
+          "strategy": "prefer_ipv4"
+        }
+      }
+    }
+  }
+]

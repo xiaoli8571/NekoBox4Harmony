@@ -25,28 +25,85 @@ export interface SubUserInfo {
   expire: number;
 }
 
-export async function fetchSubscriptionWithInfo(url: string, allowInsecure: boolean = false): Promise<SubFetchResult> {
-  return await doFetchSubscription(url, true, allowInsecure);
+export interface UnwrappedSubscriptionLink {
+  url: string;
+  name: string;
+}
+
+const CLASH_CONTAINER_PREFIX = 'clash://install-config?';
+
+/**
+ * 订阅容器 Scheme 解包(对齐安卓 MainActivity.importSubscription)。
+ * clash://install-config?url=<订阅地址>&name=<名称> 由 Clash 系客户端分享订阅时使用,
+ * 真实订阅地址与名称在查询参数中;解包后交由普通订阅流程下载。
+ * 仅处理明文查询格式。sn://subscription 为 SagerNet 私有 Kryo 序列化容器,
+ * 鸿蒙端无对应序列化能力,由 isSagerNetSubscriptionContainer 单独识别并明确提示。
+ */
+export function unwrapSubscriptionLink(text: string): UnwrappedSubscriptionLink | null {
+  const trimmed = text === undefined || text === null ? '' : text.trim();
+  if (!trimmed.toLowerCase().startsWith(CLASH_CONTAINER_PREFIX)) {
+    return null;
+  }
+  const params = parseContainerQuery(trimmed.substring(CLASH_CONTAINER_PREFIX.length));
+  const url = params['url'] !== undefined ? params['url'] : '';
+  if (url.length === 0) {
+    return null;
+  }
+  return { url: url, name: params['name'] !== undefined ? params['name'] : '' };
+}
+
+/** sn:// 前缀均为 SagerNet/NekoBox 私有 Kryo 序列化(universal link / subscription 容器),无法在鸿蒙端解包。 */
+export function isSagerNetSubscriptionContainer(text: string): boolean {
+  const trimmed = text === undefined || text === null ? '' : text.trim();
+  return trimmed.toLowerCase().startsWith('sn://');
+}
+
+function parseContainerQuery(query: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const parts = query.split('&');
+  for (const part of parts) {
+    if (part.length === 0) {
+      continue;
+    }
+    const i = part.indexOf('=');
+    if (i < 0) {
+      continue;
+    }
+    const key = part.substring(0, i).toLowerCase();
+    let val = part.substring(i + 1);
+    try {
+      val = decodeURIComponent(val.replace(/\+/g, '%20'));
+    } catch (e) {
+      // 保留原始值,避免非法编码导致整个链接不可用
+    }
+    out[key] = val;
+  }
+  return out;
+}
+
+export async function fetchSubscriptionWithInfo(url: string, allowInsecure: boolean = false, userAgent: string = ''): Promise<SubFetchResult> {
+  return await doFetchSubscription(url, true, allowInsecure, userAgent);
 }
 
 async function fetchSubscriptionRaw(url: string, withInfo: boolean): Promise<string> {
-  const r = await doFetchSubscription(url, withInfo, false);
+  const r = await doFetchSubscription(url, withInfo, false, '');
   return r.content;
 }
 
-export async function fetchSubscription(url: string, allowInsecure: boolean = false): Promise<string> {
-  const r = await doFetchSubscription(url, false, allowInsecure);
+export async function fetchSubscription(url: string, allowInsecure: boolean = false, userAgent: string = ''): Promise<string> {
+  const r = await doFetchSubscription(url, false, allowInsecure, userAgent);
   return r.content;
 }
 
-async function doFetchSubscription(url: string, withInfo: boolean, allowInsecure: boolean): Promise<SubFetchResult> {
+async function doFetchSubscription(url: string, withInfo: boolean, allowInsecure: boolean, userAgent: string): Promise<SubFetchResult> {
   const normalizedUrl = url.trim();
   if (!normalizedUrl.startsWith('https://') && !normalizedUrl.startsWith('http://')) {
     throw new Error('订阅地址必须使用 HTTP 或 HTTPS 协议');
   }
   const client = http.createHttp();
   try {
-    const headers: Record<string, string> = { 'User-Agent': SUB_UA };
+    const ua = userAgent.trim().length > 0 ? userAgent.trim() : SUB_UA;
+    const headers: Record<string, string> = { 'User-Agent': ua };
     const opts: http.HttpRequestOptions = {
       method: http.RequestMethod.GET,
       header: headers,
@@ -745,4 +802,23 @@ export function parseSingBoxConfig(text: string): ClashParseResult {
     }
   }
   return result;
+}
+
+/**
+ * 单个出站 JSON 解析(对齐安卓 RawUpdater.parseJSON 的裸出站分支):
+ * 已是完整配置时直接走 parseSingBoxConfig;否则把该对象包成 {outbounds:[obj]} 再解析。
+ */
+export function parseSingleOutboundJson(text: string): ClashParseResult {
+  let obj: Record<string, Object>;
+  try {
+    obj = JSON.parse(text) as Record<string, Object>;
+  } catch (e) {
+    return { profiles: [], skipped: 0 };
+  }
+  if (obj['outbounds'] !== undefined || obj['endpoints'] !== undefined) {
+    return parseSingBoxConfig(text);
+  }
+  const wrapped: Record<string, Object> = {};
+  wrapped['outbounds'] = [obj as Object];
+  return parseSingBoxConfig(JSON.stringify(wrapped));
 }

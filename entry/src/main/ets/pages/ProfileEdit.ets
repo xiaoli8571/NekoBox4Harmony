@@ -2,10 +2,11 @@ import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
 import common from '@ohos.app.ability.common';
-import { Profile, ProfileType, profileTypeLabel, supportsTransport, needsTlsByDefault } from '../model/Profile';
+import { Profile, ProfileGroup, ProfileType, profileTypeLabel, supportsTransport, needsTlsByDefault } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, loadGroups, readPrefString } from '../model/Store';
 import { getClipboardText } from '../utils/ClipboardHelper';
 import { parseSingleLink, parseShareText } from '../utils/LinkParser';
+import { unwrapSubscriptionLink, isSagerNetSubscriptionContainer } from '../utils/Subscription';
 import { isCustomOutboundTypeSupported } from '../core/ConfigBuilder';
 
 const ALL_TYPES: Array<string> = [
@@ -34,6 +35,7 @@ struct ProfileEdit {
   @State isNew: boolean = true;
   @State pasteText: string = '';
   @State allProfiles: Array<Profile> = [];
+  @State groups: Array<ProfileGroup> = [];
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear(): void {
@@ -41,6 +43,7 @@ struct ProfileEdit {
     initStore(this.context).then(async () => {
       const profiles = await loadProfiles();
       this.allProfiles = profiles;
+      this.groups = await loadGroups();
       const found = profiles.find(x => x.id === id);
       if (found !== undefined) {
         this.p = found;
@@ -84,6 +87,12 @@ struct ProfileEdit {
     if (this.p.type === ProfileType.CHAIN) {
       if (this.chainIds().length === 0) {
         return $r('app.string.error_chain_empty');
+      }
+      // 保存前再核一遍循环引用(防御外部修改 chainIds 的场景)
+      for (const cand of this.chainCandidates()) {
+        if (this.chainSelected(cand.id) && !this.chainSelectionAllowed(cand)) {
+          return $r('app.string.error_circular_reference');
+        }
       }
       return '';
     }
@@ -176,33 +185,54 @@ struct ProfileEdit {
     }
   }
 
-  /** 把输入框内容解析成节点填入表单 */
-  applyPasted(): void {
+  /** 解析输入框中的分享链接。单条填入表单，多条直接批量保存，避免新建节点入口只导入第一条。 */
+  async applyPasted(): Promise<void> {
     const t = this.pasteText.trim();
     if (t.length === 0) {
       promptAction.showToast({ message: $r('app.string.paste_link_first') });
       return;
     }
     const firstLine = t.split(/[\r\n]+/)[0].trim();
-    if (firstLine.startsWith('http://') || firstLine.startsWith('https://')) {
+    if (isSagerNetSubscriptionContainer(firstLine)) {
+      promptAction.showToast({ message: $r('app.string.subscription_container_unsupported') });
+      return;
+    }
+    if (unwrapSubscriptionLink(firstLine) !== null
+      || firstLine.startsWith('http://') || firstLine.startsWith('https://')) {
       promptAction.showToast({ message: $r('app.string.subscription_link_use_home') });
       return;
     }
     try {
-      let p = parseSingleLink(firstLine);
-      if (p === null) {
-        const list = parseShareText(t);
-        if (list.length > 0) {
-          p = list[0];
+      const list = parseShareText(t);
+      if (list.length === 0) {
+        const p = parseSingleLink(firstLine);
+        if (p !== null) {
+          list.push(p);
         }
       }
-      if (p === null) {
+      if (list.length === 0) {
         promptAction.showToast({ message: $r('app.string.unrecognized_profile_link') });
         return;
       }
-      p.id = this.p.id;
-      this.p = p;
-      promptAction.showToast({ message: $r('app.string.parsed_review_save') });
+      if (list.length === 1) {
+        list[0].id = this.p.id;
+        this.p = list[0];
+        promptAction.showToast({ message: $r('app.string.parsed_review_save') });
+        return;
+      }
+      await initStore(this.context);
+      const profiles = await loadProfiles();
+      const now = Date.now();
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i];
+        item.id = `${now}_${i}_${Math.floor(Math.random() * 100000)}`;
+        item.updatedAt = now;
+        profiles.push(item);
+      }
+      await saveProfiles(profiles);
+      this.allProfiles = profiles;
+      promptAction.showToast({ message: $r('app.string.imported_count', list.length) });
+      router.back();
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
       promptAction.showToast({ message: $r('app.string.parse_failed_reason', msg) });
@@ -258,6 +288,55 @@ struct ProfileEdit {
 
   chainCandidates(): Array<Profile> {
     return this.allProfiles.filter(x => x.id !== this.p.id && x.type !== ProfileType.CHAIN);
+  }
+
+  /**
+   * 递归判断链式节点 chainProfile 是否(直接或间接)包含 targetId,
+   * 对齐安卓 ChainSettingsActivity.testProfileContains。
+   */
+  private chainContains(chainProfile: Profile, targetId: string, visited: Set<string>): boolean {
+    if (chainProfile.id === targetId) {
+      return true;
+    }
+    if (visited.has(chainProfile.id)) {
+      return false;
+    }
+    visited.add(chainProfile.id);
+    if (chainProfile.type !== ProfileType.CHAIN) {
+      return false;
+    }
+    const memberIds = chainProfile.chainIds.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+    for (const memberId of memberIds) {
+      const member = this.allProfiles.find(x => x.id === memberId);
+      if (member !== undefined && this.chainContains(member, targetId, visited)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 候选节点加入当前链是否安全(双向环路检测,比安卓多覆盖「候选包含编辑节点」这一方向) */
+  chainSelectionAllowed(candidate: Profile): boolean {
+    if (candidate.id === this.p.id) {
+      return false;
+    }
+    // 已选中的直接放行(允许取消勾选)
+    if (this.chainSelected(candidate.id)) {
+      return true;
+    }
+    // 方向一:候选(若是链)间接包含正在编辑的节点
+    if (this.chainContains(candidate, this.p.id, new Set<string>())) {
+      return false;
+    }
+    // 方向二:任意已选成员间接包含候选
+    const selected = this.chainIds();
+    for (const memberId of selected) {
+      const member = this.allProfiles.find(x => x.id === memberId);
+      if (member !== undefined && this.chainContains(member, candidate.id, new Set<string>())) {
+        return false;
+      }
+    }
+    return true;
   }
 
   build() {
@@ -429,7 +508,47 @@ struct ProfileEdit {
       this.Field($r('app.string.server_address'), 'domain or IP', this.p.server, (v: string) => { this.p.server = v; })
       this.Field($r('app.string.port'), '443', `${this.p.serverPort === 0 ? '' : this.p.serverPort}`,
         (v: string) => { this.p.serverPort = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+      this.GroupSelectRow()
     }
+  }
+
+  /** 分组选择(对齐安卓 ProfileSettingsActivity 的分组 Preference) */
+  @Builder
+  GroupSelectRow() {
+    Column() {
+      Text($r('app.string.profile_group')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+      Select(this.groupOptions())
+        .selected(this.groupSelectedIndex())
+        .value(this.groupCurrentValue())
+        .onSelect((index: number) => {
+          this.p.groupId = index <= 0 ? '' : this.groups[index - 1].id;
+        })
+    }.alignItems(HorizontalAlign.Start).width('100%')
+  }
+
+  private groupOptions(): Array<SelectOption> {
+    const opts: Array<SelectOption> = [{ value: $r('app.string.ungrouped') } as SelectOption];
+    for (const g of this.groups) {
+      opts.push({ value: g.name } as SelectOption);
+    }
+    return opts;
+  }
+
+  private groupSelectedIndex(): number {
+    if (this.p.groupId.length === 0) {
+      return 0;
+    }
+    const i = this.groups.findIndex(g => g.id === this.p.groupId);
+    // 分组已被删除时回落到「未分组」显示,保存时保持原值不变
+    return i < 0 ? 0 : i + 1;
+  }
+
+  private groupCurrentValue(): ResourceStr {
+    const idx = this.groupSelectedIndex();
+    if (idx <= 0) {
+      return $r('app.string.ungrouped');
+    }
+    return this.groups[idx - 1].name;
   }
 
   @Builder
@@ -607,12 +726,20 @@ struct ProfileEdit {
               Text(cand.name)
                 .fontSize(14).layoutWeight(1)
                 .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+                .fontColor(this.chainSelectionAllowed(cand) ? $r('app.color.text_1') : $r('app.color.text_3'))
               if (this.chainSelected(cand.id)) {
                 Text('↑').fontSize(13).padding({ left: 6, right: 6 }).onClick(() => this.moveChain(cand.id, -1))
                 Text('↓').fontSize(13).padding({ left: 6, right: 6 }).onClick(() => this.moveChain(cand.id, 1))
               }
               Toggle({ type: ToggleType.Checkbox, isOn: this.chainSelected(cand.id) })
-                .onChange((selected: boolean) => { this.toggleChain(cand.id); })
+                .enabled(this.chainSelectionAllowed(cand))
+                .onChange((selected: boolean) => {
+                  if (!this.chainSelectionAllowed(cand)) {
+                    promptAction.showToast({ message: $r('app.string.error_circular_reference') });
+                    return;
+                  }
+                  this.toggleChain(cand.id);
+                })
             }.width('100%').padding({ top: 6, bottom: 6 })
           }
         }, (cand: Profile) => cand.id)

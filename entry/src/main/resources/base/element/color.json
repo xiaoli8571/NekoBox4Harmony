@@ -1,4 +1,4 @@
-﻿{
+{
   "color": [
     {
       "name": "start_window_background",
@@ -18,11 +18,11 @@
     },
     {
       "name": "primary",
-      "value": "#3478F6"
+      "value": "#2364D8"
     },
     {
       "name": "primary_pressed",
-      "value": "#2364D8"
+      "value": "#1B53B8"
     },
     {
       "name": "text_primary",
@@ -126,7 +126,7 @@
     },
     {
       "name": "dot_live",
-      "value": "#22C55E"
+      "value": "#16A34A"
     },
     {
       "name": "ring_live",
@@ -138,7 +138,7 @@
     },
     {
       "name": "fab_bg",
-      "value": "#CC3478F6"
+      "value": "#CC2364D8"
     },
     {
       "name": "fab_running",

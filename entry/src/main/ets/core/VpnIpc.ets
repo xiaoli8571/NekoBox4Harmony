@@ -10,6 +10,8 @@ export const VPN_EVENT_LOG: string = 'com.nekobox.app.jynxen.VPN_LOG';
 export const VPN_EVENT_STATUS: string = 'com.nekobox.app.jynxen.VPN_STATUS';
 export const VPN_EVENT_LATENCY: string = 'com.nekobox.app.jynxen.VPN_LATENCY';
 export const VPN_EVENT_TRAFFIC: string = 'com.nekobox.app.jynxen.VPN_TRAFFIC';
+/** UI 进程 → 扩展进程:应用回到前台,唤醒后重置连接(对齐安卓 wakeResetConnections) */
+export const VPN_EVENT_APP_FOREGROUND: string = 'com.nekobox.app.jynxen.VPN_APP_FOREGROUND';
 
 const APP_BUNDLE = 'com.nekobox.app.jynxen';
 
@@ -80,6 +82,18 @@ export function publishVpnLatency(profileId: string, nodeName: string, latencyMs
     };
     commonEventManager.publish(VPN_EVENT_LATENCY, opts, (err: BusinessError) => {
       // 测速通知失败不影响测速和 VPN 流程
+    });
+  } catch (e) {
+    // ignore
+  }
+}
+
+/** UI 进程调用:应用回到前台时通知扩展进程(用于唤醒后重置连接) */
+export function publishAppForeground(): void {
+  try {
+    const opts: commonEventManager.CommonEventPublishData = { bundleName: APP_BUNDLE };
+    commonEventManager.publish(VPN_EVENT_APP_FOREGROUND, opts, (err: BusinessError) => {
+      // 通知失败不影响 VPN 流程
     });
   } catch (e) {
     // ignore

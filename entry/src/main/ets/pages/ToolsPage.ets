@@ -7,7 +7,8 @@ import util from '@ohos.util';
 import { UiSpec } from '../common/UiSpec';
 import { DrawerButton } from '../common/components/DrawerButton';
 import { initStore, resetAllData, LogStore } from '../model/Store';
-import { exportBackup, importBackup } from '../core/Backup';
+import { exportBackup, importBackup, BackupRestoreResult } from '../core/Backup';
+import { VpnService } from '../core/VpnService';
 import { getClipboardText } from '../utils/ClipboardHelper';
 import { stunTest, StunResult } from '../utils/StunTester';
 
@@ -25,6 +26,20 @@ export struct ToolsPage {
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   onOpenDrawer: () => void = () => {};
 
+  private backupFileName(): string {
+    const date = new Date();
+    const pad = (value: number): string => value < 10 ? `0${value}` : `${value}`;
+    return `nekobox-backup-${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}.json`;
+  }
+
+  private restoreSummary(result: BackupRestoreResult): ResourceStr {
+    return result.stoppedVpn
+      ? $r('app.string.backup_restore_summary_stopped', result.profiles, result.groups,
+        result.subscriptions, result.routeRules, result.remoteRuleSets)
+      : $r('app.string.backup_restore_summary', result.profiles, result.groups,
+        result.subscriptions, result.routeRules, result.remoteRuleSets);
+  }
+
   private backupErrorText(msg: string): ResourceStr {
     if (msg === 'backup_invalid_json') {
       return $r('app.string.backup_invalid_json');
@@ -34,6 +49,18 @@ export struct ToolsPage {
     }
     if (msg.startsWith('backup_unsupported_version:')) {
       return $r('app.string.backup_unsupported_version', Number(msg.substring('backup_unsupported_version:'.length)) || 0);
+    }
+    if (msg === 'backup_restore_busy') {
+      return $r('app.string.backup_restore_busy');
+    }
+    if (msg === 'backup_vpn_disconnect_timeout') {
+      return $r('app.string.backup_vpn_disconnect_timeout');
+    }
+    if (msg === 'backup_restore_rolled_back') {
+      return $r('app.string.backup_restore_rolled_back');
+    }
+    if (msg.startsWith('backup_rollback_failed:')) {
+      return $r('app.string.backup_rollback_failed', msg.substring('backup_rollback_failed:'.length));
     }
     if (msg === 'backup_file_empty') {
       return $r('app.string.backup_file_empty');
@@ -47,10 +74,36 @@ export struct ToolsPage {
     return $r('app.string.backup_op_failed', msg);
   }
 
-  private backupFileName(): string {
-    const date = new Date();
-    const pad = (value: number): string => value < 10 ? `0${value}` : `${value}`;
-    return `nekobox-backup-${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}.json`;
+  private sleep(ms: number): Promise<void> {
+    return new Promise<void>((resolve: () => void) => setTimeout(resolve, ms));
+  }
+
+  private async prepareForRestore(): Promise<boolean> {
+    const running: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
+    const status: string = AppStorage.get<string>('vpnStatus') ?? 'disconnected';
+    const active = running || status === 'connecting' || status === 'switching'
+      || status === 'disconnecting' || status.startsWith('connected:');
+    if (!active) {
+      return false;
+    }
+    await VpnService.disconnect(this.context);
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      const currentRunning: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
+      const currentStatus: string = AppStorage.get<string>('vpnStatus') ?? '';
+      if (!currentRunning && currentStatus === 'disconnected') {
+        return true;
+      }
+      await this.sleep(100);
+    }
+    throw new Error('backup_vpn_disconnect_timeout');
+  }
+
+  private async restoreText(text: string): Promise<BackupRestoreResult> {
+    const stoppedVpn = await this.prepareForRestore();
+    const result = await importBackup(this.context, text.trim());
+    result.stoppedVpn = stoppedVpn;
+    return result;
   }
 
   private writeTextFileUri(uri: string, content: string): void {
@@ -126,11 +179,11 @@ export struct ToolsPage {
         return;
       }
       const text = this.readTextFileUri(uris[0]).trim();
-      const message = await importBackup(this.context, text);
-      promptAction.showToast({ message: message });
+      const result = await this.restoreText(text);
+      promptAction.showToast({ message: this.restoreSummary(result) });
     } catch (e) {
       const message = e instanceof Error ? e.message : `${e}`;
-      promptAction.showToast({ message: $r('app.string.restore_failed', message) });
+      promptAction.showToast({ message: this.backupErrorText(message) });
     } finally {
       this.backupFileBusy = false;
     }
@@ -302,8 +355,8 @@ export struct ToolsPage {
                       promptAction.showToast({ message: $r('app.string.settings_clipboard_empty') });
                       return;
                     }
-                    const msg = await importBackup(this.context, text.trim());
-                    promptAction.showToast({ message: msg });
+                    const result = await this.restoreText(text);
+                    promptAction.showToast({ message: this.restoreSummary(result) });
                   } catch (e) {
                     promptAction.showToast({ message: this.backupErrorText(e instanceof Error ? e.message : `${e}`) });
                   }

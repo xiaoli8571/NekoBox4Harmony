@@ -1,5 +1,18 @@
 # NekoBox for Harmony 开发计划(G 阶段,目标版本 1.6.0)
 
+## 严格1:1重新审计（2026-09-17）—— 状态：进行中，首批修复通过主机测试与构建
+
+- 当前任务以用户要求的非Android独有功能/UI严格复刻为准；下方旧阶段结论仅作历史，不是本次验收。
+- 首批：showBottomBar基本跨页/连接门控与持久化、端口范围输出、DNS auto归一化、resolve执行顺序。
+- 最新验证：CORE-04 已交叉编译 .so 并重新 assembleHap（exit 0）；主机回环实连接区分 route/override。HDC 当前有设备，但尚无本轮设备行为或视觉验收。
+- CORE-03：仍未完整验收。Backup 字符串校验已修；server auto 固定 prefer_ipv4、resolve 按模式、平台 ONLY 保留 IPv4、FakeDNS 两段地址已实施。Store 新增实际保存/重载测试，非法 ipv6Mode 写入前归一化；core 地址前缀、平台 bypass/DNS 地址和设备行为仍待核对。
+- DNS 启动回归：生产生成的四模式 × FakeDNS 开关八组 DNS 块（仅隔离传输 detour）复现 FakeDNS 开启时全部失败；删除新增 query_type 混用，按 Android 原入站规则将 ipv4_only/disable_cache 写到 fake 选择规则后八组通过。1.14 兼容模式保留 legacy strategy，不是“该语义无法表达”；1.16 迁移仍待办。主机 Go 全套连续三次通过，之前一次回环重置未复现，仍记录稳定性风险。
+- CORE-05 部分：协议列表按 Android ConfigBuilder.kt:543-544 逗号/换行拆分，保留同条规则其它 AND 字段；RuleRule 加载不再丢弃非 DNS 协议，页面改为多行输入。生产配置测试从 undefined 红灯到协议数组通过，真实 Store/RouteRule 保存重载通过。
+- CORE-07：深合并已实施（Android Util.kt:129-158 语义）。新增 deepMerge 导出函数（对象递归、+key 前插、key+ 后插、其余覆盖）+ parseUserJson（非法/非对象输入返回 null 调用方忽略），替换节点 extra、规则 config、全局 globalCustomConfig 三处浅合并；buildOutbound 导出供测试。生产测试红→绿：规则深合并+列表操作、extra 与生成 mux 块嵌套合并（协议字段保留+覆盖+新增同验）、全局合并保留生成子字段。36 项配置测试及其余主机测试通过；首轮 assembleHap 因 parseUserJson 隐式 any 失败，现补显式类型，正在重新编译。此前提前记 exit 0 已纠正。
+- CORE-08：内置路由顺序已对齐安卓 ConfigBuilder.kt:600,697-708。用户/自定义/geo/远程规则先入，私网绕过改用内核 ip_is_private 判定（随 bypassLan），组播 224.0.0.0/3+ff00::/8 目的/源独立 reject（不随开关/模式），均追加在用户规则后。红→绿：findIndex 断言 user < lan < multicast、组播字段逐项一致、bypassLan=false 仍拒绝组播。38 项配置断言与全部主机套件通过。
+- 源码证据、已知缺口及后续任务见 `docs/PARITY-REAUDIT.md`。分组分页、滚动防遮挡、主题/节点卡、完整 DNS/VPN 行为、任意节点出站及组级代理仍需完成。
+
+
 > 当前基线:1.5.8(versionCode 1001800,2026-09-03,commit eb35129)。**F 阶段 F1~F7 已全部交付(F7 已真机验收;F2~F6 待日常复核,勿重做)**;本阶段开发 G1~G6,目标版本 1.6.0。建议顺序:**G6 → G1 → G2 → G3 → G4 → G5**(G5 风险最高放最后)。**交付模式(用户 2026-09-03 指定):G6 已单独交付;剩余 G1~G5 由开发 agent 一次性全部开发完成后再统一交付构建,不分阶段**——但每完成一项仍须立即同步该项 DEVPLAN 状态行与 CHANGES.md 记录,全部完成后一次性汇报"已完成 G1~G5,请构建"。
 > 详细架构见 `AGENTS.md`,上一阶段实现记录见 `CHANGES.md`,先读这两个文件与下方铁律/踩坑。
 
@@ -174,3 +187,212 @@
 
 - Clash 订阅 hysteria2/tuic/grpc/ws 早期数据/h2 解析补全;subAllowInsecure(http remoteValidation=skip)、resolveDestination(规则模式 resolve 兜底)、notificationGroup(通知前缀)全部接线;设置页补解析目标地址开关与全局自定义配置 JSON 输入。
 - 真机验证点:含 hy2/tuic 的 Clash 订阅导入不再跳过;自签证书订阅可下载;通知显示 [分组名];解析目标地址开启后 IP 规则生效。
+
+
+## 备份恢复可靠性整改(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17)，待真机回归
+
+- 文件恢复与剪贴板恢复统一进入 `ToolsPage.restoreText()` 安全入口，共享恢复互斥、运行中 VPN 停止等待、事务回滚和结果汇总。
+- `Backup.ets` 保持严格格式校验并改用显式 `Array<Object>` 遍历，恢复摘要完整统计节点、分组、设置、订阅、路由规则和远程规则集。
+- base/en_US 新增恢复繁忙、VPN 停止超时、已完整回滚、回滚不完整及停止 VPN 后恢复成功等对称资源；双语字符串键 481=481，双向差异为 0。
+- 验证：hvigor assembleHap `BUILD SUCCESSFUL`，未签名 HAP 已重新生成；构建仅保留项目既存弃用 API、可能抛异常和无签名配置警告。
+- 真机验证点：VPN 运行时从文件和剪贴板恢复均应先可靠断开；构造恢复写入失败时原数据应完整回滚；并发点击恢复应显示繁忙提示且不得交叉写入。
+
+
+## 订阅容器 Scheme 支持(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17)，待真机回归
+
+- 对齐安卓 `Formats.parseProxies` 的 `SubscriptionFoundException` 与 `MainActivity.importSubscription`：主页「导入订阅」现在先解包 `clash://install-config?url=<订阅地址>&name=<名称>`，取真实订阅地址与名称走既有订阅下载、分组、`upsertSub` 与选中流程。
+- 节点编辑页「粘贴解析」识别 clash 容器后引导回主页导入；`sn://subscription` 为 SagerNet 私有 Kryo 序列化容器，鸿蒙无对应序列化能力，识别后给出明确本地化提示并写日志，不再静默失败。
+- 新增对称资源 `subscription_container_unsupported`；base/en_US 字符串键 482=482，双向差异为 0。
+- 验证：hvigor assembleHap `BUILD SUCCESSFUL`；解包算法用 10 组输入用例独立验证全部通过(含 URL 编码、缺 url、空文本、大小写、sn 容器识别)；未签名 HAP 已重新生成。
+- 已知限制：未在 `module.json5` 注册外部 Scheme（受 VPN type 与阶段约束），仅覆盖应用内粘贴/导入入口；外部链接拉起需后续单独评估。
+
+
+## 启动自动连接 + 设置页文案资源化(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17)，待真机回归
+
+- 对齐安卓 `global_preferences.xml` 的 `isAutoConnect`:`AppSettings.autoConnect`(默认关) + 设置页常规组开关;`Index.aboutToAppear` 在刷新节点与设置后,开启且未运行且有选中节点时调用 `VpnService.connect`,失败仅写日志不弹错。
+- 备份校验白名单同步加入 `autoConnect`,恢复 containing 旧备份时缺字段保持默认值。
+- 资源化设置页三处硬编码长文案:`latency_test_mode`/`latency_test_mode_desc`/`settings_test_url_desc`,深浅色与中英文一致。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 字符串键 487=487,双向差异为 0;未签名 HAP 已重新生成。
+- 已知限制:常规组的测速方式下拉选项标签(`URL Test(真连接)`/`TCPing(仅握手)`)与 `TUN MTU` 标签为既有硬编码,本轮未改,避免重构数据数组;`autoConnect` 在系统拒绝 VPN 授权时的行为与手动启动一致(失败状态写入 `vpnStatus`)。
+
+
+## 复杂节点导入闭环 + 设置页文案清零(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17)，待真机回归
+
+- 对齐安卓 `RawUpdater.parseRaw` 的解析派发顺序:JSON → base64 → 分享链接。`parseShareText` 现在先识别 sing-box JSON 与 WireGuard `.conf`。
+- `utils/Subscription.ets` 新增 `parseSingleOutboundJson`:完整配置直接走 `parseSingBoxConfig`,单个出站对象包成 `{outbounds:[obj]}` 再解析,使「导出 sing-box 配置」复制出来的 JSON 可原路导回。
+- `utils/LinkParser.ets` 新增 `parseWireGuardConf`:`[Interface]` 取 PrivateKey/Address/MTU,每个 `[Peer]` 按 Endpoint/PublicKey 生成一个 WireGuard 节点;IPv6 方括号地址、注释行、缺 Endpoint/PublicKey/非法端口的 Peer 与安卓一致跳过。
+- 设置页剩余两处硬编码(`TUN MTU`、测速方式下拉标签)资源化:`settings_tun_mtu`、`latency_test_url`、`latency_test_tcp`;`LATENCY_TEST_LABELS` 改为 `Array<Resource>`。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;WireGuard conf 解析 4 组用例(标准 conf、IPv6 Endpoint、缺 Endpoint、多 Peer)与 JSON 解析 4 组用例(裸出站、完整配置、非法 JSON、非代理出站跳过)全部通过;base/en_US 490=490 双向差异 0;SettingsPage 已无硬编码字面量;未签名 HAP 已重新生成。
+- 真机验证点:复制 WireGuard `.conf` 文本与单个出站 JSON 到首页「导入订阅」/编辑页「粘贴解析」应能生成正确节点;`.conf` 导入的节点可连接。
+
+
+## 首页菜单与节点导出补全(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17)，待真机回归
+
+- 对齐安卓 `menu/add_profile_menu.xml` 的 misc 菜单:首页 ⋮ 新增「更新当前订阅」(选中节点 subUrl,无订阅明确提示)与「清除流量统计」(重置 `vpnTotalUp/Down` 与速率基准)。
+- 对齐安卓 `menu/profile_share_menu.xml` 的 `action_config_export_file`:节点长按菜单新增「导出配置到文件」,`DocumentViewPicker.save` 写入 `<节点名>.json`。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 496=496 双向差异 0;未签名 HAP 已重新生成。
+- 已知限制:「更新当前订阅」不重启 VPN,仅更新节点数据;文件导出需真机回归一次系统文件选择器与写入权限。
+
+
+## 分组页导出补全(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17)，待真机回归
+
+- 对齐安卓 `menu/group_action_menu.xml` 的 `action_export_file`:订阅卡片操作行新增「导出节点到文件」,`DocumentViewPicker.save` 写入 `<订阅名>.txt`;剪贴板与文件两条路径共用 `exportableLinks()`。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 498=498 双向差异 0;未签名 HAP 已重新生成。
+- 已知限制:仅覆盖可生成分享链接的协议;WireGuard/自定义出站仍走单节点「导出配置到文件」。
+
+
+## 日志页双语化 + 路由重置 + 分应用选择操作(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17)，待真机回归
+
+- 对齐安卓 `menu/logcat_menu.xml`/`menu/add_route_menu.xml`/`menu/per_app_proxy_menu.xml`。
+- 日志页标题/导出/清空/搜索/全部提示双语化(终端配色不动);路由页新增「重置路由」(双确认 + 清空规则与远程规则集);分应用代理新增「反选」「清除选择」,均复用 `persistPerAppList`(保存 + 运行中自动重启)。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 509=509 双向差异 0;`entry/src/main/ets` 已无中文字面量;未签名 HAP 已重新生成。
+- 真机验证点:英文环境下日志页全英文;重置路由后重连 VPN 生效;反选/清除后 VPN 自动重启且分应用名单正确。
+
+
+## 抽屉新增「使用文档」(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17)，待真机回归
+
+- 对齐安卓 `main_drawer_menu.xml` 的 `nav_faq`:抽屉在「日志」与「工具」之间新增「使用文档」,打开应用内 `DocPage`(`Web` 组件加载项目文档)。
+- 新页面注册入 `main_pages.json`;不占用既有 0~6 页签索引。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 510=510 双向差异 0;未签名 HAP 已重新生成。
+- 已知限制:需联网;弱网/无网下的 Web 表现与返回手势待真机回归。
+
+
+## 订阅级设置 + 关于页交流群入口(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17)，待真机回归
+
+- 对齐安卓 `group_preferences.xml` 的 subscriptionUpdate 分类与 AboutFragment 的 Telegram 项。
+- `SubInfo` 新增 `userAgent`/`autoUpdate`/`updateWhenConnectedOnly`;`needAutoUpdate` 增加两道过滤;`touchSub` 写回 `nextUpdateAt`;`SubDetailPage` 新增订阅设置卡(自动更新/间隔/仅连接时更新/自定义 UA)。
+- 关于页新增「加入交流群」,与项目主页共用 `openLink`。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;9 组逻辑用 Node 独立脚本全部通过(并修掉负数间隔回落为 1 的缺陷);base/en_US 519=519 双向差异 0;未签名 HAP 已重新生成。
+- 真机验证点:自定义 UA 请求头;断开态下后台更新任务确实跳过;交流群链接打开或降级复制。
+
+
+## 链式代理循环引用防护(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17)，待真机回归
+
+- 对齐安卓 `ChainSettingsActivity` 的 `testProfileContains`/`testProfileAllowed` 与 `circular_reference` 提示。
+- `ProfileEdit` 新增 `chainContains` 递归检测(visited 兜底自引用链)+ `chainSelectionAllowed` 双向环路判定;链列表不可选项置灰并强制勾选时提示;`validationError` 保存前复核。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;9 组环路检测用 Node 独立脚本全部通过;base/en_US 520=520 双向差异 0;未签名 HAP 已重新生成。
+- 真机验证点:多级嵌套链的勾选/拖拽组合不应出现无限递归或死循环渲染。
+
+
+## 导入前确认对话框(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17)，待真机回归
+
+- 对齐安卓 `MainActivity.importSubscription`/`importProfile` 的确认步骤。
+- `Index.confirmImport` 双按钮异步确认;订阅导入在下载前确认(含 IP 泄漏安全提示),分享链接解析后确认;取消即中止。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 523=523 双向差异 0;未签名 HAP 已重新生成。
+- 真机验证点:确认/取消两条路径(取消不得落盘任何节点)。
+
+
+## 网络变化重置连接(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17)，待真机回归
+
+- 对齐安卓 `global_preferences.xml` 的 `networkChangeResetConnections`(默认 true)。
+- `AppSettings` 加字段并进 Backup 白名单;`VpnExtAbility` 用 `createNetConnection()` + `register/unregister` 监听 `netAvailable`/`netLost`/`netCapabilitiesChange`,generation 防抖 1.5s,重连复用既有串行启动队列;设置页外观分组加开关。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 525=525 双向差异 0;未签名 HAP 已重新生成。
+- 真机验证点:Wi-Fi ↔ 移动数据切换后自动重连成功;关闭开关后切换网络不重连。
+
+
+## 系统返回键行为(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17)，待真机回归
+
+- 对齐安卓 `onBackPressedDispatcher`:抽屉 → 收;非配置页 → 回配置页;配置页 → `moveAbilityToBackground()` 退桌面(VPN 不断)。
+- 踩坑记录:`onBackPress` 只能作 @Entry 生命周期方法,不能挂组件属性链;`inputConsumer.keyPressed` 仅音量/媒体键,不能订阅返回键。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 525=525 双向差异 0;未签名 HAP 已重新生成。
+- 真机验证点:连接 VPN 后按返回退到桌面,通知仍显示已连接;非配置页按返回回配置页。
+
+
+## 导入自定义 Geo 数据文件(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17),待真机回归
+
+- 对齐安卓 `AssetsActivity.action_import_file`:DocumentViewPicker 选 .db → 校验文件名 geoip.db/geosite.db → 覆盖沙箱 cn 库 → 版本标记 Custom。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 529=529 双向差异 0;Node 脚本 14 项判定逻辑检查全部通过。
+- 真机验证点:导入 geoip.db 后重连,cn 分流仍生效;取消选择不弹错误提示。
+
+
+## 回到前台时重置连接(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17),待真机回归
+
+- 对齐安卓 `wakeResetConnections`:UI 进程 onForeground 发 CommonEvent → 扩展进程重连(teardown+tryStart),默认关闭。
+- 平台差异说明:鸿蒙无屏幕亮灭事件订阅,用「应用回到前台」近似安卓「退出 Doze」。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 531=531 双向差异 0;未签名 HAP 已重新生成。
+- 真机验证点:开启开关后切到后台再回前台触发一次重连;关闭开关后回前台不重连。
+
+
+## 通知刷新间隔可设置(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17),待真机回归
+
+- 对齐安卓 `speedInterval`:`speedIntervalMs` 默认 1000,钳制 [500,10000],通知轮询定时器按设置刷新。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 533=533 双向差异 0;Node 脚本 10 项钳制检查全部通过。
+- 真机验证点:填 500 / 10000 / 越界值(如 0、99999)后重连,通知刷新频率正确且不狂刷。
+
+
+## 每节点流量统计与持久化(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17),待真机回归
+
+- 对齐安卓 `profileTrafficStatistics`:会话结束(切节点/断开)时把会话流量累加到 Profile.rx/tx 并落盘;节点卡显示 `↓rx ↑tx`。
+- 平台差异:鸿蒙无 libcore 按出站统计,用「单出站会话总量 = 当前节点流量」近似。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 535=535 双向差异 0;Node 脚本 9 项检查全部通过。
+- 真机验证点:产生流量后断开,节点卡出现累计;再连再断数字只增不减;关闭开关后断开不累加。
+
+
+## 代理服务器域名解析策略(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17),待真机回归
+
+- 对齐安卓 `domain_strategy_for_server`:`serverDnsStrategy` 写入 `route.default_domain_resolver.strategy`。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 537=537 双向差异 0;未签名 HAP 已重新生成。
+- 真机验证点:设为 ipv4_only 后 IPv6-only 服务器解析失败符合预期;默认(空)行为不变。
+
+
+## 路由规则升级为多字段 AND 模型(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17),待真机回归
+
+- 对齐安卓 `RuleEntity`:规则支持 domains/ip/port/source/sourcePort/network/protocol/packages/config 多字段 AND 组合。
+- 域名前缀语义与安卓完全一致(geosite:/full:/domain:/keyword:/regexp:/裸值);旧单类型规则自动迁移。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 549=549 双向差异 0;Node 脚本 18 项检查全部通过(前缀解析/端口解析/旧规则迁移)。
+- 真机验证点:旧规则升级后行为不变;新建「域名+端口」组合规则生效;自定义配置 JSON 非法时不影响其他规则。
+
+
+## 订阅更新去重开关(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17),待真机回归
+
+- 对齐安卓 `subscriptionDeduplication`:默认关闭(保留全部节点);此前鸿蒙始终去重,行为与安卓不一致,已修正。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 551=551 双向差异 0;未签名 HAP 已重新生成。
+- 真机验证点:含重复节点的订阅,开关关闭时全部保留;开启时重复节点被跳过。
+
+
+## 交付物:功能/UI 对照清单 —— 状态:✅ 已完成(2026-09-17)
+
+- `PARITY.md` 已生成:全局设置 39 项、分组设置 13 项、路由规则 12 项、13 种协议、15 个页面/交互的完整对照 + 排除项理由 + 真机回归清单。
+- 本轮移植 9 项全部 BUILD SUCCESSFUL,字符串键 551=551 双向差异 0,未签名 HAP 已重新生成。
+
+
+## 扫码导入 + 分享二维码 + 订阅强制解析(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-17),待真机回归
+
+- 关键纠正:本 SDK 的 HMS `@kit.ScanKit` 完整存在(`scanBarcode`/`generateBarcode`/`detectBarcode`),此前「SDK 无 generateBarcode」为误判。扫码导入与二维码分享均为 1:1 实现。
+- 扫码:系统扫描 UI 免相机权限,仅 QR 码(对齐 zxing QRCodeAnalyzer),结果复用 doImport;取消静默。
+- 分享:节点/订阅两处弹窗真实渲染二维码,失败回退文本+复制。
+- 强制解析:`forceResolve` 默认关闭;`getAddressesByName` 5 并发,IPv4 优先,TLS 原域名回填 sni;失败保留域名。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 556=556 双向差异 0;UI 硬编码文案扫描 0;Node 脚本 15 项强制解析检查全通过;未签名 HAP 15,150,535 字节。
+- 真机验证点:扫订阅码/节点码导入;分享弹窗出码可被其他设备识别;强制解析开关开/关更新结果。
+
+
+## 二轮深度排查:文件导入/WG zip、规则排序、分应用剪贴板、移动到分组、geo 单库管理(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-18),待真机回归
+
+- 逐项复查安卓全部 menu XML 与 RouteFragment/AppListActivity/AssetsActivity/ProfileSettingsActivity 后补齐 5 个缺口 + sn:// 识别扩展。
+- 文件导入:`importFromFile()` 任意文件→doImport;`.zip` 解压逐 entry(WG 导出包),entry 名作节点名,单次确认批量入库。
+- 规则排序:`moveRule/moveRemoteRuleSet` ↑↓(ItemTouchHelper 等价),边界置灰。
+- 分应用剪贴板:`false\n<包名>` 格式与安卓一致,导出/导入(校验+整体替换+自动重启)。
+- 移动分组:节点长按菜单「移动到分组」弹窗 + ProfileEdit 分组 Select(对齐 ProfileSettings 分组 Preference)。
+- geo 单库:每库大小/版本 + 单库更新 + 删除二次确认(对齐 AssetsActivity 列表;删除无撤销为已记录差异)。
+- 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US **586=586** 双向差异 0;UI 硬编码扫描 0;Node 25 项检查全通过;未签名 HAP 15,262,692 字节。
+- 权威待办(见 `docs/PARITY-REAUDIT.md`,内核已可重编):CORE-05 任意 profileId 规则出站、CORE-06 组级 selector/frontProxy/landingProxy(需 lean_context 注册 protocol/group + 重编 .so)、CORE-07 自定义 JSON 递归合并与 +key 列表操作、DEF-01/02 默认值、UI-01~06 版式对齐。
+
+
+## CORE-05/06 UI 闭环 + DEF-01 默认值对齐(2.0)—— 状态:✅ 已完成开发并本机编译通过(2026-09-18),待真机回归
+
+- CORE-05 收尾:路由规则出站行加「指定节点」按钮 + 目标 Select(`profile:<id>` 后端早已支持,补 UI 入口);再点按钮/选「代理」取消。
+- CORE-06 收尾:GroupPage 分组卡「分组设置」内联面板(selector 开关 + 前/落地代理 Select + 保存即重载);内核 `group.RegisterSelector` 与 selector/前后置出站图此前已就绪(`.so` 09-18 06:35 重编)。
+- DEF-01:mtu 9000(钳制上限同步)、mixedPort 2080、bypassLan false,对齐安卓 DataStore;仅新装默认生效。DEF-02 的 DoH/fakeDns 默认按 reaudit 平台能力口径保留并注释。
+- 验证:assembleHap `BUILD SUCCESSFUL`;双语键 598=598 差异 0;生产测试 parity-config 38 + outbound-graph 9 + ipv6 全套全绿;硬编码扫描 0。
+- 真机验证点:selector 组内核配置合法且组内切换可连通;前/落地代理流量路径正确;新装 MTU9000 + mixed2080 连接稳定;规则指定节点出站命中转该节点。
+- 剩余开放项(UI-01~06 版式对齐、selector 免重载热切换经 Clash API、sniff 设备端行为)记录于 `docs/PARITY-REAUDIT.md`,需真机/下批处理。
+
+
+## 版本 2.0.1 + 带签名 .app 打包(2026-09-18)—— 状态:✅ 完成并校验
+
+- `AppScope/app.json5`:versionName 2.0 → **2.0.1**、versionCode 2000000 → **2000001**;全仓库无其它版本字面量(关于页动态读 bundleManager)。
+- 构建:`assembleHap` + `assembleApp` 均 BUILD SUCCESSFUL(2.0.1 反映在 pack.info:code 2000001/name 2.0.1)。
+- 签名:项目 `签名材料/` 发布密钥(别名 nekobox,SHA256withECDSA,release p7b)经 SDK `hap-sign-tool` 双层签名(内层 entry-default.hap → 重打包 → .app 外壳);口令仅经命令行使用,未写入 build-profile/脚本/仓库任何文件,临时目录已清理。
+- 校验:`verify-app` 对签名后内层 HAP「Verify success」(Signing Block v3);profile 解出 type=release、bundle-name=com.nekobox.app.jynxen——与 1.9.x 正式签名同身份,真机可覆盖升级。
+- 交付:`dist/NekoBox-2.0.1-signed.app`(13,608,082 字节,SHA256 A2DDC21ABD74F7A13FC7FC6A1C235F66476E7184E5F08C3AAD70FA946CEDF265)。
+- 真机注意:release profile 仍含 udid 白名单(与 1.9.x 相同设备清单);安装即覆盖升级此前 release 签名版本。

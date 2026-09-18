@@ -6,7 +6,9 @@ import { DrawerButton } from '../common/components/DrawerButton';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 import { AppSettings } from '../model/Profile';
 import { initStore, loadSettings, saveSettings, LogStore } from '../model/Store';
-import { geoReady, downloadGeoAssets } from '../utils/GeoAssets';
+import { geoReady, downloadGeoAssets, importGeoAssetFromFile, geoAssetInfos, downloadGeoAsset, deleteGeoAsset, GeoAssetInfo } from '../utils/GeoAssets';
+import { formatBytes } from '../utils/TrafficStats';
+import { getClipboardText, setClipboardText } from '../utils/ClipboardHelper';
 import { VpnService } from '../core/VpnService';
 import window from '@ohos.window';
 
@@ -20,10 +22,13 @@ const MODE_SWITCH_TOASTS: Array<Resource> = [$r('app.string.settings_mode_switch
 const LOG_LEVELS: Array<string> = ['trace', 'debug', 'info', 'warn', 'error'];
 const SNIFF_MODES: Array<string> = ['off', 'route', 'override'];
 const LATENCY_TEST_VALUES: Array<string> = ['url', 'tcp'];
-const LATENCY_TEST_LABELS: Array<string> = ['URL Test(真连接)', 'TCPing(仅握手)'];
+const LATENCY_TEST_LABELS: Array<Resource> = [$r('app.string.latency_test_url'), $r('app.string.latency_test_tcp')];
 const SNIFF_LABELS: Array<Resource> = [$r('app.string.sniff_off'), $r('app.string.sniff_route'), $r('app.string.sniff_override')];
 const STRATEGIES: Array<string> = ['', 'auto', 'prefer_ipv4', 'prefer_ipv6', 'ipv4_only', 'ipv6_only'];
 const STRATEGY_LABELS: Array<Resource> = [$r('app.string.strategy_default'), $r('app.string.strategy_auto'), $r('app.string.strategy_prefer_ipv4'), $r('app.string.strategy_prefer_ipv6'), $r('app.string.strategy_ipv4_only'), $r('app.string.strategy_ipv6_only')];
+// Android IPv6Mode 四档(values/arrays.xml ipv6_mode)
+const IPV6_MODES: Array<string> = ['disable', 'enable', 'prefer', 'only'];
+const IPV6_MODE_LABELS: Array<Resource> = [$r('app.string.ipv6_mode_disable'), $r('app.string.ipv6_mode_enable'), $r('app.string.ipv6_mode_prefer'), $r('app.string.ipv6_mode_only')];
 
 class InstalledAppItem {
   bundleName: string = '';
@@ -40,6 +45,7 @@ export struct SettingsPage {
   @State s: AppSettings = new AppSettings();
   @State geoOk: boolean = false;
   @State geoLoading: boolean = false;
+  @State geoInfos: Array<GeoAssetInfo> = [];
   @State loading: boolean = true;
   @State loadError: string = '';
   @State installedApps: Array<InstalledAppItem> = [];
@@ -71,11 +77,16 @@ export struct SettingsPage {
       this.s = await loadSettings();
       this.dirty = false;
       this.geoOk = geoReady(this.context);
+      this.refreshGeoInfos();
     } catch (e) {
       this.loadError = e instanceof Error ? e.message : `${e}`;
     } finally {
       this.loading = false;
     }
+  }
+
+  private refreshGeoInfos(): void {
+    this.geoInfos = geoAssetInfos(this.context);
   }
 
   async downloadGeo(): Promise<void> {
@@ -87,10 +98,78 @@ export struct SettingsPage {
     try {
       await downloadGeoAssets(this.context);
       this.geoOk = geoReady(this.context);
+      this.refreshGeoInfos();
       promptAction.showToast({ message: $r('app.string.geo_download_complete') });
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
       promptAction.showToast({ message: $r('app.string.download_failed_reason', msg) });
+    } finally {
+      this.geoLoading = false;
+    }
+  }
+
+  /** 单库更新(对齐安卓资产列表点击单库更新) */
+  async downloadSingleGeo(kind: string): Promise<void> {
+    if (this.geoLoading) {
+      return;
+    }
+    this.geoLoading = true;
+    try {
+      await downloadGeoAsset(this.context, kind);
+      this.geoOk = geoReady(this.context);
+      this.refreshGeoInfos();
+      promptAction.showToast({
+        message: $r('app.string.settings_geo_updated', kind === 'site' ? 'geosite-cn.db' : 'geoip-cn.db')
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : `${e}`;
+      promptAction.showToast({ message: $r('app.string.download_failed_reason', msg) });
+    } finally {
+      this.geoLoading = false;
+    }
+  }
+
+  /** 删除单库(对齐安卓资产左滑删除;二次确认) */
+  confirmDeleteGeo(info: GeoAssetInfo): void {
+    AlertDialog.show({
+      message: $r('app.string.settings_geo_delete_confirm', info.fileName),
+      primaryButton: { value: $r('app.string.cancel'), action: () => {} },
+      secondaryButton: {
+        value: $r('app.string.delete'),
+        fontColor: $r('app.color.error'),
+        action: () => {
+          try {
+            deleteGeoAsset(this.context, info.kind);
+            this.geoOk = geoReady(this.context);
+            this.refreshGeoInfos();
+            promptAction.showToast({ message: $r('app.string.settings_geo_deleted', info.fileName) });
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : `${e}`;
+            promptAction.showToast({ message: $r('app.string.settings_geo_delete_failed', msg) });
+          }
+        }
+      }
+    });
+  }
+
+  /** 导入用户自选的 geo .db(对齐安卓 AssetsActivity 的 action_import_file) */
+  async importGeo(): Promise<void> {
+    if (this.geoLoading) {
+      return;
+    }
+    this.geoLoading = true;
+    try {
+      const path = await importGeoAssetFromFile(this.context);
+      if (path === null) {
+        // 用户取消选择,不报错
+        return;
+      }
+      this.geoOk = geoReady(this.context);
+      this.refreshGeoInfos();
+      promptAction.showToast({ message: $r('app.string.geo_import_complete', path) });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : `${e}`;
+      promptAction.showToast({ message: $r('app.string.geo_import_failed', msg) });
     } finally {
       this.geoLoading = false;
     }
@@ -217,6 +296,71 @@ export struct SettingsPage {
       item.label.toLowerCase().includes(query) || item.bundleName.toLowerCase().includes(query));
   }
 
+  /** 反选已加载的应用(对齐安卓 action_invert_selections) */
+  async invertAppSelections(): Promise<void> {
+    const chosen = this.selectedAppSet();
+    for (const item of this.installedApps) {
+      if (chosen.has(item.bundleName)) {
+        chosen.delete(item.bundleName);
+      } else {
+        chosen.add(item.bundleName);
+      }
+    }
+    this.s.perAppList = Array.from(chosen).sort().join(',');
+    await this.persistPerAppList('反选应用列表');
+  }
+
+  /** 清除全部已选应用(对齐安卓 action_clear_selections) */
+  async clearAppSelections(): Promise<void> {
+    if (this.s.perAppList.length === 0) {
+      return;
+    }
+    this.s.perAppList = '';
+    await this.persistPerAppList('清除应用列表');
+  }
+
+  /**
+   * 导出已选应用列表到剪贴板(对齐安卓 AppListActivity.action_export_clipboard):
+   * 格式为 "false\n<包名,逗号分隔>"(首行 false = 非 bypass 语义标记)。
+   */
+  async exportAppListToClipboard(): Promise<void> {
+    const payload = `false\n${this.s.perAppList}`;
+    try {
+      await setClipboardText(payload);
+      promptAction.showToast({ message: $r('app.string.action_export_msg') });
+    } catch (e) {
+      promptAction.showToast({ message: $r('app.string.action_export_err') });
+    }
+  }
+
+  /**
+   * 从剪贴板导入应用列表(对齐安卓 action_import_clipboard):
+   * 期望 "false\n<包名列表>" 格式;无换行则报错,有换行取首行之后全部。
+   */
+  async importAppListFromClipboard(): Promise<void> {
+    const clip = await getClipboardText();
+    const nl = clip.indexOf('\n');
+    if (clip.trim().length === 0 || nl < 0) {
+      promptAction.showToast({ message: $r('app.string.action_import_err') });
+      return;
+    }
+    const apps = clip.substring(nl + 1).trim();
+    this.s.perAppList = apps;
+    await this.persistPerAppList('从剪贴板导入应用列表');
+    promptAction.showToast({ message: $r('app.string.action_import_msg') });
+  }
+
+  private async persistPerAppList(reason: string): Promise<void> {
+    this.markDirty();
+    await this.save(true);
+    const running: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
+    const profileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
+    if (running && profileId.length > 0) {
+      LogStore.addLog(`[ui] ${reason}，自动重启 VPN 使配置生效`);
+      await VpnService.switchTo(this.context, profileId);
+    }
+  }
+
   async loadInstalledApps(): Promise<void> {
     if (this.appListLoading) {
       return;
@@ -325,6 +469,18 @@ export struct SettingsPage {
           this.sectionHeader('✦', $r('app.string.settings_general'), this.generalExpanded, () => { this.generalExpanded = !this.generalExpanded; })
           if (this.generalExpanded) {
           Column({ space: 8 }) {
+            Row() {
+              Column() {
+                Text($r('app.string.settings_auto_connect')).fontSize(14)
+                Text($r('app.string.settings_auto_connect_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.autoConnect })
+                .onChange((v: boolean) => {
+                  this.s.autoConnect = v;
+                  this.markDirty();
+                })
+            }.width('100%')
+
             Column() {
               Text($r('app.string.settings_log_level')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
               Select(LOG_LEVELS.map((t: string) => ({ value: t } as SelectOption)))
@@ -337,15 +493,15 @@ export struct SettingsPage {
             }.alignItems(HorizontalAlign.Start).width('100%')
 
             Column() {
-              Text('测速方式').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              Select(LATENCY_TEST_LABELS.map((t: string) => ({ value: t } as SelectOption)))
+              Text($r('app.string.latency_test_mode')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              Select(LATENCY_TEST_LABELS.map((t: Resource, i: number) => ({ value: t } as SelectOption)))
                 .selected(LATENCY_TEST_VALUES.indexOf(this.s.latencyTestMode) < 0 ? 0 : LATENCY_TEST_VALUES.indexOf(this.s.latencyTestMode))
                 .value(LATENCY_TEST_LABELS[LATENCY_TEST_VALUES.indexOf(this.s.latencyTestMode) < 0 ? 0 : LATENCY_TEST_VALUES.indexOf(this.s.latencyTestMode)])
                 .onSelect((index: number) => {
                   this.s.latencyTestMode = LATENCY_TEST_VALUES[index];
                   this.markDirty();
                 })
-              Text('URL Test 通过代理实际访问下方测试网址,只有全链路可用才计绿;TCPing 仅测服务器端口握手,失效节点也可能显示绿色。')
+              Text($r('app.string.latency_test_mode_desc'))
                 .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
             }.alignItems(HorizontalAlign.Start).width('100%')
 
@@ -357,7 +513,7 @@ export struct SettingsPage {
                   this.s.testUrl = v;
                   this.markDirty();
                 })
-              Text('URL Test 会经节点实际访问此网址;默认 gstatic,若节点出口访问不通可自行改为其他 204/HTTP 地址。')
+              Text($r('app.string.settings_test_url_desc'))
                 .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
             }.alignItems(HorizontalAlign.Start).width('100%')
 
@@ -397,10 +553,34 @@ export struct SettingsPage {
             }.width('100%')
 
             Row() {
+              Text($r('app.string.show_bottom_bar')).fontSize(14).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.showBottomBar })
+                .onChange((v: boolean) => {
+                  this.s.showBottomBar = v;
+                  this.markDirty();
+                })
+            }.width('100%')
+
+            Row() {
               Text($r('app.string.settings_notification_group')).fontSize(14).layoutWeight(1)
               Toggle({ type: ToggleType.Switch, isOn: this.s.notificationGroup })
                 .onChange((v: boolean) => {
                   this.s.notificationGroup = v;
+                  this.markDirty();
+                })
+            }.width('100%')
+
+            Row() {
+              Column({ space: 2 }) {
+                Text($r('app.string.settings_speed_interval')).fontSize(14).width('100%')
+                Text($r('app.string.settings_speed_interval_sum'))
+                  .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+              TextInput({ text: `${this.s.speedIntervalMs}`, placeholder: '1000' })
+                .type(InputType.Number).width(110).height(36)
+                .onChange((v: string) => {
+                  const n = parseInt(v, 10);
+                  this.s.speedIntervalMs = isNaN(n) ? 1000 : n;
                   this.markDirty();
                 })
             }.width('100%')
@@ -463,13 +643,50 @@ export struct SettingsPage {
                   .backgroundColor(this.geoLoading ? $r('app.color.control_disabled') : $r('app.color.primary'))
                   .onClick(() => this.downloadGeo())
               }.width('100%').margin({ top: 6 })
+              Row({ space: 8 }) {
+                Text($r('app.string.settings_geo_import_hint'))
+                  .fontSize(11).fontColor($r('app.color.text_secondary')).layoutWeight(1)
+                Button($r('app.string.settings_geo_import'))
+                  .height(30)
+                  .backgroundColor($r('app.color.surface'))
+                  .fontColor($r('app.color.text_primary'))
+                  .enabled(!this.geoLoading)
+                  .onClick(() => { void this.importGeo(); })
+              }.width('100%').margin({ top: 4 })
+
+              // 资产列表(对齐安卓 AssetsActivity:每库名称/大小/版本 + 单库更新/删除)
+              ForEach(this.geoInfos, (info: GeoAssetInfo) => {
+                Row({ space: 8 }) {
+                  Text(info.kind === 'site' ? $r('app.string.settings_geo_site') : $r('app.string.settings_geo_ip'))
+                    .fontSize(12).fontColor($r('app.color.text_primary'))
+                  Text(info.size > 0
+                    ? $r('app.string.geo_asset_status', formatBytes(info.size), info.version)
+                    : $r('app.string.geo_asset_absent'))
+                    .fontSize(11).fontColor($r('app.color.text_secondary')).layoutWeight(1)
+                  Button(this.geoLoading ? $r('app.string.settings_geo_downloading') : $r('app.string.settings_geo_update_one'))
+                    .height(28)
+                    .fontSize(12)
+                    .backgroundColor(this.geoLoading ? $r('app.color.control_disabled') : $r('app.color.primary'))
+                    .enabled(!this.geoLoading)
+                    .onClick(() => { void this.downloadSingleGeo(info.kind); })
+                  if (info.size > 0) {
+                    Button($r('app.string.settings_geo_delete'))
+                      .height(28)
+                      .fontSize(12)
+                      .backgroundColor($r('app.color.surface'))
+                      .fontColor($r('app.color.error'))
+                      .enabled(!this.geoLoading)
+                      .onClick(() => this.confirmDeleteGeo(info))
+                  }
+                }.width('100%').margin({ top: 4 })
+              }, (info: GeoAssetInfo) => `${info.kind}_${info.size}_${info.version}`)
             }.alignItems(HorizontalAlign.Start).width('100%')
           }
 
           Blank().height(2)
 
           Column() {
-            Text('TUN MTU').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+            Text($r('app.string.settings_tun_mtu')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
             TextInput({ text: `${this.s.mtu}`, placeholder: '9000' })
               .type(InputType.Number).width('100%').height(40)
               .onChange((v: string) => {
@@ -490,14 +707,16 @@ export struct SettingsPage {
               })
           }.alignItems(HorizontalAlign.Start).width('100%')
 
-          Row() {
-            Text($r('app.string.settings_enable_ipv6')).fontSize(14).layoutWeight(1)
-            Toggle({ type: ToggleType.Switch, isOn: this.s.ipv6 })
-              .onChange((v: boolean) => {
-                this.s.ipv6 = v;
+          Column() {
+            Text($r('app.string.settings_enable_ipv6')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+            Select(IPV6_MODES.map((t: string, i: number) => ({ value: IPV6_MODE_LABELS[i] } as SelectOption)))
+              .selected(IPV6_MODES.indexOf(this.s.ipv6Mode) < 0 ? (this.s.ipv6 ? 1 : 0) : IPV6_MODES.indexOf(this.s.ipv6Mode))
+              .value(IPV6_MODE_LABELS[(IPV6_MODES.indexOf(this.s.ipv6Mode) < 0 ? (this.s.ipv6 ? 1 : 0) : IPV6_MODES.indexOf(this.s.ipv6Mode))])
+              .onSelect((index: number) => {
+                this.s.ipv6Mode = IPV6_MODES[index];
                 this.markDirty();
               })
-          }.width('100%')
+          }.alignItems(HorizontalAlign.Start).width('100%')
 
           Row() {
             Column() {
@@ -590,6 +809,19 @@ export struct SettingsPage {
                   this.s.directDnsStrategy = STRATEGIES[index];
                   this.markDirty();
                 })
+            }.alignItems(HorizontalAlign.Start).width('100%')
+
+            Column() {
+              Text($r('app.string.settings_server_dns_strategy')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              Select(STRATEGIES.map((t: string, i: number) => ({ value: STRATEGY_LABELS[i] } as SelectOption)))
+                .selected(STRATEGIES.indexOf(this.s.serverDnsStrategy) < 0 ? 0 : STRATEGIES.indexOf(this.s.serverDnsStrategy))
+                .value(STRATEGY_LABELS[STRATEGIES.indexOf(this.s.serverDnsStrategy) < 0 ? 0 : STRATEGIES.indexOf(this.s.serverDnsStrategy)])
+                .onSelect((index: number) => {
+                  this.s.serverDnsStrategy = STRATEGIES[index];
+                  this.markDirty();
+                })
+              Text($r('app.string.settings_server_dns_strategy_hint'))
+                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
             }.alignItems(HorizontalAlign.Start).width('100%')
 
             Row() {
@@ -701,6 +933,42 @@ export struct SettingsPage {
                   this.markDirty();
                 })
             }.width('100%')
+            Row() {
+              Column({ space: 2 }) {
+                Text($r('app.string.network_change_reset_connections')).fontSize(14).width('100%')
+                Text($r('app.string.network_change_reset_connections_sum'))
+                  .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.networkChangeResetConnections })
+                .onChange((v: boolean) => {
+                  this.s.networkChangeResetConnections = v;
+                  this.markDirty();
+                })
+            }.width('100%')
+            Row() {
+              Column({ space: 2 }) {
+                Text($r('app.string.wake_reset_connections')).fontSize(14).width('100%')
+                Text($r('app.string.wake_reset_connections_sum'))
+                  .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.wakeResetConnections })
+                .onChange((v: boolean) => {
+                  this.s.wakeResetConnections = v;
+                  this.markDirty();
+                })
+            }.width('100%')
+            Row() {
+              Column({ space: 2 }) {
+                Text($r('app.string.profile_traffic_statistics')).fontSize(14).width('100%')
+                Text($r('app.string.profile_traffic_statistics_sum'))
+                  .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.s.profileTrafficStatistics })
+                .onChange((v: boolean) => {
+                  this.s.profileTrafficStatistics = v;
+                  this.markDirty();
+                })
+            }.width('100%')
             Text($r('app.string.settings_theme_note'))
               .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
           }.alignItems(HorizontalAlign.Start).width('100%')
@@ -764,9 +1032,16 @@ export struct SettingsPage {
                   .layoutWeight(1)
                   .backgroundColor(this.s.perAppMode === m ? $r('app.color.primary') : $r('app.color.surface'))
                   .fontColor(this.s.perAppMode === m ? $r('app.color.surface') : $r('app.color.text_primary'))
-                  .onClick(() => {
+                  .onClick(async () => {
                     this.s.perAppMode = m;
                     this.markDirty();
+                    await this.save(true);
+                    const running: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
+                    const profileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
+                    if (running && profileId.length > 0) {
+                      LogStore.addLog('[ui] 分应用代理模式已变更，自动重启 VPN 使配置生效');
+                      await VpnService.switchTo(this.context, profileId);
+                    }
                   })
               }, (m: string) => m)
             }.width('100%')
@@ -778,6 +1053,36 @@ export struct SettingsPage {
                 Button(this.appListLoading ? $r('app.string.reading_apps') : $r('app.string.read_apps'))
                   .enabled(!this.appListLoading)
                   .onClick(() => this.loadInstalledApps())
+              }.width('100%')
+
+              Row({ space: 8 }) {
+                Button($r('app.string.invert_selections'))
+                  .layoutWeight(1).height(UiSpec.BTN_HEIGHT)
+                  .enabled(this.installedApps.length > 0 && !this.appListLoading)
+                  .backgroundColor($r('app.color.surface'))
+                  .fontColor($r('app.color.text_primary'))
+                  .onClick(() => this.invertAppSelections())
+                Button($r('app.string.clear_selections'))
+                  .layoutWeight(1).height(UiSpec.BTN_HEIGHT)
+                  .enabled(this.s.perAppList.length > 0)
+                  .backgroundColor($r('app.color.surface'))
+                  .fontColor($r('app.color.text_primary'))
+                  .onClick(() => this.clearAppSelections())
+              }.width('100%')
+
+              // 包名列表剪贴板导出/导入(对齐安卓 per_app_proxy_menu 的 export/import clipboard)
+              Row({ space: 8 }) {
+                Button($r('app.string.export_selections_clipboard'))
+                  .layoutWeight(1).height(UiSpec.BTN_HEIGHT)
+                  .enabled(this.s.perAppList.length > 0)
+                  .backgroundColor($r('app.color.surface'))
+                  .fontColor($r('app.color.text_primary'))
+                  .onClick(() => { void this.exportAppListToClipboard(); })
+                Button($r('app.string.import_selections_clipboard'))
+                  .layoutWeight(1).height(UiSpec.BTN_HEIGHT)
+                  .backgroundColor($r('app.color.surface'))
+                  .fontColor($r('app.color.text_primary'))
+                  .onClick(() => { void this.importAppListFromClipboard(); })
               }.width('100%')
 
               if (this.appListError !== '') {
@@ -815,6 +1120,15 @@ export struct SettingsPage {
                 .onChange((value: string) => {
                   this.s.perAppList = value;
                   this.markDirty();
+                })
+                .onSubmit(async () => {
+                  await this.save(true);
+                  const running: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
+                  const profileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
+                  if (running && profileId.length > 0) {
+                    LogStore.addLog('[ui] 分应用代理列表已保存，自动重启 VPN 使配置生效');
+                    await VpnService.switchTo(this.context, profileId);
+                  }
                 })
               Text($r('app.string.settings_per_app_manual_note'))
                 .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')

@@ -92,6 +92,29 @@ export async function saveGroups(list: Array<ProfileGroup>): Promise<void> {
   await pref.flush();
 }
 
+/** 按名称查找 ProfileGroup,不存在则自动创建并返回组 id(空名称返回 ''=未分组)。 */
+export async function ensureGroupByName(name: string): Promise<string> {
+  const trimmed = name.trim();
+  if (trimmed.length === 0) {
+    return '';
+  }
+  const groups = await loadGroups();
+  const existing = groups.find((g: ProfileGroup) => g.name.trim() === trimmed);
+  if (existing !== undefined) {
+    return existing.id;
+  }
+  const group = new ProfileGroup();
+  group.id = `grp_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+  group.name = trimmed;
+  group.sortOrder = groups.length;
+  group.createdAt = Date.now();
+  group.updatedAt = Date.now();
+  const next = groups.slice();
+  next.push(group);
+  await saveGroups(next);
+  return group.id;
+}
+
 export async function loadSettings(): Promise<AppSettings> {
   const pref = await requirePref();
   const raw: string = (await pref.get(KEY_SETTINGS, '{}')) as string;
@@ -101,7 +124,8 @@ export async function loadSettings(): Promise<AppSettings> {
   } catch (e) {
     // keep defaults
   }
-  s.mtu = Math.max(1280, Math.min(1500, s.mtu));
+  // Android MTUPreference: 默认 9000,合法范围与安卓同上限(system 栈可承载,内核自行分片)
+  s.mtu = Math.max(1280, Math.min(9000, s.mtu));
   if (s.profileSortMode !== 'manual' && s.profileSortMode !== 'latency' && s.profileSortMode !== 'name') {
     s.profileSortMode = 'manual';
   }
@@ -119,11 +143,15 @@ export async function loadSettings(): Promise<AppSettings> {
     s.sniffMode = 'route';
   }
   const STRATEGIES: Array<string> = ['', 'auto', 'prefer_ipv4', 'prefer_ipv6', 'ipv4_only', 'ipv6_only'];
+  s.ipv6Mode = normalizedIpv6Mode(s.ipv6Mode);
   if (STRATEGIES.indexOf(s.remoteDnsStrategy) < 0) {
     s.remoteDnsStrategy = '';
   }
   if (STRATEGIES.indexOf(s.directDnsStrategy) < 0) {
     s.directDnsStrategy = '';
+  }
+  if (STRATEGIES.indexOf(s.serverDnsStrategy) < 0) {
+    s.serverDnsStrategy = '';
   }
   if (s.mixedPort !== 0) {
     s.mixedPort = Math.max(1024, Math.min(65535, s.mixedPort));
@@ -154,9 +182,19 @@ export async function loadSettings(): Promise<AppSettings> {
   return s;
 }
 
+/** Empty retains the legacy boolean fallback; explicit valid modes always win. */
+function normalizedIpv6Mode(value: string): string {
+  const modes: Array<string> = ['', 'disable', 'enable', 'prefer', 'only'];
+  return modes.indexOf(value) >= 0 ? value : '';
+}
+
 export async function saveSettings(s: AppSettings): Promise<void> {
   const pref = await requirePref();
-  await pref.put(KEY_SETTINGS, JSON.stringify(s));
+  // Serialize a copy so normalization does not mutate the UI caller's state.
+  const saved = new AppSettings();
+  fillFrom(saved, s);
+  saved.ipv6Mode = normalizedIpv6Mode(saved.ipv6Mode);
+  await pref.put(KEY_SETTINGS, JSON.stringify(saved));
   await pref.flush();
 }
 

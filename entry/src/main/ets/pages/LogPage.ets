@@ -8,7 +8,7 @@ import { LogStore, LOG_EVENT_ID } from '../model/Store';
 import { CoreManager } from '../core/CoreManager';
 import { setClipboardText } from '../utils/ClipboardHelper';
 
-/** 日志面板(抽屉内嵌页签,对齐安卓 LogcatFragment;终端配色刻意固定深底浅字) */
+/** 日志面板(抽屉内嵌页签,对齐安卓 LogcatFragment;跟随全局主题保持与其他页面一致) */
 @Component
 export struct LogPanel {
   @State lines: Array<string> = [];
@@ -68,7 +68,7 @@ export struct LogPanel {
   private async exportLogs(): Promise<void> {
     const content = this.filteredLines().join('\n');
     if (content.length === 0) {
-      promptAction.showToast({ message: '没有可导出的日志' });
+      promptAction.showToast({ message: $r('app.string.log_export_empty') });
       return;
     }
     try {
@@ -85,10 +85,10 @@ export struct LogPanel {
       } finally {
         fs.closeSync(file);
       }
-      promptAction.showToast({ message: '日志已导出' });
+      promptAction.showToast({ message: $r('app.string.log_exported') });
     } catch (e) {
       const message = e instanceof Error ? e.message : `${e}`;
-      promptAction.showToast({ message: `导出失败: ${message}` });
+      promptAction.showToast({ message: $r('app.string.export_failed_generic', message) });
     }
   }
 
@@ -134,12 +134,12 @@ export struct LogPanel {
   build() {
     Column() {
       Row() {
-        Text('≡').fontSize(20).fontColor('#E8E8E8').width(36).height(36).textAlign(TextAlign.Center)
+        Text('≡').fontSize(20).fontColor($r('app.color.text_primary')).width(36).height(36).textAlign(TextAlign.Center)
           .onClick(() => this.onOpenDrawer())
-        Text('日志').fontSize(18).fontWeight(FontWeight.Bold).fontColor('#E8E8E8').layoutWeight(1)
-        Text('导出').fontSize(14).fontColor('#64B5F6').padding(8)
+        Text($r('app.string.logs')).fontSize(18).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_primary')).layoutWeight(1)
+        Text($r('app.string.log_export')).fontSize(14).fontColor($r('app.color.primary')).padding(8)
           .onClick(() => this.exportLogs())
-        Text('清空').fontSize(14).fontColor('#64B5F6').padding(8)
+        Text($r('app.string.log_clear')).fontSize(14).fontColor($r('app.color.primary')).padding(8)
           .onClick(() => {
             LogStore.clear();
             this.lines = [];
@@ -148,10 +148,10 @@ export struct LogPanel {
       }
       .width('100%').padding(12)
 
-      TextInput({ text: this.searchText, placeholder: '搜索日志' })
-        .fontColor('#E8E8E8')
-        .placeholderColor('#888888')
-        .backgroundColor('#222222')
+      TextInput({ text: this.searchText, placeholder: $r('app.string.log_search_hint') })
+        .fontColor($r('app.color.text_primary'))
+        .placeholderColor($r('app.color.text_secondary'))
+        .backgroundColor($r('app.color.surface'))
         .margin({ left: 12, right: 12, bottom: 8 })
         .onChange((value: string) => { this.searchText = value; })
 
@@ -159,8 +159,8 @@ export struct LogPanel {
         ForEach(['ALL', 'ERROR', 'WARN', 'INFO', 'DEBUG'], (level: string) => {
           Button(level)
             .fontSize(12)
-            .backgroundColor(this.levelFilter === level ? '#1E88E5' : '#333333')
-            .fontColor('#E8E8E8')
+            .backgroundColor(this.levelFilter === level ? $r('app.color.primary') : $r('app.color.surface'))
+            .fontColor(this.levelFilter === level ? $r('app.color.surface') : $r('app.color.text_primary'))
             .onClick(() => { this.levelFilter = level; })
         })
       }
@@ -173,10 +173,9 @@ export struct LogPanel {
             Text(line)
               .fontSize(11)
               .fontFamily('monospace')
-              // 固定终端配色:深底浅字,不跟随系统主题;ERROR/WARN 行高亮
-              .fontColor(line.includes('ERROR') ? '#EF5350'
-                : line.includes('WARN') ? '#FFB74D'
-                  : line.includes('DEBUG') ? '#9E9E9E' : '#E8E8E8')
+              .fontColor(line.includes('ERROR') ? $r('app.color.error')
+                : line.includes('WARN') ? $r('app.color.warning')
+                  : line.includes('DEBUG') ? $r('app.color.text_secondary') : $r('app.color.text_primary'))
               .width('100%')
               .padding({ left: 8, right: 8, top: 1, bottom: 1 })
           }
@@ -185,9 +184,9 @@ export struct LogPanel {
         .edgeEffect(EdgeEffect.Spring)
       .layoutWeight(1)
       .width('100%')
-      .backgroundColor('#111111')
+      .backgroundColor($r('app.color.app_background'))
       .scrollBar(BarState.On)
     }
-    .width('100%').height('100%').backgroundColor('#111111')
+    .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
   }
 }

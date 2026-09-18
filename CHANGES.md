@@ -514,3 +514,405 @@ Existing notification files reviewed:
 4. 「解析目标地址」(resolveDestination)接线:规则模式下注入 resolve 兜底规则,IP 类规则(geoip 等)可匹配域名连接。
 5. 「通知中显示分组名」(notificationGroup)接线:连接时解析节点分组,通知副标题显示 [组名] 节点 · 延迟。
 6. 设置页补 UI:「解析目标地址」开关(路由组)、「全局自定义配置 JSON」输入(常规组,浅合并入 sing-box 根配置)。
+
+## 2026-09-16 华为 UX 合规整改轮(2.0,versionCode 2000000)
+
+> 客户反馈六项整改 + 对比度达标 + 未签名 HAP 重新打包。
+
+1. **对比度整改(浅色)**:primary #3478F6→#2364D8(正文用法 3.79→5.04:1,白字按钮 4.4→5.4:1)、primary_pressed→#1B53B8、fab_bg 同步、dot_live #22C55E→#16A34A(状态点 2.11→3.07:1,过 3:1 图形线)。实测:正文类令牌全部 ≥4.5:1,图形类 ≥3:1。
+2. **对比度整改(深色)**:dark text_3 #7B828E→#8B929E(卡片上 4.23→5.36:1);其余深色令牌实测 ≥4.5:1。
+3. **日志页主题统一**:LogPage 已随全局主题(app_background/surface,ERROR/WARN/DEBUG 语义色),修正遗留"固定深底"注释。
+4. **分应用代理**:链路复核(perAppList→VpnConfig.trusted/blockedApplications→create 前写入,模式/名单变更自动保存+重启 VPN),代码层无缺陷;真机生效性待客户回归(内核补丁注释已提示 blockedApplications 拦不住内核线程出站,属系统框架行为)。
+5. **批量导入单节点**:首页导入与 ProfileEdit 粘贴解析均支持多行协议链接批量入库(单条填表单,多条直接保存)。
+6. **自定义路由卡顿**:persist 防抖 300ms→1000ms,减少 JSON 序列化+Preferences 写盘频率。
+7. **桌面图标放大**:foreground.png 主体 587/1024(57%)→799/1024(78%),entry 与 AppScope 双份同步;打包工具自动降采样至 512 画布,主体占比保持 78%,圆角安全区不触碰。
+8. **重打包**:hvigor assembleHap(BUILD SUCCESSFUL)产出 entry-default-unsigned.hap(14.87MB,versionName 2.0/versionCode 2000000,已验证 HAP 内新图标比例),复制为 dist/NekoBox4Harmony-2.0-unsigned.hap。
+
+改动文件:resources/base/element/color.json、resources/dark/element/color.json、entry+AppScope resources/base/media/foreground.png、pages/LogPage.ets、pages/RouteRulesPage.ets、AppScope/app.json5(2.0/2000000)、CHANGES.md
+
+## 2026-09-16 首页分组折叠展示(2.0,客户新需求)
+
+> 用户反馈:导入多个订阅后分组页有多组,但首页所有节点混在一起,希望按分组展示、点开分组再看节点(对齐安卓 NekoBox 分组列表)。
+
+1. 首页配置页从「分组 Tabs 页签」改为**统一可折叠分组列表**:每组渲染分组头(组名 + 节点数 + 组内最优延迟徽标 + 展开箭头),点按头折叠/展开;组内节点沿用原卡片样式与全部交互(点选/热切换/长按菜单)。
+2. 折叠状态持久化 `home_collapsed_groups`('|' 分隔,保留空串=未分组组);首次使用默认全部折叠、当前选中节点所在组自动展开;搜索关键字时命中组强制展开、无命中组隐藏。
+3. 组头长按菜单:测速本组/清除本组结果/本组去重/删除本组不可用(原「当前组」语义迁移到组头)。
+4. 顶部 ⋮ 菜单改为全局操作:测速全部节点(新键 test_all_nodes)/清除测试结果/移除重复节点/删除不可用节点 + 三种排序;clearTestResults/dedupGroup/deleteUnavailable/runGroupSpeedTest 支持 '__all__' 通配。
+5. 顺手修复:base string.json 缺 app_name(en_US 已有),补齐后双语键 473=473 对齐。
+6. 移除 Tabs/groupTabIndex/activeGroupId/nodeListFor 死代码。
+
+验证:hvigor assembleHap BUILD SUCCESSFUL;双语键 diff=0;无残留引用;产物已更新 dist/NekoBox4Harmony-2.0-unsigned.hap(14.89MB)。
+
+改动文件:pages/Index.ets、resources/base+en_US/element/string.json、CHANGES.md
+
+## 2026-09-16 一订阅一分组 + 订阅改组移节点(2.0,客户新需求)
+
+> 用户反馈:导入两个订阅后,自建分组无法把订阅节点归进去,首页节点混在一起;希望一个订阅自动一个分组。根因:导入/更新只写 subUrl 从不写 groupId,订阅 group 字段只影响分组页展示。
+
+1. Store 新增 `ensureGroupByName(name)`:按名称查找 ProfileGroup,不存在自动创建,返回组 id(空名='')。
+2. **导入订阅自动分组**(Index.doImport):订阅路径以「订阅名(用户命名优先,否则域名)」ensureGroupByName 并把本批节点 groupId 归组;单节点导入不受影响。
+3. **更新订阅自动分组**(Subscriptions.updateSubscription):新增节点按 SubInfo.group→name→域名 归组;并迁移该订阅遗留的未分组节点(用户手动分过组的不覆盖)。
+4. **订阅详情页「分组」按钮**(SubDetailPage):SubGroupDialog 输入组名或点选已有分组 chips,保存同步 SubInfo.group + 移动该订阅全部节点到目标组(留空=移回未分组);新键 sub_group_apply_hint/sub_group_applied/sub_group_applied_none。
+
+验证:hvigor assembleHap BUILD SUCCESSFUL;双语键 476=476 diff=0;产物已更新 dist/NekoBox4Harmony-2.0-unsigned.hap(14.91MB)。
+
+改动文件:model/Store.ets、core/Subscriptions.ets、pages/Index.ets、pages/SubDetailPage.ets、resources/base+en_US/element/string.json、CHANGES.md
+
+## 2026-09-17 备份恢复可靠性整改(2.0)
+
+> 对备份导入链路进行一致性与故障安全复核，统一文件恢复和剪贴板恢复行为，并补齐远程规则集统计与中英文反馈。
+
+1. `Backup.ets` 的数组校验改为显式 `Array<Object>` 遍历，消除 ArkTS 对收窄后集合迭代与逐项断言的兼容隐患；备份格式校验仍保持 fail-closed。
+2. `ToolsPage.ets` 的剪贴板恢复改为复用 `restoreText()`，与文件恢复共享恢复互斥、VPN 停止等待、事务回滚与结果汇总流程，不再绕过安全恢复入口。
+3. 恢复成功摘要补充远程规则集数量，并新增已停止 VPN、恢复任务繁忙、VPN 停止超时、完整回滚及回滚不完整等中英文反馈。
+4. 验证：hvigor assembleHap `BUILD SUCCESSFUL`；base/en_US 字符串键均为 481，双向差异为 0；未签名 HAP 已重新生成于 `entry/build/default/outputs/default/entry-default-unsigned.hap`。
+5. 已知限制：构建仍有项目既存的弃用 API、可能抛异常及无签名配置警告，本轮未新增编译错误；真机上的运行中 VPN 自动停止、故障注入回滚和剪贴板恢复仍需回归验证。
+
+改动文件:entry/src/main/ets/core/Backup.ets、entry/src/main/ets/pages/ToolsPage.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 订阅容器 Scheme 支持(2.0)
+
+> 对齐安卓 `ktx/Formats.kt` 的 `SubscriptionFoundException` 与 `ui/MainActivity.kt` 的 `importSubscription`，补齐 Clash 系分享链接的导入路径。
+
+1. `utils/Subscription.ets` 新增 `unwrapSubscriptionLink(text)`:识别 `clash://install-config?url=...&name=...`，解码查询参数并返回真实订阅地址与名称;新增 `isSagerNetSubscriptionContainer(text)` 识别 `sn://subscription` 私有容器。
+2. `pages/Index.ets` 的 `doImport` 在订阅判定前先解包容器 Scheme：真实地址进入既有下载/Clash YAML/sing-box JSON 解析、一订阅一分组、`upsertSub` 与选中流程;容器自带名称优先于调用方名称。`sn://subscription` 给出本地化提示并写日志，不再静默失败。
+3. `pages/ProfileEdit.ets` 的 `applyPasted` 对 clash 容器引导回主页导入，对 sn 容器给出不支持提示。
+4. 新增中英文资源 `subscription_container_unsupported`;错误文本不含密码、UUID 或完整认证 URL。
+5. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 字符串键 482=482，双向差异为 0;解包算法以 10 组输入用例独立验证全部通过(含 URL 编码、缺 url 参数、空文本、大小写、sn 容器识别);未签名 HAP 已重新生成。
+6. 已知限制:未在 `module.json5` 注册外部 Scheme(VPN type 与阶段约束)，仅覆盖应用内粘贴与导入入口;`sn://subscription` 的 Kryo 私有序列化无法移植，采用明确提示而非静默丢弃。
+
+改动文件:entry/src/main/ets/utils/Subscription.ets、entry/src/main/ets/pages/Index.ets、entry/src/main/ets/pages/ProfileEdit.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 启动自动连接 + 设置页文案资源化(2.0)
+
+> 对齐安卓 `res/xml/global_preferences.xml` 的 `isAutoConnect`,并清理设置页常规组三处硬编码长文案。
+
+1. `model/Profile.ets` 的 `AppSettings` 新增 `autoConnect`(默认 false);`core/Backup.ets` 的设置校验白名单同步加入该布尔字段,旧备份缺字段时保持默认值。
+2. `pages/SettingsPage.ets` 常规组首项新增「启动时自动连接」开关与说明,沿用既有 `markDirty` 保存语义;测速方式与连接测试 URL 的说明文案改用资源键。
+3. `pages/Index.ets` 新增 `autoConnect()`:`aboutToAppear` 刷新后,仅当开关开、VPN 未运行且有选中节点时调用 `VpnService.connect`;失败仅写日志,不弹错误。
+4. 新增中英文资源 `settings_auto_connect`、`settings_auto_connect_desc`、`latency_test_mode`、`latency_test_mode_desc`、`settings_test_url_desc`。
+5. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 字符串键 487=487,双向差异为 0;未签名 HAP 已重新生成。
+6. 已知限制:常规组测速方式下拉的选项标签与 `TUN MTU` 标签为既有硬编码,本轮未重构;自动连接在系统未授予 VPN 授权时与手动启动行为一致(`start_failed` 状态),真机需回归一次。
+
+改动文件:entry/src/main/ets/model/Profile.ets、entry/src/main/ets/core/Backup.ets、entry/src/main/ets/pages/SettingsPage.ets、entry/src/main/ets/pages/Index.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 复杂节点导入闭环 + 设置页文案清零(2.0)
+
+> 对齐安卓 `group/RawUpdater.kt` 的解析派发(JSON → base64 → 分享链接),补齐 WireGuard/自定义出站等无法用分享链接表达类型的导入路径;并清理设置页最后两处硬编码文案。
+
+1. `utils/Subscription.ets` 新增 `parseSingleOutboundJson(text)`:JSON 为完整配置时直接走既有 `parseSingBoxConfig`,否则包成 `{outbounds:[obj]}` 再解析,「导出 sing-box 配置」复制的 JSON 可原路导回。
+2. `utils/LinkParser.ets` 的 `parseShareText` 在 base64 回退前增加两类识别:sing-box JSON( `{` 开头)与 WireGuard `.conf`(`[Interface]`);新增 `parseWireGuardConf`,逐段解析 INI,每个合法 `[Peer]` 生成一个 WireGuard 节点,IPv6 方括号地址、注释行、缺字段 Peer 与安卓一致跳过。
+3. `pages/SettingsPage.ets`:`TUN MTU` 标签与测速方式下拉标签资源化,`LATENCY_TEST_LABELS` 改为 `Array<Resource>`;Select 的 map 回调签名同步调整。
+4. 新增中英文资源 `settings_tun_mtu`、`latency_test_url`、`latency_test_tcp`。
+5. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;WireGuard conf 解析 4 组用例与单出站 JSON 解析 4 组用例独立验证全部通过;base/en_US 字符串键 490=490,双向差异 0;SettingsPage 已无硬编码字面量;未签名 HAP 已重新生成。
+6. 已知限制:`.conf` 多 Peer 场景按安卓语义生成多个独立节点,不保留原始 AllowedIPs(配置生成侧统一为 `0.0.0.0/0,::/0`);导入的 WireGuard 节点真机连接待回归。
+
+改动文件:entry/src/main/ets/utils/Subscription.ets、entry/src/main/ets/utils/LinkParser.ets、entry/src/main/ets/pages/SettingsPage.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 首页菜单与节点导出补全(2.0)
+
+> 对齐安卓 `menu/add_profile_menu.xml` 的 misc 菜单与 `menu/profile_share_menu.xml` 的配置导出。
+
+1. 首页 ⋮ 菜单新增「更新当前订阅」(取选中节点的 subUrl,无订阅时明确提示)与「清除流量统计」(重置累计上下行与速率基准),复用既有 `updateSubscription` 与 AppStorage 流量键。
+2. 节点长按菜单新增「导出配置到文件」:`DocumentViewPicker.save` 写入 `<节点名>.json`,与已有的「导出配置」(剪贴板)并列;取消选择、写入失败均有本地化反馈。
+3. 新增中英文资源 `update_current_subscription`、`current_subscription_missing`、`clear_traffic_statistics`、`traffic_stats_cleared`、`export_outbound_config_file`、`outbound_config_exported`。
+4. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 字符串键 496=496,双向差异 0;未签名 HAP 已重新生成。
+5. 已知限制:「更新当前订阅」为纯应用层,不重启 VPN;真机需回归一次文件导出与订阅更新路径。
+
+改动文件:entry/src/main/ets/pages/Index.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 分组页导出补全(2.0)
+
+> 对齐安卓 `menu/group_action_menu.xml` 的 `action_export_file`。
+
+1. `pages/GroupPage.ets` 订阅卡片操作行新增「导出节点到文件」:`DocumentViewPicker.save` 写入 `<订阅名>.txt`,文件名做非法字符替换;提取 `exportableLinks()` 供剪贴板与文件两条路径复用,空结果与取消选择均有本地化反馈。
+2. 新增中英文资源 `export_all_nodes_file`、`export_all_file_done`。
+3. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 字符串键 498=498,双向差异 0;未签名 HAP 已重新生成。
+4. 已知限制:仅导出可生成分享链接的协议(WireGuard/自定义出站等仍需走单节点「导出配置到文件」);真机需回归一次系统文件选择器写入。
+
+改动文件:entry/src/main/ets/pages/GroupPage.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 日志页双语化 + 路由重置 + 分应用选择操作(2.0)
+
+> 对齐安卓 `menu/logcat_menu.xml`、`menu/add_route_menu.xml`、`menu/per_app_proxy_menu.xml`;同时补齐日志页英文环境下的中文残留。
+
+1. `pages/LogPage.ets`:标题、导出、清空、搜索占位、导出空/成功/失败提示全部改 `$r` 资源(新增 `log_export`/`log_clear`/`log_search_hint`/`log_export_empty`/`log_exported`);终端配色保持不变。
+2. `pages/RouteRulesPage.ets`:头部新增「重置路由」按钮,双确认后清空自定义规则与远程规则集并落盘(对齐 `action_reset_route`);空规则时提示而非弹确认框。
+3. `pages/SettingsPage.ets` 分应用代理:新增「反选」「清除选择」按钮(对齐 `action_invert_selections`/`action_clear_selections`),均走 `persistPerAppList`——标记脏、保存、运行中自动 `switchTo` 重启 VPN;按钮在无列表/无已选时禁用。
+4. 全局扫描:`entry/src/main/ets` 下已无 `Text/Button/placeholder/message/label` 的中文字面量。
+5. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 字符串键 509=509,双向差异 0;未签名 HAP 已重新生成。
+6. 已知限制:反选只作用于已加载的应用列表(与安卓一致);重置路由与分应用变更均需真机回归一次重启生效路径。
+
+改动文件:entry/src/main/ets/pages/LogPage.ets、entry/src/main/ets/pages/RouteRulesPage.ets、entry/src/main/ets/pages/SettingsPage.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 抽屉新增「使用文档」(2.0)
+
+> 对齐安卓 `main_drawer_menu.xml` 的 `nav_faq`(launchCustomTab 打开文档站点);鸿蒙端用应用内 Web 视图,无需系统浏览器。
+
+1. 新增 `pages/DocPage.ets`:`Web` 组件加载项目文档地址,顶部返回按钮 + 加载指示器,页面注册入 `main_pages.json`。
+2. 抽屉导航在「日志」与「工具」之间新增「使用文档」项(图标 ✎),选中即 `router.pushUrl` 打开文档页;不占用页签索引,既有 0~6 页签编号不变。
+3. 新增中英文资源 `nav_docs`。
+4. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 字符串键 510=510,双向差异 0;未签名 HAP 已重新生成。
+5. 已知限制:文档页需要网络(INTERNET 权限已有);页面加载失败时保留加载态,真机需回归一次弱网/无网表现与返回手势。
+
+改动文件:entry/src/main/ets/pages/DocPage.ets(新增)、entry/src/main/ets/pages/Index.ets、entry/src/main/resources/base/profile/main_pages.json、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 订阅级设置 + 关于页交流群入口(2.0)
+
+> 对齐安卓 `group_preferences.xml` 的 subscriptionUpdate 分类(`subscriptionAutoUpdate`/`subscriptionAutoUpdateDelay`/`subscriptionUpdateWhenConnectedOnly`/`subscriptionUserAgent`)与 AboutFragment 的 Telegram 项。
+
+1. `SubInfo` 新增 `userAgent`/`autoUpdate`/`updateWhenConnectedOnly` 三个订阅级字段,`listSubs` 装载时对老备份缺字段回落默认值(自动更新默认开、UA 默认空),`updateIntervalHours` 约束统一为「非正数/非数字 → 12,上限 720」。
+2. `utils/Subscription.ets` 的 `fetchSubscription`/`fetchSubscriptionWithInfo` 增加可选 `userAgent` 参数,空/空白回退默认 `clash.meta/1.19.0`;`updateSubscription` 取订阅自身 UA 发请求(一次 listSubs 复用,不额外读盘)。
+3. `needAutoUpdate` 增加 `autoUpdate === false` 与「仅连接时更新且未连接」两道过滤;`touchSub` 成功后写回 `nextUpdateAt`(间隔判定不再只靠回退计算)。
+4. 新增 `saveSubSettings(url, changes)`,显式字段写入(ArkTS 不支持动态属性赋值),供订阅详情页即时保存。
+5. `pages/SubDetailPage.ets` 操作区下方新增「订阅设置」卡:自动更新开关(关 → 隐藏间隔与仅连接项)、更新间隔输入、仅在 VPN 已连接时更新开关、自定义 UA 输入;`onSubmit` 按 SDK 无参签名取已绑定草稿。
+6. `pages/AboutPage.ets` 新增「加入交流群」按钮(对齐安卓 Telegram 项),与项目主页共用 `openLink` 打开系统链接、失败时展示链接供复制。
+7. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;9 组订阅设置逻辑(默认值/老备份兼容/UA 回退/间隔边界/自动更新过滤/失败冻结)用 Node 独立脚本验证全部通过,并据此修掉负数间隔回落为 1 的缺陷;base/en_US 字符串键 519=519,双向差异 0;未签名 HAP 已重新生成。
+8. 已知限制:自定义 UA 与「仅连接时更新」真机需回归一次(前者验证请求头,后者验证后台任务在断开态确实跳过);交流群链接需真机确认系统有可处理 https/t.me 的能力,否则降级为复制链接提示。
+
+改动文件:entry/src/main/ets/core/Subscriptions.ets、entry/src/main/ets/utils/Subscription.ets、entry/src/main/ets/pages/SubDetailPage.ets、entry/src/main/ets/pages/AboutPage.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 链式代理循环引用防护(2.0)
+
+> 对齐安卓 `ChainSettingsActivity.testProfileContains/testProfileAllowed` 与 `circular_reference` 提示;此前鸿蒙端可把链节点加入链而形成无限递归。
+
+1. `pages/ProfileEdit.ets` 新增 `chainContains(profile, targetId, visited)` 递归检测:沿 `chainIds` 向下找,`visited` 兜底防止自引用链无限递归。
+2. 新增 `chainSelectionAllowed(candidate)`:自身禁选;已选中成员允许取消;「候选包含编辑节点」与「已选成员包含候选」双向都拒绝,比安卓多覆盖一层。
+3. 链成员列表:不可选节点置灰(Toggle `.enabled(false)`),强制勾选时弹本地化提示;`validationError()` 保存前再核一遍,防御外部修改 `chainIds` 的场景。
+4. 新增中英文资源 `error_circular_reference`。
+5. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;9 组环路检测用例(自身/直接环/深层环/已选取消/双向/自引用兜底/菱形依赖不误报)Node 独立脚本全部通过;base/en_US 字符串键 520=520,双向差异 0;未签名 HAP 已重新生成。
+6. 已知限制:检测基于内存中的 `allProfiles`,保存前的多级嵌套链在真机需回归一次拖拽与勾选组合。
+
+改动文件:entry/src/main/ets/pages/ProfileEdit.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 导入前确认对话框(2.0)
+
+> 对齐安卓 `MainActivity.importSubscription`/`importProfile` 的 MaterialAlertDialog 确认步骤;此前鸿蒙端粘贴链接即落盘,缺安全提示环节。
+
+1. `pages/Index.ets` 新增 `confirmImport(isSubscription, name): Promise<boolean>`,用 `AlertDialog.show` 的双按钮异步等待用户选择;取消即中止导入。
+2. `doImport`:订阅链接在「正在获取订阅」toast 之前弹确认(含来源不可信会泄漏 IP 与网络行为的安全提示,文案与安卓一致);分享链接先解析,解析成功后按单节点名弹确认;取消均直接 return。
+3. 新增中英文资源 `import_confirm`、`subscription_import_message`(1 参数)、`profile_import_message`(1 参数)。
+4. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 字符串键 523=523,双向差异 0;未签名 HAP 已重新生成。
+5. 已知限制:确认对话框为应用层弹窗,外部 Scheme 唤起(需 module.json5 注册)仍未在本阶段处理;真机需回归一次取消路径确保不落盘。
+
+改动文件:entry/src/main/ets/pages/Index.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 网络变化重置连接(2.0)
+
+> 对齐安卓 `global_preferences.xml` 的 `networkChangeResetConnections`(默认 true)与 `wakeResetConnections`;此前鸿蒙端 Wi-Fi/移动数据切换后旧 socket 全部失效却不重连。
+
+1. `AppSettings` 新增 `networkChangeResetConnections: boolean = true`,并加入 `Backup` 校验白名单(导入备份时允许该字段)。
+2. `vpnext/VpnExtAbility.ets` 新增 `registerNetworkChange`/`unregisterNetworkChange`:在 `hookLifecycle` 注册、`onDisconnect`/`onDestroy` 注销。本 SDK 的回调挂在 `NetConnection` 对象上(经 `createNetConnection()` + `register()`),不是自由函数 `on/off`——已按 d.ts 实际签名实现。
+3. 事件处理:`netAvailable`/`netLost`/`netCapabilitiesChange` 三类事件统一进 `handleNetworkChange`,`netChangeGeneration` + 1.5s 防抖,连续切换只在最后一次重连一次;重连前重读设置,开关关闭则跳过;`teardown(true)` 后 `tryStart()` 复用既有串行启动队列(防重入与重启嵌套)。
+4. `pages/SettingsPage.ets` 外观分组新增开关(带说明)。
+5. 新增中英文资源 `network_change_reset_connections`(+sum)。
+6. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 字符串键 525=525,双向差异 0;未签名 HAP 已重新生成。
+7. 已知限制:防抖窗口 1.5s 固定(未做设置化);扩展进程被系统回收后监听随之消失,下次启动重建;真机需回归一次切换 Wi-Fi/数据时的自动重连与关闭开关后不重连。
+
+改动文件:entry/src/main/ets/model/Profile.ets、entry/src/main/ets/core/Backup.ets、entry/src/main/ets/vpnext/VpnExtAbility.ets、entry/src/main/ets/pages/SettingsPage.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 系统返回键行为(2.0)
+
+> 对齐安卓 `MainActivity.onBackPressedDispatcher`:抽屉打开 → 收抽屉;非配置页 → 回配置页;配置页 → 退到桌面(VPN 继续运行)。此前鸿蒙端按返回直接退出应用,VPN 随之断开。
+
+1. `pages/Index.ets` 的 @Entry 结构体新增 `onBackPress(): boolean` 生命周期方法(本 SDK 下该回调**只对 @Entry 组件生效**,不能作为容器属性链使用;`inputConsumer` 的 `keyPressed` 仅支持音量/媒体键,不可用于返回键,已验证 d.ts 后弃用该方案)。
+2. 行为:抽屉打开先收抽屉;否则非配置页回配置页;配置页 `context.moveAbilityToBackground()` 退到桌面。
+3. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 字符串键 525=525,双向差异 0;未签名 HAP 已重新生成。
+4. 已知限制:仅平板/带返回键设备可触发;手势导航设备由系统直接处理;真机需回归一次「返回 → 退桌面但 VPN 不断」。
+
+改动文件:entry/src/main/ets/pages/Index.ets、entry/src/main/ets/entryability/EntryAbility.ets、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 导入自定义 Geo 数据文件(2.0)
+
+> 对齐安卓 `AssetsActivity` + `import_asset_menu` 的 `action_import_file`:此前鸿蒙端只能下载内置 cn 库,无法导入用户自备的 geoip.db / geosite.db(内核按名查找的完整库)。
+
+1. `utils/GeoAssets.ets` 新增 `importGeoAssetFromFile(context)`:DocumentViewPicker(`fileSuffixFilters:['.db']`,`maxSelectNumber:1`)选文件 → URI 末段解码取文件名 → 仅接受 `geoip.db`/`geosite.db`(其他名拒绝)→ 流式复制到沙箱 geo 目录覆盖 `geoip-cn.db`/`geosite-cn.db` → 累计 < 1KB 判可疑删除 → 写 `.version.txt = 'Custom'`。用户取消返回 `null`(不报错)。
+2. `pages/SettingsPage.ets` geo 卡片新增「导入文件」按钮与提示行,`importGeo()` 成功 toast `geo_import_complete`(含目标路径)、失败 toast `geo_import_failed`(含原因),下载中禁用。
+3. 新增资源键 `geo_import_complete`、`geo_import_failed`、`settings_geo_import`、`settings_geo_import_hint`(base+en_US 双写)。
+4. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 键 529=529,双向差异 0;未签名 HAP 已重新生成(15,055,240 字节);导入判定逻辑经 Node 脚本 14 项检查全部通过(文件名映射/大小阈值/URI 解码/取消语义)。
+5. 已知限制:覆盖的是 cn 命名库;导入完整库后规则模式仍按 geosite:cn/geoip:cn 匹配(内核在完整库中查 cn 分类,行为与安卓一致)。真机需回归一次导入 → 重连 → cn 分流仍生效。
+
+改动文件:entry/src/main/ets/utils/GeoAssets.ets、entry/src/main/ets/pages/SettingsPage.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 回到前台时重置连接(2.0)
+
+> 对齐安卓 `wakeResetConnections`(设备退出 Doze 闲置模式时 `Libcore.resetAllConnections(true)`)。此前鸿蒙端无此功能。
+
+1. `core/VpnIpc.ets` 新增 `VPN_EVENT_APP_FOREGROUND` 事件与 `publishAppForeground()`(UI → 扩展进程)。
+2. `vpnext/VpnExtAbility.ets` 新增 `subscribeForegroundEvents()`(在 `hookLifecycle` 注册,onDisconnect/onDestroy 注销)与 `resetConnectionsAfterWake()`:读设置 → 开关关闭则跳过 → `setPendingProfileId` + `forceRestartRequested = true` + `teardown(true)` + `tryStart()`(复用网络变化重连的同一路径)。
+3. `entryability/EntryAbility.ets` 的 `onForeground()` 发布前台事件。
+4. `model/Profile.ets` 新增 `wakeResetConnections: boolean = false`(与安卓默认值一致);`core/Backup.ets` 校验白名单已收录。
+5. `pages/SettingsPage.ets` 网络重置开关下方新增「回到前台时重置连接」开关 + 说明;新增资源键 `wake_reset_connections`、`wake_reset_connections_sum`(base+en_US 双写)。
+6. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 键 531=531,双向差异 0;未签名 HAP 已重新生成(15,064,497 字节)。
+7. 已知限制:鸿蒙 SDK 无屏幕亮灭事件订阅(`@ohos.screen` 不存在,`@ohos.power` 仅 `isScreenOn` 查询),用「应用回到前台」近似安卓的「退出 Doze」;默认关闭,需用户手动开启。真机需回归:开启后切应用到后台再回前台应触发一次重连。
+
+改动文件:entry/src/main/ets/core/VpnIpc.ets、entry/src/main/ets/vpnext/VpnExtAbility.ets、entry/src/main/ets/entryability/EntryAbility.ets、entry/src/main/ets/model/Profile.ets、entry/src/main/ets/core/Backup.ets、entry/src/main/ets/pages/SettingsPage.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 通知刷新间隔可设置(2.0)
+
+> 对齐安卓 `speedInterval`(通知中速率/流量刷新频率,SimpleMenuPreference,默认 1000ms)。此前鸿蒙端固定 1500ms 硬编码。
+
+1. `model/Profile.ets` 新增 `speedIntervalMs: number = 1000`(与安卓默认值一致);`core/Backup.ets` 数值校验白名单已收录。
+2. `vpnext/VpnExtAbility.ets` 通知轮询定时器改用 `settings.speedIntervalMs`,并钳制有效范围 `[500, 10000]`,越界/非数回退 1000(防止用户填极端值导致通知狂刷或内核 Clash API 被打爆)。
+3. `pages/SettingsPage.ets` 通知分组开关下方新增「通知刷新间隔(毫秒)」数字输入框 + 说明;新增资源键 `settings_speed_interval`、`settings_speed_interval_sum`(base+en_US 双写)。
+4. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 键 533=533,双向差异 0;未签名 HAP 已重新生成(15,068,966 字节);钳制逻辑经 Node 脚本 10 项检查全部通过。
+5. 已知限制:修改后需重连生效(定时器在启动时读取设置);真机需回归填 500/10000/越界值后通知刷新频率正确。
+
+改动文件:entry/src/main/ets/vpnext/VpnExtAbility.ets、entry/src/main/ets/model/Profile.ets、entry/src/main/ets/core/Backup.ets、entry/src/main/ets/pages/SettingsPage.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 每节点流量统计与持久化(2.0)
+
+> 对齐安卓 `profileTrafficStatistics`(默认 true):`TrafficLooper.stop` 时把按出站统计的 rx/tx 写回 Profile 数据库,节点卡显示历史累计。此前鸿蒙端只有会话内总量,不落盘、不区分节点。
+
+1. `model/Profile.ets` Profile 新增 `rx`/`tx`(历史累计,默认 0);AppSettings 新增 `profileTrafficStatistics: boolean = true`(与安卓默认值一致)。`core/Backup.ets` 布尔校验白名单已收录。
+2. `vpnext/VpnExtAbility.ets` 的 `stopNotificationTrafficPoller()` 在清零前调用新增的 `persistSessionTraffic()`:开关关闭/空 profile/零流量跳过 → `mutateProfiles` 原子读改写把会话下行累加到 `rx`、上行累加到 `tx`(旧负值先归零)→ 发布流量事件通知 UI。
+3. `pages/Index.ets` 节点卡第二行新增历史流量文本 `↓rx ↑tx`(用 `formatBytes`),仅在开关开启且累计 > 0 时显示;`import` 补 `formatBytes`。
+4. `pages/SettingsPage.ets` 新增「节点流量统计」开关 + 说明;新增资源键 `profile_traffic_statistics`、`profile_traffic_statistics_sum`(base+en_US 双写)。
+5. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 键 535=535,双向差异 0;未签名 HAP 已重新生成(15,078,390 字节);累加与显示条件经 Node 脚本 9 项检查全部通过(双向累加/负值归零/零会话跳过/GB 级精度/显示门控)。
+6. 已知限制:鸿蒙无内核级按出站统计(libcore `setV2rayStats` 机制),单出站场景下会话总量即当前节点流量;切节点/断开时才落盘,中途查看的是上一会话累计。真机需回归:连接产生流量后断开,节点卡出现累计;再连再断,数字只增不减。
+
+改动文件:entry/src/main/ets/model/Profile.ets、entry/src/main/ets/vpnext/VpnExtAbility.ets、entry/src/main/ets/pages/Index.ets、entry/src/main/ets/pages/SettingsPage.ets、entry/src/main/ets/core/Backup.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 代理服务器域名解析策略(2.0)
+
+> 对齐安卓 `domain_strategy_for_server`(SimpleMenuPreference,默认 auto):解析代理服务器自身域名时的 IP 优先级。此前鸿蒙端的 `route.default_domain_resolver` 固定用 local 服务器且不写 strategy。
+
+1. `model/Profile.ets` 新增 `serverDnsStrategy: string = ''`(空=内核默认,与既有两个 strategy 同一取值域);`model/Store.ets` 的 `sanitizeSettings` 增加该字段白名单兜底,非法值回退 `''`;`core/Backup.ets` 字符串校验白名单已收录。
+2. `core/ConfigBuilder.ets` 的 `route.default_domain_resolver` 用 `setIf` 写入 `strategy`(空值不写,等价内核默认)。
+3. `pages/SettingsPage.ets` DNS 组在「直连 DNS 域名策略」下方新增第三个 Select(与既有两个共享 `STRATEGIES`/`STRATEGY_LABELS`)+ 说明;新增资源键 `settings_server_dns_strategy`、`settings_server_dns_strategy_hint`(base+en_US 双写)。
+4. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 键 537=537,双向差异 0;未签名 HAP 已重新生成(15,083,282 字节)。
+5. 已知限制:仅影响代理服务器域名的解析;直连/远程域名策略不受影响。真机需回归:设为 ipv4_only 后,IPv6-only 节点服务器应解析失败(符合预期)。
+
+改动文件:entry/src/main/ets/model/Profile.ets、entry/src/main/ets/model/Store.ets、entry/src/main/ets/core/ConfigBuilder.ets、entry/src/main/ets/core/Backup.ets、entry/src/main/ets/pages/SettingsPage.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 路由规则升级为多字段 AND 模型(2.0)
+
+> 对齐安卓 `RuleEntity` + `SingBoxOptionsUtil.makeSingBoxRule`。此前鸿蒙每条规则只能单类型匹配(type+value),无法表达「域名 X 且端口 Y」这类组合条件;安卓每条规则有 domains/ip/port/source/sourcePort/network/protocol/packages 字段,AND 组合。
+
+1. `model/RouteRule.ets` RouteRule 扩展为多字段:`domains`/`ip`/`port`/`source`/`sourcePort`/`network`/`protocol`/`packages`/`config`(对齐安卓 RuleEntity 字段名);保留 `type`/`value` 供旧数据迁移。
+2. 新增 `migrateLegacyRule()`:仅在旧字段有值而新字段全空时执行 —— domain→`full:` 前缀(旧 type=domain 是精确匹配)、domain_suffix→裸值、domain_keyword→`keyword:`、ip_cidr→ip 裸值、port→port 裸值、geoip→`geoip:` 前缀、geosite→`geosite:` 前缀;`loadRouteRules` 加载时自动迁移并持久化。新增导出 `splitCsv`。
+3. `core/ConfigBuilder.ets` 的 `buildCustomRule` 重写为多字段 AND 生成:域名按前缀分发到 `domain`/`domain_suffix`/`domain_regex`/`domain_keyword`/`rule_set`(与安卓完全一致的前缀语义:full:/domain:/keyword:/regexp:/geosite:);IP 的 `geoip:private`→`ip_is_private`、`geoip:x`→合并进 `rule_set`、其他→`ip_cidr`;端口/源端口解析为升序去重数字数组;`network`/`protocol`/`process_name` 按需写入;`config` 为 JSON 浅合并(非法 JSON 忽略,不污染规则);至少一个匹配字段才输出。
+4. `pages/RouteRulesPage.ets` 规则卡片的单类型 Select+TextArea 替换为 `ruleMatchSection` 多字段表单:域名 TextArea(含前缀语法提示)、目的IP/目的端口、源IP/源端口、网络/协议 Select、应用包名、自定义配置 JSON、出站三按钮;`updateRule` 扩展 9 个新字段。
+5. 新增资源键 12 个(route_rule_domains/hint、ip、port、source、source_port、network、protocol、any、packages、config/hint;base+en_US 双写)。
+6. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 键 549=549,双向差异 0;未签名 HAP 已重新生成(15,121,816 字节);域名前缀解析、端口解析、旧规则迁移经 Node 脚本 18 项检查全部通过。
+7. 已知限制:`process_name` 匹配需要内核启用 per-app 才能区分进程(当前 per-app 模式下生效);`config` 浅合并不做 schema 校验,用户填错会导致该条规则被内核忽略(已 try/catch 兜底)。真机需回归:旧规则自动迁移且行为不变;新建「域名+端口」组合规则生效。
+
+改动文件:entry/src/main/ets/model/RouteRule.ets、entry/src/main/ets/core/ConfigBuilder.ets、entry/src/main/ets/pages/RouteRulesPage.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 订阅更新去重开关(2.0)
+
+> 对齐安卓 `subscriptionDeduplication`(SwitchPreference,默认关闭)。此前鸿蒙端**始终**按「类型+服务器+端口+UUID」跳过重复节点,与安卓默认保留全部节点的行为不一致。
+
+1. `core/Subscriptions.ets` 的 `SubInfo` 新增 `deduplication: boolean = false`(与安卓默认值一致);`listSubs` 回填 tolerant 读取;`saveSubSettings` 支持该字段显式写入。
+2. `updateSubscription` 的去重逻辑改为 `if (dedupEnabled)` 门控:仅在订阅开启去重时跳过重复节点,关闭时保留订阅返回的全部节点(含重复)。
+3. `pages/SubDetailPage.ets` 订阅设置卡片在「仅连接时更新」下方新增「更新时去重」开关 + 说明。
+4. 新增资源键 `deduplication`、`deduplication_sum`(base+en_US 双写)。
+5. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 键 551=551,双向差异 0;未签名 HAP 已重新生成(15,126,063 字节)。
+6. 已知限制:去重键为「类型+服务器+端口+UUID」四元组,与安卓一致;UI 级去重(同名节点)不做。真机需回归:含重复节点的订阅在开/关两种状态下更新结果数量符合预期。
+
+改动文件:entry/src/main/ets/core/Subscriptions.ets、entry/src/main/ets/pages/SubDetailPage.ets、entry/src/main/resources/base+en_US/element/string.json、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 扫码导入 + 分享二维码 + 订阅强制解析(2.0)
+
+> 收尾三项「曾判为受限」的功能。审计发现本 SDK 的 HMS `@kit.ScanKit` **完整存在**(scanBarcode 系统扫描 UI、generateBarcode 二维码生成),此前「SDK 无 generateBarcode」为误判,一并纠正。
+
+1. **扫码导入**(对齐安卓 `ScannerActivity` + zxing `QRCodeAnalyzer`):
+   - `pages/Index.ets` 新增 `scanImport()`:`scanBarcode.startScanForResult(context, {scanTypes:[QR_CODE], enableAlbum:true})` → 结果 `originalValue` 复用现有 `doImport` 管道(容器 Scheme/订阅/分享链接 + 导入确认对话框全部继承)。系统扫描 UI 无需相机权限声明(`module.json5` 未动)。
+   - `AddEntryDialog` 在「导入订阅」与「剪贴板导入」之间新增「扫码添加」入口(与安卓 add 菜单同序)。
+   - 用户取消(错误码 1000500002 SCAN_SERVICE_CANCELED / 12900010)静默返回;其他失败 toast 提示改用粘贴导入。
+2. **分享二维码**(对齐安卓 `QRCodeDialog` zxing 生成):
+   - 节点分享:`openProfileShare()` 改 async,`generateBarcode.createBarcode(link, {scanType:QR_CODE,width:440,height:440})` → PixelMap,`ShareTextDialog` 顶部渲染 220×220 二维码(下方保留 URI 文本 + 复制);生成失败自动回退纯文本弹窗。
+   - 订阅分享:`SubDetailPage.openSubscriptionShare()` 同样升级(对齐安卓 `GroupFragment.action_universal_qr`),`SubscriptionShareDialog` 增加二维码区。
+3. **订阅强制解析**(对齐安卓 `GroupUpdater.forceResolve` + `rewriteAddress`):
+   - `core/Subscriptions.ets`:`SubInfo.forceResolve`(默认 false,与安卓一致)+ `listSubs` 回填 + `saveSubSettings` 分支 + `applyForceResolve()`(5 并发批次,镜像安卓线程池):`connection.getAddressesByName` 解析,IPv4 优先、无 IPv4 用 IPv6;TLS 节点原域名回填 `sni` 防断裂;已是 IP/解析失败保留域名并记日志。
+   - 插入点:`updateSubscription` 解析订阅内容之后、生成节点 id 之前(与安卓「先 forceResolve 再入库」同序)。
+   - `pages/SubDetailPage.ets` 订阅设置卡新增「强制解析」开关 + 说明(位于「更新时去重」下方)。
+4. 新增资源键 5 个:`add_profile_methods_scan_qr_code`、`scan_no_content`、`scan_failed_use_paste`、`force_resolve`、`force_resolve_sum`(base+en_US 双写;键名沿用安卓 strings.xml)。
+5. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 键 556=556,双向差异 0;未签名 HAP 已重新生成(15,150,535 字节);强制解析判定逻辑经 Node 脚本 15 项检查全部通过(IP 判定/IPv4 优先/SNI 回填门控);UI 硬编码文案扫描 TOTAL_HITS=0。
+6. 已知限制:扫码用系统扫描 UI 而非自定义相机页(鸿蒙无对应开源 zxing 相机管线,系统 UI 为官方推荐且免相机权限);`enableAlbum` 允许相册识码(安卓仅相机,此处为超集);selector/urltest 分组经实证确认被 `.so` 冻结阻挡(`lean_context.go` 未注册 `protocol/group`),不在本轮范围。真机需回归:扫订阅码/节点码导入、两处分享弹窗出码、强制解析开/关的更新结果。
+
+改动文件:entry/src/main/ets/pages/Index.ets、entry/src/main/ets/pages/SubDetailPage.ets、entry/src/main/ets/core/Subscriptions.ets、entry/src/main/resources/base+en_US/element/string.json、PARITY.md、CHANGES.md、DEVPLAN.md
+
+## 2026-09-17 功能/UI 对照清单(交付物)
+
+> 新增 `PARITY.md`:Android 与鸿蒙逐项对照清单,含全局设置 39 项、分组设置 13 项、路由规则 12 项、13 种协议编辑页、15 个页面/交互的完整对照,以及明确排除项理由和真机回归清单。
+
+改动文件:PARITY.md、CHANGES.md
+
+## 2026-09-17 严格复刻首批修复（整体任务仍进行中）
+
+- showBottomBar：新增默认false的设置/备份校验，StatsBar按连接和页面门控，FAB可按开关跨页保留；滚动防遮挡和外观尚未复刻。
+- ConfigBuilder：目的/源端口范围不再被parseInt截断；DNS auto归一化；resolve移至IP规则前。
+- 验证：生产ETS测试13项通过；另以同一服务器DNS断言对内存还原的旧语句验证预期失败，对当前代码验证通过（auto→prefer_ipv4）；最终assembleHap exit 0。未连接hdc设备，未做真机/像素验证。
+- 文件：entry/src/main/ets/model/Profile.ets、core/Backup.ets、core/ConfigBuilder.ets、pages/Index.ets、pages/SettingsPage.ets（后四路径同属ets）；resources/base与en_US/element/string.json；tests/parity-config.cjs；docs/PARITY-REAUDIT.md；PARITY.md、DEVPLAN.md、CHANGES.md。
+- 未更改签名/版本/内核成品，保留既有未提交修改。已知剩余差异见重新审计清单，不再把历史勾选视为1:1验收。
+
+## 2026-09-17 CORE-04 内核重编与 CORE-03 备份回归修正
+
+- CORE-04：使用已有 Go 1.26.5 主机工具链和 OHOS fork 成功重编 libsingbox.so（35,659,280 字节），重新打包；构建脚本固化 sniff override 字段/接线校验，取消 git config 写操作。保留既有 CGo 契约，不改签名/版本。
+- 新增主机回环实连接测试：相同 HTTP 请求下 route 命中原始 IP，override 命中 Host 对应 IP；另测试 JSON 字段 true/false 到运行时接线。尚无设备端或 HAP 安装验收。
+- CORE-03：撤回“全链路完成”。Backup 的 ipv6Mode 错列布尔字段造成正常导出后不能恢复；真实 export/import 红色测试复现后移至字符串字段，六个字符串往返通过，非字符串拒绝且没有持久化写入；空串/旧布尔备份兼容。auto 仅作为兼容字符串保留，不是新增四档选项。
+- 文件：core/scripts/build-libsingbox-ohos.sh、entry/libs/arm64-v8a/libsingbox.so（含流水线生成的 header/vendor）；tests/hostprobe/probe_test.go、sniff_behavior_test.go；entry/src/main/ets/core/Backup.ets；tests/ipv6-backup.cjs、ipv6-modes.cjs；docs/PARITY-REAUDIT.md、DEVPLAN.md。
+- 剩余：服务器 auto、ONLY 平台 IPv4 路由、core 地址前缀、FakeDNS 旧布尔、resolve 策略仍需修正；相关已有测试的错误预期不能作为验收。
+
+## 2026-09-17 生产 DNS 启动组合与 Store 保存校验
+
+- 生产生成器输出四模式 × FakeDNS 开关八组 DNS 配置，仅移除测试传输 detour，其余 DNS 字段原样交给 1.14。修复前 FakeDNS 四组全部因 strategy/query_type 跨规则混用而启动失败；修复后八组通过。删除 FakeDNS 兜底新增 query_type，恢复 Android 原 inbound 条件，并将 fake 的 ipv4_only/disable_cache 放到选择规则。保留 1.14 兼容模式，不冒称“旧策略语义无法实现”；1.16 迁移另列待办。
+- Store 实际 saveSettings/loadSettings 测试先复现非法模式 bogus 原样落盘，再以单一 helper 在读/写处归一化；保存副本避免修改 UI 入参，保留旧布尔与合法模式。不重构其它设置校验。
+- 验证：32 项生产配置断言、9 项 IPv6 检查（平台部分仍是接线检查）、备份往返及实际 Store 测试通过；Go 全套连续三轮通过，期间一次回环连接重置单独复跑未复现，仍记录稳定性风险。assembleHap exit 0；未签名、无设备/UI 完整验收。
+- 文件：entry/src/main/ets/core/ConfigBuilder.ets、model/Store.ets；tests/ipv6-store.cjs、generate-dns-fixtures.cjs、hostprobe/production_dns_test.go、hostprobe/fixtures/production-dns.json；DEVPLAN.md、CHANGES.md。
+
+## 2026-09-17 路由规则协议多值（CORE-05 部分）
+
+- Android ConfigBuilder.kt:543-544 的 protocol 是 listByLineOrComma 数组并保留同条规则其它 AND 字段；此前鸿蒙只接受 'dns' 单值。现 ConfigBuilder 用 splitRuleList 生成 protocol 数组，RouteRule 加载不再把非 DNS 值清空（注释同步更新），规则页协议从 DNS-only 下拉改为多值 TextArea（占位 http, tls, quic, dns）。
+- 验证：生产配置断言先复现 protocol 字段缺失（undefined），修复后 `http, tls\r\ndns` + port 443 输出 protocol:['http','tls','dns'] 与 port:[443] 同条规则；tests/ipv6-store.cjs 扩展真实 saveRouteRules/loadRouteRules 往返，协议与端口均保留。33 项配置测试、Store/备份/IPv6 测试与 assembleHap（exit 0）通过；无设备/UI 完整验收。
+- 文件：entry/src/main/ets/core/ConfigBuilder.ets、model/RouteRule.ets、pages/RouteRulesPage.ets；tests/parity-config.cjs、tests/ipv6-store.cjs；DEVPLAN.md、docs/PARITY-REAUDIT.md、CHANGES.md。
+- 剩余（CORE-05/06）：任意 profileId 出站、ProfileGroup selector/frontProxy/landingProxy 组级代理。
+
+## 2026-09-17 路由内置规则顺序与组播（CORE-08）
+
+- 安卓 ConfigBuilder.kt:600 用户规则先入 route.rules，:697-702 私网绕过（ip_is_private=true，内核内置判定）与 :704-708 组播独立 reject（ip_cidr+source_ip_cidr 同置 224.0.0.0/3、ff00::/8）在其后追加，且不随模式限定。鸿蒙此前把 12 段 CIDR 私网清单（含组播段）作为 direct 规则放在用户规则之前且仅 rule 模式。现改为：用户/自定义/geo/远程规则之后追加内置 ip_is_private direct（随 bypassLan 开关）与组播 reject（独立于开关）。
+- 验证：红测试先复现私网 direct 排在用户规则前且无组播拒绝，修复后 findIndex 顺序 user < lan < multicast、组播字段与安卓逐字段一致；bypassLan=false 仍有组播拒绝。38 项配置断言 + 生成器 DNS fixtures 重新生成 + modes/store/backup/kernel 全绿。
+
+## 2026-09-18 二轮深度排查：文件导入/WG zip、规则排序、分应用剪贴板、移动到分组、geo 单库管理（2.0）
+
+> 对安卓全部 `menu/*.xml`（add_profile / per_app_proxy / app_list / group_action / profile_share / import_asset / scanner / add_route）与 `RouteFragment`、`AppListActivity`、`AssetsActivity`、`ProfileSettingsActivity` 逐项复查后补齐的五个缺口。
+
+1. **从文件导入（含 WireGuard zip）**——对齐 `ConfigurationFragment.action_import_file` + `parseRaw` zip 分支：`Index.importFromFile()` 用 DocumentViewPicker（任意文件，同安卓 `*/*`）→ 复制缓存 → 文本直接复用 `doImport` 全管道（base64 订阅/分享链接/sing-box JSON/.conf + 导入确认）；`.zip` 用 `zlib.decompressFile` 解压后逐 entry `parseShareText`，entry 文件名（剥 `.conf/.txt/.json`，大小写不敏感）作节点名，单次「导入 N 个节点」确认批量入库；空结果 `no_proxies_found_in_file`、异常 `import_file_failed`。`AddEntryDialog` 按钮顺序对齐安卓 add_profile_menu（订阅/扫码/剪贴板/文件/手动）。
+2. **路由规则优先级调整**——对齐 `RouteFragment` ItemTouchHelper 拖拽：`RouteRulesPage.moveRule/moveRemoteRuleSet`（swap + 边界守卫），两张列表首行 ↑↓，首/末位 `text_disabled` 置灰。
+3. **分应用列表剪贴板导出/导入**——对齐 `AppListActivity`：payload 完全一致 `false\n<包名列表>`；导入无换行/空内容报 `action_import_err`，成功整体替换并走 `persistPerAppList` 自动重启链路；反选/清除下方新增同排两按钮。
+4. **节点归属分组管理**——节点长按菜单「移动到分组」`MoveToGroupDialog`（未分组 + 全部分组、当前组高亮、即选即存）+ `ProfileEdit` 基础区分组 Select（`groupOptions/groupSelectedIndex/groupCurrentValue`，分组被删回显未分组）。
+5. **geo 资产单库管理**——对齐 `AssetsActivity` 列表：`GeoAssets.geoAssetInfos()/downloadGeoAsset(kind)/deleteGeoAsset(kind)`；设置页 geo 卡片渲染每库「名称 + 大小·版本 / 未下载」+ 单库「更新」+ 单库「删除」（二次确认）。差异：删除无撤销 Snackbar，以确认对话框代替。
+6. **sn:// 私有格式识别扩展**——`isSagerNetSubscriptionContainer` 从 `sn://subscription?` 放宽到任意 `sn://` 前缀（含 universal link `sn://<type>?...`，Kryo 序列化不可解包），导入时明确拒绝提示。
+7. 新增资源键 16（base+en_US 双写）：action_import_file、no_proxies_found_in_file、import_file_message/failed、export/import_selections_clipboard、action_export_msg/err、action_import_msg/err、move_to_group(_title/_done)、profile_group、settings_geo_site/ip、geo_asset_status/absent、settings_geo_update_one/updated/delete/_confirm/_deleted/_delete_failed。
+8. 验证：hvigor assembleHap `BUILD SUCCESSFUL`；base/en_US 键 **586=586** 双向差异 0；未签名 HAP 重新生成（15,262,692 字节）；Node 脚本 25 项逻辑检查全部通过（swap 边界/entry 名剥离/sn:// 前缀识别/剪贴板格式）；UI 硬编码文案扫描 TOTAL_HITS=0。
+9. 已知限制：zip 导入假设平铺 entry（WG 官方导出即平铺）；单库删除不通知运行中内核（重连后生效，缺库时内核自动跳过 cn 分流）。
+10. 本记录同时确认前夜批次（ipv6Mode 四档、showBottomBar、CORE-01~05/07/08、内核重编）见上文各节；`docs/PARITY-REAUDIT.md` 为当前权威缺口清单（CORE-05 任意 profileId 出站、CORE-06 组级 selector/前后置、CORE-07 JSON 深合并、DEF-01/02、UI-01~06 待办）。
+
+改动文件：entry/src/main/ets/pages/Index.ets、pages/RouteRulesPage.ets、pages/SettingsPage.ets、pages/ProfileEdit.ets、utils/GeoAssets.ets、utils/Subscription.ets、resources/base 与 en_US/element/string.json、PARITY.md、CHANGES.md、DEVPLAN.md
+
+## 2026-09-18 CORE-05/06 UI 闭环与 DEF-01 默认值对齐（2.0）
+
+> 按 `docs/PARITY-REAUDIT.md` 待办处理:两项「后端已就绪但无 UI 入口」的功能补齐配置界面,一组默认值对齐安卓源码。
+
+1. **路由规则「指定节点」出站**(CORE-05 剩余):`pages/RouteRulesPage.ets` 出站行加第四按钮「指定节点」——首次点击选中首个节点生成 `profile:<id>`,再点回 `proxy`;profile: 态下显示「目标节点」Select(首项代理=取消;节点被删显示「节点已删除」)。ConfigBuilder 的 `profile:` 解析、引用出站图构建、活跃节点别名 `proxy` 均已存在,未改。
+2. **分组设置**(CORE-06 剩余):`pages/GroupPage.ets` 手动分组卡加「分组设置」内联展开——use_selector 开关、front_proxy/landing_proxy 节点 Select(「无」+ 全部节点,格式 `名称 (服务器)`)、保存/取消;保存后若运行节点属该组,`VpnService.switchTo(runningId)` 自动重载配置(对齐安卓组设置变更即 reload)。ProfileGroup 三字段、ConfigBuilder selector 出站/前后置图、内核 `group.RegisterSelector`(lean_context.go,`.so` 已重编)此前已就绪。
+3. **DEF-01 默认值**:`model/Profile.ets` AppSettings——mtu 1400→9000、mixedPort 0→2080、bypassLan true→false(分别对齐安卓 `DataStore.kt:105/129/107`);`model/Store.ets` MTU 钳制上限 1500→9000。仅影响新装默认,既有设置不迁移。
+4. DEF-02 中 remoteDns/directDns(DoH)、fakeDns=true 维持现状:system 栈 DoH/FakeIP 未经真机验证,按 reaudit 自身口径「结合内核/平台能力恢复默认值,避免未经验证切断现有连接」保留,注释中注明依据。testUrl 维持 gstatic(AGENTS.md 产品决策)。
+5. 新增资源键 16(键名沿用安卓 strings.xml):group_settings、group_settings_saved、use_selector(_sum)、front_proxy、landing_proxy、option_none、route_outbound_profile(_active)、route_rule_profile_target/missing、route_no_profiles(base+en_US 双写)。
+6. 验证:hvigor assembleHap `BUILD SUCCESSFUL`;base/en_US 键 **598=598** 双向差异 0;既有生产代码测试全绿——`tests/parity-config.cjs` 38 项、`tests/outbound-graph.cjs` 9 项(含 selector 生产注册断言)、`ipv6-modes/backup/store.cjs` 全部;未签名 HAP 重新打包。
+7. 已知限制:selector 热切换仍走配置重建(安卓经 Clash API select 免重载),差异已记 reaudit;真机回归:开启 selector 后组内核含 selector 出站、切换组成员重连正常;设置前/落地代理后流量路径正确;新装 MTU=9000/mixed=2080 下连接稳定。
+
+改动文件:entry/src/main/ets/pages/GroupPage.ets、pages/RouteRulesPage.ets、model/Profile.ets、model/Store.ets、resources/base 与 en_US/element/string.json、docs/PARITY-REAUDIT.md、CHANGES.md、DEVPLAN.md
+
+## 2026-09-18 版本统一 2.0.1 与带签名 .app 打包(2.0)
+
+1. 版本:`AppScope/app.json5` versionName **2.0 → 2.0.1**、versionCode **2000000 → 2000001**(关于页/版本显示均动态读取 bundleManager,无其它版本字面量残留;`assembleApp` 产物 `pack.info` 复核 bundleName=com.nekobox.app.jynxen、version 2.0.1/2000001)。
+2. 构建:`assembleHap` + `--mode project assembleApp` 均 `BUILD SUCCESSFUL`;未签名 app 为 `build/outputs/default/NekoBox4Harmony-publish-1.9.1-default-unsigned.app`(13,586,265 字节)。
+3. 签名:经项目 `签名材料`(NekoBox.p12 别名 nekobox + NekoBox.cer + NekoBoxRelease.p7b)用 SDK `hap-sign-tool sign-app`(SHA256withECDSA,compatibleVersion 24)完成双层签名——先签内层 `entry-default.hap`(14,288,233 字节,重打包后壳再签)。口令仅用于命令行进程,未写入 `build-profile.json5`、脚本或仓库任何文件,签名后临时目录已清理。
+4. 校验:`hap-sign-tool verify-app` 对内层 HAP **Verify success**(Hap Signing Block v3,3 blocks);签名 profile 解出 **type=release、bundle-name=com.nekobox.app.jynxen**,与此前 1.9.x 正式签名同一身份,可覆盖升级。
+5. 产物:**`dist/NekoBox-2.0.1-signed.app`**(13,608,082 字节,SHA256 `A2DDC21ABD74F7A13FC7FC6A1C235F66476E7184E5F08C3AAD70FA946CEDF265`),含本轮全部 1:1 移植(CORE-05/06 UI 闭环、DEF-01 默认值、扫码/二维码/强制解析、文件导入、geo 单库管理等)。
+6. 已知限制:release profile 含 udid 白名单(设备需已注册进 AGC 调试/发布设备列表,与此前 1.9.x 一致);`.hvigor`/IDE 无残留签名配置。
+
+改动文件:AppScope/app.json5、dist/NekoBox-2.0.1-signed.app(新产物)、CHANGES.md、DEVPLAN.md、PARITY.md
+
