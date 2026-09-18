@@ -1,10 +1,13 @@
 import common from '@ohos.app.ability.common';
 import promptAction from '@ohos.promptAction';
+import picker from '@ohos.file.picker';
+import fs from '@ohos.file.fs';
 import { UiSpec } from '../common/UiSpec';
 import { DrawerButton } from '../common/components/DrawerButton';
 import { Profile, ProfileGroup } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, LogStore } from '../model/Store';
 import { SubInfo, listSubs, saveSubs, removeSub, updateSubscription, markSubSuccess, markSubFailure } from '../core/Subscriptions';
+import { VpnService } from '../core/VpnService';
 import { subErrorText } from '../utils/Subscription';
 import { exportProfileLink } from '../utils/LinkExporter';
 import { setClipboardText } from '../utils/ClipboardHelper';
@@ -23,6 +26,11 @@ export struct GroupPage {
   @State newGroupName: string = '';
   @State renameGroupId: string = '';
   @State renameDraft: string = '';
+  // 分组设置(对齐安卓 GroupSettingsActivity:use_selector / front_proxy / landing_proxy)
+  @State settingsGroupId: string = '';
+  @State settingsSelector: boolean = false;
+  @State settingsFront: string = '';
+  @State settingsLanding: string = '';
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   onDataChanged: () => void = () => {};
   onOpenDrawer: () => void = () => {};
@@ -128,6 +136,46 @@ export struct GroupPage {
   }
 
   async exportAllNodes(sub: SubInfo): Promise<void> {
+    const lines = this.exportableLinks(sub);
+    if (lines.length === 0) {
+      promptAction.showToast({ message: $r('app.string.export_all_empty') });
+      return;
+    }
+    await setClipboardText(lines.join('\n'));
+    promptAction.showToast({ message: $r('app.string.export_all_done', lines.length) });
+  }
+
+  /** 把订阅内可导出的节点链接写入用户选择的文件(对齐安卓 action_export_file) */
+  async exportAllNodesToFile(sub: SubInfo): Promise<void> {
+    const lines = this.exportableLinks(sub);
+    if (lines.length === 0) {
+      promptAction.showToast({ message: $r('app.string.export_all_empty') });
+      return;
+    }
+    try {
+      const documentPicker = new picker.DocumentViewPicker(this.context);
+      const safeName = sub.name.replace(/[\\/:*?"<>|]/g, '_');
+      const uris = await documentPicker.save({
+        newFileNames: [`${safeName.length > 0 ? safeName : 'subscription'}.txt`],
+        fileSuffixChoices: ['TXT|.txt']
+      });
+      if (uris.length === 0) {
+        promptAction.showToast({ message: $r('app.string.backup_export_cancelled') });
+        return;
+      }
+      const file = fs.openSync(uris[0], fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+      try {
+        fs.writeSync(file.fd, lines.join('\n'));
+      } finally {
+        fs.closeSync(file);
+      }
+      promptAction.showToast({ message: $r('app.string.export_all_file_done', lines.length) });
+    } catch (e) {
+      promptAction.showToast({ message: $r('app.string.export_failed_generic', e instanceof Error ? e.message : `${e}`) });
+    }
+  }
+
+  private exportableLinks(sub: SubInfo): Array<string> {
     const lines: Array<string> = [];
     for (const p of this.profiles.filter((x: Profile) => x.subUrl === sub.url)) {
       const link = exportProfileLink(p);
@@ -135,12 +183,7 @@ export struct GroupPage {
         lines.push(link);
       }
     }
-    if (lines.length === 0) {
-      promptAction.showToast({ message: $r('app.string.export_all_empty') });
-      return;
-    }
-    await setClipboardText(lines.join('\n'));
-    promptAction.showToast({ message: $r('app.string.export_all_done', lines.length) });
+    return lines;
   }
 
   clearGroupProfiles(groupId: string): void {
@@ -255,6 +298,75 @@ export struct GroupPage {
     await this.refresh();
   }
 
+  openGroupSettings(group: ProfileGroup): void {
+    if (this.settingsGroupId === group.id) {
+      this.settingsGroupId = '';
+      return;
+    }
+    this.settingsGroupId = group.id;
+    this.settingsSelector = group.isSelector;
+    this.settingsFront = group.frontProxy;
+    this.settingsLanding = group.landingProxy;
+  }
+
+  /** 保存分组设置;运行中节点属于该组时自动重载配置(对齐安卓组设置变更即 reload) */
+  async saveGroupSettings(): Promise<void> {
+    const group = this.groups.find((g: ProfileGroup) => g.id === this.settingsGroupId);
+    if (group === undefined) {
+      return;
+    }
+    group.isSelector = this.settingsSelector;
+    group.frontProxy = this.settingsFront;
+    group.landingProxy = this.settingsLanding;
+    group.updatedAt = Date.now();
+    await saveGroups(this.groups);
+    this.settingsGroupId = '';
+    promptAction.showToast({ message: $r('app.string.group_settings_saved') });
+    const runningId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
+    const running: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
+    if (running && runningId.length > 0) {
+      const runningProfile = this.profiles.find((p: Profile) => p.id === runningId);
+      if (runningProfile !== undefined && runningProfile.groupId === group.id) {
+        try {
+          LogStore.addLog(`[ui] 分组设置变更,重载 VPN 配置: ${group.name}`);
+          await VpnService.switchTo(this.context, runningId);
+        } catch (e) {
+          LogStore.addLog(`[ui] 分组设置自动重载失败: ${e instanceof Error ? e.message : `${e}`}`);
+        }
+      }
+    }
+    await this.refresh();
+  }
+
+  /** 代理候选:「无」+ 全部非链式节点(链/被引用户进链会放大复杂度,链作前后置安卓同样允许但此处从简) */
+  private proxyOptions(): Array<SelectOption> {
+    const opts: Array<SelectOption> = [{ value: $r('app.string.option_none') } as SelectOption];
+    for (const p of this.profiles) {
+      opts.push({ value: `${p.name} (${p.server})` } as SelectOption);
+    }
+    return opts;
+  }
+
+  private proxyIndexOf(id: string): number {
+    if (id.length === 0) {
+      return 0;
+    }
+    const i = this.profiles.findIndex((p: Profile) => p.id === id);
+    return i < 0 ? 0 : i + 1;
+  }
+
+  private proxyIdAt(index: number): string {
+    return index <= 0 ? '' : this.profiles[index - 1].id;
+  }
+
+  private proxyOptionLabel(index: number): ResourceStr {
+    if (index <= 0) {
+      return $r('app.string.option_none');
+    }
+    const p = this.profiles[index - 1];
+    return p === undefined ? $r('app.string.option_none') : `${p.name} (${p.server})`;
+  }
+
   @Builder
   private groupActionsSub(sub: SubInfo) {
     Flex({ wrap: FlexWrap.Wrap, direction: FlexDirection.Row }) {
@@ -270,6 +382,10 @@ export struct GroupPage {
         .fontSize(12.5).fontWeight(600).fontColor($r('app.color.text_2'))
         .padding({ left: 6, top: 8, bottom: 8 })
         .onClick(() => this.exportAllNodes(sub))
+      Text($r('app.string.export_all_nodes_file'))
+        .fontSize(12.5).fontWeight(600).fontColor($r('app.color.text_2'))
+        .padding({ left: 6, top: 8, bottom: 8 })
+        .onClick(() => this.exportAllNodesToFile(sub))
       Text($r('app.string.clear_group'))
         .fontSize(12.5).fontWeight(600).fontColor($r('app.color.warning'))
         .padding({ left: 6, top: 8, bottom: 8 })
@@ -362,6 +478,10 @@ export struct GroupPage {
                   .fontSize(11.5).fontColor($r('app.color.text_3'))
               }.width('100%')
               Row({ space: 6 }) {
+                Text($r('app.string.group_settings'))
+                  .fontSize(12.5).fontWeight(600).fontColor($r('app.color.mono'))
+                  .padding({ left: 6, top: 8, bottom: 8 })
+                  .onClick(() => this.openGroupSettings(group))
                 Text($r('app.string.clear_group'))
                   .fontSize(12.5).fontWeight(600).fontColor($r('app.color.warning'))
                   .padding({ left: 6, top: 8, bottom: 8 })
@@ -371,6 +491,52 @@ export struct GroupPage {
                   .padding({ left: 6, top: 8, bottom: 8 })
                   .onClick(() => this.deleteGroup(group))
               }.width('100%')
+
+              if (this.settingsGroupId === group.id) {
+                Column({ space: 8 }) {
+                  Row() {
+                    Column({ space: 2 }) {
+                      Text($r('app.string.use_selector')).fontSize(13.5).fontColor($r('app.color.text_primary')).width('100%')
+                      Text($r('app.string.use_selector_sum'))
+                        .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+                    }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+                    Toggle({ type: ToggleType.Switch, isOn: this.settingsSelector })
+                      .onChange((on: boolean) => { this.settingsSelector = on; })
+                  }.width('100%')
+
+                  Column({ space: 2 }) {
+                    Text($r('app.string.front_proxy')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+                    Select(this.proxyOptions())
+                      .selected(this.proxyIndexOf(this.settingsFront))
+                      .value(this.proxyOptionLabel(this.proxyIndexOf(this.settingsFront)))
+                      .onSelect((index: number) => { this.settingsFront = this.proxyIdAt(index); })
+                  }.alignItems(HorizontalAlign.Start).width('100%')
+
+                  Column({ space: 2 }) {
+                    Text($r('app.string.landing_proxy')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+                    Select(this.proxyOptions())
+                      .selected(this.proxyIndexOf(this.settingsLanding))
+                      .value(this.proxyOptionLabel(this.proxyIndexOf(this.settingsLanding)))
+                      .onSelect((index: number) => { this.settingsLanding = this.proxyIdAt(index); })
+                  }.alignItems(HorizontalAlign.Start).width('100%')
+
+                  Row({ space: 8 }) {
+                    Button($r('app.string.cancel'))
+                      .layoutWeight(1)
+                      .backgroundColor($r('app.color.surface'))
+                      .fontColor($r('app.color.text_primary'))
+                      .onClick(() => { this.settingsGroupId = ''; })
+                    Button($r('app.string.save'))
+                      .layoutWeight(1)
+                      .backgroundColor($r('app.color.primary'))
+                      .fontColor($r('app.color.surface'))
+                      .onClick(() => { void this.saveGroupSettings(); })
+                  }.width('100%')
+                }
+                .alignItems(HorizontalAlign.Start)
+                .width('100%')
+                .padding({ top: 6 })
+              }
             }
             .alignItems(HorizontalAlign.Start)
             .width('100%')

@@ -107,6 +107,8 @@ func NewRuleAction(ctx context.Context, logger logger.ContextLogger, action opti
 		sniffAction := &RuleActionSniff{
 			SnifferNames: action.SniffOptions.Sniffer,
 			Timeout:      time.Duration(action.SniffOptions.Timeout),
+			// OHOS patch (CORE-04): wire the restored JSON knob through.
+			OverrideDestination: action.SniffOptions.OverrideDestination,
 		}
 		return sniffAction, sniffAction.build()
 	case C.RuleActionTypeResolve:

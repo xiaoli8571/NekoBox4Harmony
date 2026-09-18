@@ -19,6 +19,7 @@ import (
 	_ "github.com/sagernet/sing-box/experimental/clashapi"
 	"github.com/sagernet/sing-box/protocol/anytls"
 	"github.com/sagernet/sing-box/protocol/direct"
+	"github.com/sagernet/sing-box/protocol/group"
 	"github.com/sagernet/sing-box/protocol/http"
 	"github.com/sagernet/sing-box/protocol/hysteria"
 	"github.com/sagernet/sing-box/protocol/hysteria2"
@@ -51,6 +52,7 @@ func leanContext(ctx context.Context) context.Context {
 
 	outboundRegistry := outbound.NewRegistry()
 	direct.RegisterOutbound(outboundRegistry)
+	group.RegisterSelector(outboundRegistry)
 	shadowsocks.RegisterOutbound(outboundRegistry)
 	vmess.RegisterOutbound(outboundRegistry)
 	vless.RegisterOutbound(outboundRegistry)

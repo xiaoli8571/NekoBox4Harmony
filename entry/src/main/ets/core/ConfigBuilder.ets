@@ -1,6 +1,6 @@
-import { Profile, AppSettings, ProfileType, supportsTransport, needsTlsByDefault } from '../model/Profile';
+import { Profile, ProfileGroup, AppSettings, ProfileType, supportsTransport, needsTlsByDefault } from '../model/Profile';
 import { CLASH_API_PORT } from '../utils/TrafficStats';
-import { RouteRule, RemoteRuleSet, ruleValueList } from '../model/RouteRule';
+import { RouteRule, RemoteRuleSet } from '../model/RouteRule';
 
 /**
  * sing-box 1.14 配置生成器。
@@ -151,7 +151,8 @@ function buildTransport(p: Profile): Object | undefined {
   return t;
 }
 
-function buildOutbound(p: Profile, s: AppSettings, tag: string = 'proxy'): Record<string, Object> {
+/** 导出供主机测试直接断言 extra 深合并结果(纯函数,无副作用)。 */
+export function buildOutbound(p: Profile, s: AppSettings, tag: string = 'proxy'): Record<string, Object> {
   const o: Record<string, Object> = {};
   o['tag'] = tag;
 
@@ -317,10 +318,9 @@ function buildOutbound(p: Profile, s: AppSettings, tag: string = 'proxy'): Recor
     o['multiplex'] = mux;
   }
   if (p.extra.trim().length > 0) {
-    const extra = JSON.parse(p.extra) as Record<string, Object>;
-    const keys = Object.keys(extra);
-    for (const k of keys) {
-      o[k] = extra[k];
+    const extra = parseUserJson(p.extra);
+    if (extra !== null) {
+      deepMerge(o, extra);
     }
   }
   return o;
@@ -382,26 +382,182 @@ function buildWireGuardEndpoint(p: Profile, tag: string = 'proxy'): Record<strin
 }
 
 /** 把自定义路由规则生成 sing-box 1.11 rule 对象(reject 出站改用 rule action) */
-export function buildCustomRule(r: RouteRule): Record<string, Object> | null {
+/**
+ * 多字段 AND 规则生成(对齐安卓 RuleEntity + SingBoxOptionsUtil.makeSingBoxRule)。
+ * 域名前缀:geosite:→rule_set, full:→domain, domain:→domain_suffix,
+ * regexp:→domain_regex, keyword:→domain_keyword, 裸值→domain_suffix。
+ * IP 前缀:geoip:private→ip_is_private, geoip:x→rule_set, 其他→ip_cidr。
+ * 至少一个匹配字段才输出,否则返回 null。
+ * geosite:/geoip: 引用标签会登记到引用集合(与安卓 generateRuleSet 同契约),
+ * 由 buildCoreConfig 为每个引用生成同名 local rule_set 定义,否则内核
+ * 启动即报 rule-set not found(内核 route/rule/rule_item_rule_set.go)。
+ * collectReferencedTags:true 时登记引用(清空后首遍),false 时只生成规则。
+ */
+const referencedRuleSetTags: Array<string> = [];
+
+export function collectReferencedRuleSets(): Array<string> {
+  return referencedRuleSetTags;
+}
+
+function resetReferencedRuleSets(): void {
+  referencedRuleSetTags.length = 0;
+}
+
+/**
+ * Android Util.kt:129-158 mergeMap 语义:
+ *  - 双方同键都为对象 → 递归深合并;
+ *  - 值为数组且键以 + 开头 → 前插(src + dst);键以 + 结尾 → 后插(dst + src);
+ *  - 其余 → src 覆盖 dst。
+ * 注意 src 键的 + 前后缀只在数组值时解释,普通对象键原样写入。
+ */
+function isPlainObject(v: Object | null | undefined): boolean {
+  return v !== null && v !== undefined && typeof v === 'object' && !Array.isArray(v);
+}
+
+export function deepMerge(dst: Record<string, Object>, src: Record<string, Object>): Record<string, Object> {
+  const keys = Object.keys(src);
+  for (const k of keys) {
+    const v = src[k];
+    if (isPlainObject(v) && isPlainObject(dst[k])) {
+      const merged: Record<string, Object> = JSON.parse(JSON.stringify(dst[k])) as Record<string, Object>;
+      dst[k] = deepMerge(merged, v as Record<string, Object>);
+    } else if (Array.isArray(v)) {
+      if (k.startsWith('+')) {
+        const dstKey = k.substring(1);
+        const current = Array.isArray(dst[dstKey]) ? (dst[dstKey] as Array<Object>) : [];
+        dst[dstKey] = (v as Array<Object>).concat(current);
+      } else if (k.endsWith('+') && k.length > 1) {
+        const dstKey = k.substring(0, k.length - 1);
+        const current = Array.isArray(dst[dstKey]) ? (dst[dstKey] as Array<Object>) : [];
+        dst[dstKey] = current.concat(v as Array<Object>);
+      } else {
+        dst[k] = v;
+      }
+    } else {
+      dst[k] = v;
+    }
+  }
+  return dst;
+}
+
+/** 解析用户自定义 JSON;非法输入返回 null 由调用方忽略(单条坏配置不炸主配置)。 */
+function parseUserJson(text: string): Record<string, Object> | null {
+  if (text.trim().length === 0) {
+    return null;
+  }
+  try {
+    const parsed: Object | null = JSON.parse(text) as Object | null;
+    return isPlainObject(parsed) ? parsed as Record<string, Object> : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+export function buildCustomRule(r: RouteRule, collectRefs: boolean = true): Record<string, Object> | null {
   const rule: Record<string, Object> = {};
-  if (r.type === 'port') {
-    const ports: Array<Object> = [];
-    for (const v of ruleValueList(r)) {
-      const n = parseInt(v);
-      if (!isNaN(n)) {
-        ports.push(n);
+  let matched = false;
+  // sing-box 1.14: site/ip 规则集统一用 rule_set,域名和 IP 两段合并写入
+  const ruleSetAcc: Array<string> = [];
+
+  // 域名
+  if (r.domains.trim().length > 0) {
+    const domains: Array<string> = [];
+    const suffixes: Array<string> = [];
+    const regexes: Array<string> = [];
+    const keywords: Array<string> = [];
+    for (const raw of splitCsv(r.domains)) {
+      const it = raw.toLowerCase();
+      if (it.startsWith('geosite:')) {
+        ruleSetAcc.push(it);
+        if (collectRefs && referencedRuleSetTags.indexOf(it) < 0) {
+          referencedRuleSetTags.push(it);
+        }
+      } else if (it.startsWith('full:')) {
+        domains.push(it.substring('full:'.length));
+      } else if (it.startsWith('domain:')) {
+        suffixes.push(it.substring('domain:'.length));
+      } else if (it.startsWith('regexp:')) {
+        regexes.push(it.substring('regexp:'.length));
+      } else if (it.startsWith('keyword:')) {
+        keywords.push(it.substring('keyword:'.length));
+      } else {
+        suffixes.push(it);
       }
     }
-    if (ports.length === 0) {
-      return null;
+    setIfList(rule, 'domain', domains);
+    setIfList(rule, 'domain_suffix', suffixes);
+    setIfList(rule, 'domain_regex', regexes);
+    setIfList(rule, 'domain_keyword', keywords);
+    if (domains.length > 0 || suffixes.length > 0 || regexes.length > 0 ||
+      keywords.length > 0 || ruleSetAcc.length > 0) {
+      matched = true;
     }
-    rule['port'] = ports;
-  } else {
-    const items: Array<string> = ruleValueList(r);
-    if (items.length === 0) {
-      return null;
+  }
+
+  // 目的 IP
+  if (r.ip.trim().length > 0) {
+    const cidrs: Array<string> = [];
+    for (const it of splitCsv(r.ip)) {
+      if (it === 'geoip:private') {
+        rule['ip_is_private'] = true;
+        matched = true;
+      } else if (it.startsWith('geoip:')) {
+        ruleSetAcc.push(it);
+        matched = true;
+        if (collectRefs && referencedRuleSetTags.indexOf(it) < 0) {
+          referencedRuleSetTags.push(it);
+        }
+      } else {
+        cidrs.push(it);
+      }
     }
-    rule[r.type] = items;
+    setIfList(rule, 'ip_cidr', cidrs);
+    if (cidrs.length > 0) {
+      matched = true;
+    }
+  }
+  setIfList(rule, 'rule_set', ruleSetAcc);
+
+  // 目的端口
+  if (setRulePorts(rule, 'port', r.port)) {
+    matched = true;
+  }
+  // 源 IP
+  const sourceCidrs = splitCsv(r.source);
+  if (sourceCidrs.length > 0) {
+    rule['source_ip_cidr'] = sourceCidrs;
+    matched = true;
+  }
+  // 源端口
+  if (setRulePorts(rule, 'source_port', r.sourcePort)) {
+    matched = true;
+  }
+  // 网络
+  if (r.network === 'tcp' || r.network === 'udp') {
+    rule['network'] = r.network;
+    matched = true;
+  }
+  // Android ConfigBuilder.kt:543-544: listByLineOrComma, OR within protocol
+  // while retaining AND with other fields of this same rule.
+  const protocols = splitRuleList(r.protocol);
+  if (protocols.length > 0) {
+    rule['protocol'] = protocols;
+    matched = true;
+  }
+  // 应用包名(进程名匹配)
+  const packages = splitCsv(r.packages);
+  if (packages.length > 0) {
+    rule['process_name'] = packages;
+    matched = true;
+  }
+  // 自定义配置 JSON(深合并,Android Util.kt:129-158 语义;非法 JSON 忽略)
+  const ruleCustom = parseUserJson(r.config);
+  if (ruleCustom !== null) {
+    deepMerge(rule, ruleCustom);
+    matched = true;
+  }
+  if (!matched) {
+    return null;
   }
   if (r.outbound === 'reject') {
     rule['action'] = 'reject';
@@ -409,6 +565,79 @@ export function buildCustomRule(r: RouteRule): Record<string, Object> | null {
     rule['outbound'] = r.outbound;
   }
   return rule;
+}
+
+/** Android listByLineOrComma: rule fields accept both separators. */
+function splitRuleList(text: string): Array<string> {
+  return text.split(/[,\r\n]/).map((part: string): string => part.trim())
+    .filter((part: string): boolean => part.length > 0);
+}
+
+/** Preserve ranges as ranges, never silently turn 1000:2000 into port 1000. */
+function setRulePorts(rule: Record<string, Object>, key: string, text: string): boolean {
+  const ports: Array<number> = [];
+  const ranges: Array<string> = [];
+  for (const token of splitRuleList(text)) {
+    if (/^\d+$/.test(token)) {
+      const port = Number(token);
+      if (port >= 0 && port <= 65535 && ports.indexOf(port) < 0) {
+        ports.push(port);
+      }
+    } else if (/^\d*:\d*$/.test(token)) {
+      const ends = token.split(':');
+      const start = ends[0].length === 0 ? 0 : Number(ends[0]);
+      const end = ends[1].length === 0 ? 65535 : Number(ends[1]);
+      if (start <= end && end <= 65535 && ranges.indexOf(token) < 0) {
+        ranges.push(token);
+      }
+    }
+  }
+  if (ports.length > 0) {
+    rule[key] = ports;
+  }
+  setIfList(rule, `${key}_range`, ranges);
+  return ports.length > 0 || ranges.length > 0;
+}
+
+/** Android autoDnsDomainStrategy: derive from IPv6Mode when unset. */
+function modeDnsStrategy(mode: string): string {
+  if (mode === 'prefer') {
+    return 'prefer_ipv6';
+  }
+  if (mode === 'only') {
+    return 'ipv6_only';
+  }
+  if (mode === 'enable') {
+    return 'prefer_ipv4';
+  }
+  return 'ipv4_only';
+}
+
+/** Normalize Android's UI value before passing it to sing-box 1.14. */
+function dnsStrategy(value: string, s: AppSettings, forServer: boolean = false): string {
+  if (value.length > 0 && value !== 'auto') {
+    return value;
+  }
+  if (forServer) {
+    // Android SingBoxOptionsUtil: server auto → prefer_ipv4.
+    return 'prefer_ipv4';
+  }
+  return modeDnsStrategy(effectiveIpv6Mode(s));
+}
+
+/** Resolve the effective IPv6 mode: ''(legacy) derives from the boolean. */
+export function effectiveIpv6Mode(s: AppSettings): string {
+  if (s.ipv6Mode === 'enable' || s.ipv6Mode === 'prefer' || s.ipv6Mode === 'only' || s.ipv6Mode === 'disable') {
+    return s.ipv6Mode;
+  }
+  return s.ipv6 ? 'enable' : 'disable';
+}
+
+/** 非空数组才写入字段 */
+function setIfList(o: Record<string, Object>, key: string, list: Array<string>): void {
+  if (list.length > 0) {
+    o[key] = list;
+  }
 }
 
 /**
@@ -487,10 +716,78 @@ function buildGeoRuleSet(tag: string, path: string): Record<string, Object> {
   return def;
 }
 
+/** Physical entrance-to-exit order. Only the root's group wraps a chain. */
+function expandChain(p: Profile, profiles: Array<Profile>, ancestors: Array<string> = []): Array<Profile> {
+  if (p.type !== ProfileType.CHAIN) {
+    return [p];
+  }
+  if (ancestors.indexOf(p.id) >= 0) {
+    throw new Error(`链式代理循环: ${p.id}`);
+  }
+  const next = ancestors.concat([p.id]);
+  const hops: Array<Profile> = [];
+  for (const id of splitCsv(p.chainIds)) {
+    const member = profiles.find(x => x.id === id);
+    if (member === undefined) {
+      throw new Error(`链式代理节点不存在: ${id}`);
+    }
+    hops.push(...expandChain(member, profiles, next));
+  }
+  if (hops.length === 0) {
+    throw new Error(`链式代理为空: ${p.id}`);
+  }
+  return hops;
+}
+
+export class ProfileGraph {
+  outbounds: Array<Record<string, Object>> = [];
+  endpoints: Array<Record<string, Object>> = [];
+}
+
+/** Build transactionally: a failed graph never leaves orphan hops in the caller. */
+export function buildProfileGraph(p: Profile, profiles: Array<Profile>, groups: Array<ProfileGroup>,
+  s: AppSettings, rootTag: string): ProfileGraph {
+  const hops = expandChain(p, profiles);
+  const group = groups.find(g => g.id === p.groupId);
+  if (group !== undefined) {
+    const front = profiles.find(x => x.id === group.frontProxy);
+    const landing = profiles.find(x => x.id === group.landingProxy);
+    // Android resolves the root chain first, then inserts raw group wrappers.
+    // A CHAIN wrapper is not a supported raw outbound: reject rather than truncate.
+    if (front !== undefined) {
+      hops.unshift(front);
+    }
+    if (landing !== undefined) {
+      hops.push(landing);
+    }
+  }
+  const graph = new ProfileGraph();
+  for (let i = 0; i < hops.length; i++) {
+    const tag = i === hops.length - 1 ? rootTag : `${rootTag}@hop${i}`;
+    const node = hops[i].type === ProfileType.WIREGUARD ?
+      buildWireGuardEndpoint(hops[i], tag) : buildOutbound(hops[i], s, tag);
+    // Tags and detours belong to this graph, not to user-supplied extra JSON.
+    node['tag'] = tag;
+    if (i > 0) {
+      node['detour'] = `${rootTag}@hop${i - 1}`;
+    }
+    if (hops[i].type === ProfileType.WIREGUARD) {
+      graph.endpoints.push(node);
+    } else {
+      graph.outbounds.push(node);
+    }
+  }
+  return graph;
+}
+
+function profileRootTag(id: string): string {
+  return `profile-${encodeURIComponent(id)}`;
+}
+
 export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: string,
   logPath: string = '', geositePath: string = '', geoIpPath: string = '',
   customRules: Array<RouteRule> = [], remoteRuleSets: Array<RemoteRuleSet> = [],
-  cachePath: string = '', allProfiles: Array<Profile> = []): string {
+  cachePath: string = '', allProfiles: Array<Profile> = [], groups: Array<ProfileGroup> = []): string {
   if (p.type !== ProfileType.CUSTOM && p.type !== ProfileType.CHAIN && p.server.length === 0) {
     throw new Error('服务器地址为空');
   }
@@ -499,13 +796,19 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   }
 
   // ---- inbounds ----
+  // Single source of truth: ''(legacy) derives from the boolean; no in-place
+  // mutation of the caller's settings object.
+  const ipv6Mode = effectiveIpv6Mode(s);
   const tun: Record<string, Object> = {};
   tun['type'] = 'tun';
   tun['tag'] = 'tun-in';
-  if (s.ipv6) {
-    tun['address'] = [TUN_ADDR_V4, TUN_ADDR_V6];
-  } else {
+  // Android IPv6Mode: DISABLE=v4 only, ONLY=v6 only, ENABLE/PREFER=dual stack.
+  if (ipv6Mode === 'only') {
+    tun['address'] = [TUN_ADDR_V6];
+  } else if (ipv6Mode === 'disable') {
     tun['address'] = [TUN_ADDR_V4];
+  } else {
+    tun['address'] = [TUN_ADDR_V4, TUN_ADDR_V6];
   }
   tun['mtu'] = s.mtu;
   tun['auto_route'] = false;   // 路由由鸿蒙 VPN 框架管理
@@ -527,39 +830,50 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   // sing-box 1.14 将 WireGuard 从 outbound 迁移为顶层 endpoint；endpoint tag 仍可作为路由目标。
   const endpoints: Array<Object> = [];
   const outbounds: Array<Object> = [];
-  if (p.type === ProfileType.CHAIN) {
-    const ids = splitCsv(p.chainIds);
-    const hops: Array<Profile> = [];
-    for (const id of ids) {
-      const found = allProfiles.find(x => x.id === id);
-      if (found !== undefined && found.type !== ProfileType.CHAIN) {
-        hops.push(found);
-      }
+  const profileTags = new Map<string, string>();
+  const profiles = allProfiles.filter(x => x.id !== p.id).concat([p]);
+  const selectedGroup = groups.find(g => g.id === p.groupId);
+  if (selectedGroup !== undefined && selectedGroup.isSelector) {
+    const members = profiles.filter(x => x.groupId === p.groupId);
+    const memberTags: Array<string> = [];
+    for (const member of members) {
+      const tag = profileRootTag(member.id);
+      const graph = buildProfileGraph(member, profiles, groups, s, tag);
+      outbounds.push(...graph.outbounds);
+      endpoints.push(...graph.endpoints);
+      profileTags.set(member.id, tag);
+      memberTags.push(tag);
     }
-    if (hops.length === 0) {
-      throw new Error('链式代理引用的节点不存在');
-    }
-    for (let i = 0; i < hops.length; i++) {
-      const tag = i === hops.length - 1 ? 'proxy' : `chain_${i}`;
-      const detour = i > 0 ? `chain_${i - 1}` : '';
-      if (hops[i].type === ProfileType.WIREGUARD) {
-        const endpoint = buildWireGuardEndpoint(hops[i], tag);
-        if (detour.length > 0) {
-          endpoint['detour'] = detour;
-        }
-        endpoints.push(endpoint);
-      } else {
-        const outbound = buildOutbound(hops[i], s, tag);
-        if (detour.length > 0) {
-          outbound['detour'] = detour;
-        }
-        outbounds.push(outbound);
-      }
-    }
-  } else if (p.type === ProfileType.WIREGUARD) {
-    endpoints.push(buildWireGuardEndpoint(p));
+    const selector: Record<string, Object> = {
+      'type': 'selector', 'tag': 'proxy', 'outbounds': memberTags,
+      'default': profileRootTag(p.id)
+    };
+    outbounds.unshift(selector);
   } else {
-    outbounds.push(buildOutbound(p, s));
+    const graph = buildProfileGraph(p, profiles, groups, s, 'proxy');
+    outbounds.push(...graph.outbounds);
+    endpoints.push(...graph.endpoints);
+  }
+  // Android aliases a rule referencing the active ID to proxy (also for selector).
+  profileTags.set(p.id, 'proxy');
+  for (const r of customRules) {
+    if (!r.enabled || !r.outbound.startsWith('profile:')) {
+      continue;
+    }
+    const id = r.outbound.substring('profile:'.length);
+    if (profileTags.has(id)) {
+      continue;
+    }
+    const target = profiles.find(x => x.id === id);
+    if (target === undefined) {
+      console.warn(`[NB] 路由引用节点不存在,跳过: ${id}`);
+      continue;
+    }
+    const tag = profileRootTag(id);
+    const graph = buildProfileGraph(target, profiles, groups, s, tag);
+    outbounds.push(...graph.outbounds);
+    endpoints.push(...graph.endpoints);
+    profileTags.set(id, tag);
   }
   const direct: Record<string, Object> = { 'type': 'direct', 'tag': 'direct' };
   // 1.11: block/dns 特殊 outbound 已移除,分流用 rule action(hijack-dns / reject)
@@ -573,22 +887,115 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     buildDnsServer('remote', s.remoteDns, 'proxy'),
     buildDnsServer('local', s.directDns, '')
   ];
+  // 1.14 无 rcode DNS server,block 语义用 predefined 动作 + rcode 表达
+  // (内核 option/rule_action.go: DNSRouteActionPredefined + RuleActionTypeReject)。
   if (s.fakeDns) {
     const fakeServer: Record<string, Object> = {};
     fakeServer['type'] = 'fakeip';
     fakeServer['tag'] = 'fake';
+    // 安卓 ConfigBuilder.kt:710-724 无条件同时写 inet4_range/inet6_range,
+    // 与 ipv6Mode 无关(旧代码只按 legacy ipv6 布尔加 v6 段,四档下自相矛盾)。
     fakeServer['inet4_range'] = FAKEIP_RANGE_V4;
-    if (s.ipv6) {
-      fakeServer['inet6_range'] = FAKEIP_RANGE_V6;
-    }
+    fakeServer['inet6_range'] = FAKEIP_RANGE_V6;
+    // 1.14 typed server 不接受 strategy；策略放在选择 fake 的 DNS 规则上。
+    // 仍使用 1.14 兼容规则模式，不能混入 query_type/ip_version 新模式条件。
+    // 后续 1.16 迁移另行处理，不把 legacy 字段拒绝误判成无法实现。
     dnsServers.push(fakeServer);
   }
   const dnsRules: Array<Object> = [];
+  // 用户规则参与 DNS 分流(对齐安卓 userDNSRuleList + enableDnsRouting):
+  // direct → local;proxy → remote(reject 语义 = predefined 空应答);FakeIP
+  // 兜底只挂 tun-in(对齐安卓 inbound: [tun-in]),mixed 入站不拿假地址。
+  if (s.mode === 'rule' && s.dnsRouting) {
+    for (const r of customRules) {
+      if (!r.enabled || r.domains.trim().length === 0) {
+        continue;
+      }
+      // 仅复用域名前缀解析逻辑;geosite:/geoip: 引用只在资产可用时保留,
+      // 其余丢弃而非生成悬空定义(内核启动会拒绝 rule-set not found)。
+      const dnsRule: Record<string, Object> = {};
+      const domains: Array<string> = [];
+      const suffixes: Array<string> = [];
+      const regexes: Array<string> = [];
+      const keywords: Array<string> = [];
+      const ruleSets: Array<string> = [];
+      for (const raw of splitRuleList(r.domains)) {
+        const it = raw.toLowerCase();
+        if (it.startsWith('geosite:')) {
+          if (it === 'geosite:cn' && geositePath.length > 0) {
+            ruleSets.push(it);
+          }
+        } else if (it.startsWith('full:')) {
+          domains.push(it.substring('full:'.length));
+        } else if (it.startsWith('domain:')) {
+          suffixes.push(it.substring('domain:'.length));
+        } else if (it.startsWith('regexp:')) {
+          regexes.push(it.substring('regexp:'.length));
+        } else if (it.startsWith('keyword:')) {
+          keywords.push(it.substring('keyword:'.length));
+        } else {
+          suffixes.push(it);
+        }
+      }
+      if (r.ip.trim().length > 0) {
+        for (const it of splitCsv(r.ip)) {
+          if (it === 'geoip:private') {
+            dnsRule['ip_is_private'] = true;
+          } else if (it === 'geoip:cn' && geoIpPath.length > 0) {
+            ruleSets.push(it);
+          }
+        }
+      }
+      setIfList(dnsRule, 'domain', domains);
+      setIfList(dnsRule, 'domain_suffix', suffixes);
+      setIfList(dnsRule, 'domain_regex', regexes);
+      setIfList(dnsRule, 'domain_keyword', keywords);
+      if (ruleSets.length > 0) {
+        dnsRule['rule_set'] = ruleSets;
+      }
+      // 仅当规则真的有匹配条件才进入 DNS 规则列表(对齐安卓 checkEmpty)
+      const hasMatch = domains.length > 0 || suffixes.length > 0 || regexes.length > 0 ||
+        keywords.length > 0 || ruleSets.length > 0 || dnsRule['ip_is_private'] === true;
+      if (!hasMatch) {
+        continue;
+      }
+      if (r.outbound === 'direct') {
+        dnsRule['server'] = 'local';
+        setIf(dnsRule, 'strategy', dnsStrategy(s.directDnsStrategy, s));
+        dnsRules.push(dnsRule);
+      } else if (r.outbound === 'reject') {
+        // 1.14 无 rcode server;reject 语义 = predefined 动作返回 NXDOMAIN。
+        // predefined 变体只接受 rcode/answer/ns/extra(内核 rule_action.go:340),
+        // disable_cache 属于 route 动作,写这里会被 strict schema 拒绝。
+        dnsRule['action'] = 'predefined';
+        dnsRule['rcode'] = 3;
+        dnsRules.push(dnsRule);
+      } else if (r.outbound === 'proxy') {
+        if (s.fakeDns) {
+          const fakeUserRule: Record<string, Object> = JSON.parse(JSON.stringify(dnsRule)) as Record<string, Object>;
+          fakeUserRule['server'] = 'fake';
+          fakeUserRule['inbound'] = ['tun-in'];
+          fakeUserRule['strategy'] = 'ipv4_only';
+          fakeUserRule['disable_cache'] = true;
+          dnsRules.push(fakeUserRule);
+        }
+        dnsRule['server'] = 'remote';
+        setIf(dnsRule, 'strategy', dnsStrategy(s.remoteDnsStrategy, s));
+        dnsRules.push(dnsRule);
+      }
+    }
+  }
   if (s.fakeDns) {
+    // FakeIP 兜底:仅 TUN 入站(对齐安卓 dns.rules.add(inbound=tun-in, server=dns-fake)),
+    // 且排在用户/内置规则之后(dns.rules 顺序匹配,先到先得)。
     const fakeRule: Record<string, Object> = {};
-    const queryTypes: Array<Object> = ['A', 'AAAA'];
-    fakeRule['query_type'] = queryTypes;
+    fakeRule['inbound'] = ['tun-in'];
+    // query_type 会将整组 DNS 规则切换到新模式，与其他规则 strategy 冲突。
+    // Android 原兜底只限定 inbound，不含 query_type；兼容策略迁移到选择规则。
     fakeRule['server'] = 'fake';
+    fakeRule['strategy'] = 'ipv4_only';
+    // 安卓 ConfigBuilder.kt:724 同时置 disable_cache=true(1.14 内核接受该字段)
+    fakeRule['disable_cache'] = true;
     dnsRules.push(fakeRule);
   }
   // 规则模式 + DNS 路由开启 + geosite 数据就绪:CN 域名用直连 DNS 解析(CDN 友好)
@@ -597,7 +1004,7 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     const cnDnsRule: Record<string, Object> = {};
     cnDnsRule['rule_set'] = ['geosite_cn'];
     cnDnsRule['server'] = 'local';
-    setIf(cnDnsRule, 'strategy', s.directDnsStrategy);
+    setIf(cnDnsRule, 'strategy', dnsStrategy(s.directDnsStrategy, s));
     dnsRules.push(cnDnsRule);
   }
   // 1.14:legacy outbound DNS rule 已弃用,改用 route.default_domain_resolver
@@ -606,16 +1013,24 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   dns['servers'] = dnsServers;
   dns['rules'] = dnsRules;
   dns['final'] = 'remote';
-  setIf(dns, 'strategy', s.remoteDnsStrategy);
+  setIf(dns, 'strategy', dnsStrategy(s.remoteDnsStrategy, s));
 
   // ---- route ----
   // ---- route ----
   const routeRules: Array<Object> = [];
-  // 1.13+:sniff 由 inbound 字段迁移为 rule action(嗅探成功即覆写目的域名)
+  // 嗅探(对齐安卓 needSniff/needSniffOverride,作用于 tun 与 mixed 两个 inbound):
+  // route 档只嗅探(用于规则分流);override 档嗅探成功后覆写目的域名
+  // (内核 OHOS 补丁 CORE-04 恢复了 override_destination JSON 旋钮)。
   if (s.sniffMode !== 'off') {
     const sniffRule: Record<string, Object> = {};
-    sniffRule['inbound'] = 'tun-in';
+    sniffRule['inbound'] = ['tun-in'];
+    if (s.mixedPort > 0) {
+      sniffRule['inbound'] = ['tun-in', 'mixed-in'];
+    }
     sniffRule['action'] = 'sniff';
+    if (s.sniffMode === 'override') {
+      sniffRule['override_destination'] = true;
+    }
     routeRules.push(sniffRule);
   }
   // DNS 劫持:终端 53 报文交给内核 DNS 栈处理(TUN 模式必须)
@@ -623,31 +1038,60 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   dnsHijackRule['protocol'] = 'dns';
   dnsHijackRule['action'] = 'hijack-dns';
   routeRules.push(dnsHijackRule);
+  // Resolve before destination-IP matching: route actions do not retry earlier rules.
+  // 策略只由 IPv6Mode 推导(安卓 genDomainStrategy,ConfigBuilder.kt:148-155),
+  // 与用户设置的 remote DNS 策略无关;此前误用 remoteDnsStrategy。
+  if (s.resolveDestination) {
+    const resolveRule: Record<string, Object> = {};
+    resolveRule['action'] = 'resolve';
+    resolveRule['strategy'] = modeDnsStrategy(effectiveIpv6Mode(s));
+    routeRules.push(resolveRule);
+  }
   const ruleSetDefinitions: Array<Object> = [];
 
   // 模式:direct(全部直连)/ rule(规则分流)/ global(除 DNS 劫持外全部走代理)
   let finalOutbound = 'proxy';
+  // 内置路由规则(安卓 ConfigBuilder.kt:697-708,无模式限定):
+  // 私网绕过按设置(内核自带 ip_is_private 判定),组播拒绝独立于开关。
+  // 两者都在用户/geo/远程规则之后追加(route.rules 顺序匹配,先到先得)。
+  const builtinRules: Array<Record<string, Object>> = [];
+  if (s.bypassLan) {
+    const privateRule: Record<string, Object> = {};
+    privateRule['ip_is_private'] = true;
+    privateRule['outbound'] = 'direct';
+    builtinRules.push(privateRule);
+  }
+  // block mcast:独立于 bypassLan 开关,目的/源命中组播段即拒绝
+  const mcastRule: Record<string, Object> = {};
+  mcastRule['ip_cidr'] = ['224.0.0.0/3', 'ff00::/8'];
+  mcastRule['source_ip_cidr'] = ['224.0.0.0/3', 'ff00::/8'];
+  mcastRule['action'] = 'reject';
+  builtinRules.push(mcastRule);
+
   if (s.mode === 'direct') {
     finalOutbound = 'direct';
   } else if (s.mode === 'rule') {
-    // 私网、自定义、Geo 与远程规则只允许在规则模式参与分流。
-    if (s.bypassLan) {
-      const privateRule: Record<string, Object> = {};
-      privateRule['ip_cidr'] = [
-        '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8',
-        '169.254.0.0/16', '100.64.0.0/10', '224.0.0.0/4', '255.255.255.255/32',
-        '::1/128', 'fe80::/10', 'fc00::/7', 'ff00::/8'
-      ];
-      privateRule['outbound'] = 'direct';
-      routeRules.push(privateRule);
-    }
-
+    // 用户规则先入(安卓 ConfigBuilder.kt:600),内置私网/组播在其后追加
+    // 先清空上一次构建遗留的引用登记,再重建(buildCoreConfig 可能被多次调用,
+    // 且首遍生成的 rule 对象已写入 routeRules,这里只做引用收集)。
+    referencedRuleSetTags.length = 0;
     for (const r of customRules) {
       if (!r.enabled) {
         continue;
       }
+      let targetTag = r.outbound;
+      if (r.outbound.startsWith('profile:')) {
+        const resolved = profileTags.get(r.outbound.substring('profile:'.length));
+        if (resolved === undefined) {
+          continue;
+        }
+        targetTag = resolved;
+      }
       const rule = buildCustomRule(r);
       if (rule !== null) {
+        if (r.outbound !== 'reject') {
+          rule['outbound'] = targetTag;
+        }
         routeRules.push(rule);
       }
     }
@@ -698,14 +1142,32 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
       routeRules.push(reference);
     }
 
-    if (s.resolveDestination) {
-      // 兜底规则前先解析目标地址:IP 类规则得以匹配域名连接(对齐安卓解析目标地址)
-      // 1.14:布尔 resolve 字段已移除改 action:"resolve";该动作不接受 outbound 选项,
-      // 单独成条(非终止动作,位于直连/规则分流之后、final 之前,行为等价)
-      const resolveRule: Record<string, Object> = {};
-      resolveRule['action'] = 'resolve';
-      routeRules.push(resolveRule);
+    // 自定义 geosite:/geoip: 引用必须有同名定义(内核启动校验,
+    // 见 route/rule/rule_item_rule_set.go:31-38;对齐安卓 generateRuleSet)。
+    // 本项目资产为 cn 专属库,仅 geosite:cn/geoip:cn 有对应本地文件;
+    // 其他引用标记为非法,宁可跳过该规则也不能生成会让内核拒绝整份配置的悬空定义。
+    const pendingDefs: Array<Record<string, Object>> = [];
+    const cnTags: Array<string> = [];
+    for (const tag of referencedRuleSetTags) {
+      if (tag === 'geosite:cn' && geositePath.length > 0) {
+        cnTags.push(tag);
+        pendingDefs.push(buildGeoRuleSet(tag, geositePath));
+      } else if (tag === 'geoip:cn' && geoIpPath.length > 0) {
+        cnTags.push(tag);
+        pendingDefs.push(buildGeoRuleSet(tag, geoIpPath));
+      }
     }
+    for (const tag of referencedRuleSetTags) {
+      if (cnTags.indexOf(tag) < 0) {
+        throw new Error(`未支持的规则集引用: ${tag}(当前 geo 库仅含 cn 分类)`);
+      }
+    }
+    for (const def of pendingDefs) {
+      ruleSetDefinitions.push(def);
+    }
+  }
+  for (const builtin of builtinRules) {
+    routeRules.push(builtin);
   }
 
   const route: Record<string, Object> = {};
@@ -724,8 +1186,11 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   route['final'] = finalOutbound;
   route['auto_detect_interface'] = false;
   // 1.14:出站服务器域名统一经 local(直连 DNS)解析
+  // server auto 固定 prefer_ipv4:SingBoxOptionsUtil.domainStrategy("server") 不回退到
+  // autoDnsDomainStrategy,ConfigBuilder.kt:270,399-400 直接用该值,与 remote/direct 不同。
   const domainResolver: Record<string, Object> = {};
   domainResolver['server'] = 'local';
+  setIf(domainResolver, 'strategy', dnsStrategy(s.serverDnsStrategy, s, true));
   route['default_domain_resolver'] = domainResolver;
   if (physicalIfname.length > 0) {
     route['default_interface'] = physicalIfname;
@@ -767,17 +1232,10 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   config['outbounds'] = outbounds;
   config['route'] = route;
   config['experimental'] = experimental;
-  // 全局自定义配置:与根对象浅合并(用户键优先,语法错误时忽略)
-  if (s.globalCustomConfig.trim().length > 0) {
-    try {
-      const custom = JSON.parse(s.globalCustomConfig) as Record<string, Object>;
-      const keys = Object.keys(custom);
-      for (const k of keys) {
-        config[k] = custom[k];
-      }
-    } catch (e) {
-      // 忽略非法 JSON,保持主配置可用
-    }
+  // 全局自定义配置:与根对象深合并(Android Util.kt mergeJSON 语义;非法 JSON 忽略)
+  const globalCustom = parseUserJson(s.globalCustomConfig);
+  if (globalCustom !== null) {
+    deepMerge(config, globalCustom);
   }
   return JSON.stringify(config, null, 2);
 }
@@ -799,7 +1257,7 @@ export class LatencyTestConfig {
  * 内核侧(CGoTestStartSingBox)会再强制清空 inbounds/experimental 做双保险。
  */
 export function buildLatencyTestConfig(targets: Array<Profile>, allProfiles: Array<Profile>,
-  s: AppSettings, logPath: string): LatencyTestConfig {
+  s: AppSettings, logPath: string, groups: Array<ProfileGroup> = []): LatencyTestConfig {
   const result = new LatencyTestConfig();
   const endpoints: Array<Object> = [];
   const outbounds: Array<Object> = [];
@@ -807,40 +1265,11 @@ export function buildLatencyTestConfig(targets: Array<Profile>, allProfiles: Arr
     const p = targets[i];
     const tag = `t${i}`;
     try {
-      if (p.type === ProfileType.CHAIN) {
-        const ids = splitCsv(p.chainIds);
-        const hops: Array<Profile> = [];
-        for (const id of ids) {
-          const found = allProfiles.find(x => x.id === id);
-          if (found !== undefined && found.type !== ProfileType.CHAIN) {
-            hops.push(found);
-          }
-        }
-        if (hops.length === 0) {
-          throw new Error('链式代理引用的节点不存在');
-        }
-        for (let j = 0; j < hops.length; j++) {
-          const hopTag = j === hops.length - 1 ? tag : `c${i}_${j}`;
-          const detour = j > 0 ? `c${i}_${j - 1}` : '';
-          if (hops[j].type === ProfileType.WIREGUARD) {
-            const endpoint = buildWireGuardEndpoint(hops[j], hopTag);
-            if (detour.length > 0) {
-              endpoint['detour'] = detour;
-            }
-            endpoints.push(endpoint);
-          } else {
-            const outbound = buildOutbound(hops[j], s, hopTag);
-            if (detour.length > 0) {
-              outbound['detour'] = detour;
-            }
-            outbounds.push(outbound);
-          }
-        }
-      } else if (p.type === ProfileType.WIREGUARD) {
-        endpoints.push(buildWireGuardEndpoint(p, tag));
-      } else {
-        outbounds.push(buildOutbound(p, s, tag));
-      }
+      // Group wrappers apply to latency tests in Android (only the selector
+      // and rule targets are excluded); a member root keeps its own wrapper.
+      const graph = buildProfileGraph(p, allProfiles, groups, s, tag);
+      outbounds.push(...graph.outbounds);
+      endpoints.push(...graph.endpoints);
       result.tags.push(tag);
     } catch (e) {
       result.tags.push('');

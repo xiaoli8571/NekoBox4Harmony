@@ -7,6 +7,7 @@ import { DrawerButton } from '../common/components/DrawerButton';
 
 const CORE_VERSION = 'sing-box 1.14.0 (OHOS c-shared)';
 const GITHUB_URL = 'https://github.com/xiaoli8571/NekoBox4Harmony';
+const TELEGRAM_URL = 'https://t.me/+x9D290Stp9NhYWU9';
 const RELEASES_API = 'https://api.github.com/repos/xiaoli8571/NekoBox4Harmony/releases/latest';
 
 /**
@@ -30,10 +31,19 @@ export struct AboutPage {
   }
 
   private openGitHub(): void {
+    this.openLink(GITHUB_URL);
+  }
+
+  private openTelegram(): void {
+    this.openLink(TELEGRAM_URL);
+  }
+
+  private openLink(url: string): void {
     try {
-      this.context.openLink(GITHUB_URL);
+      this.context.openLink(url);
     } catch (e) {
-      promptAction.showToast({ message: GITHUB_URL });
+      // 无可用处理器时把链接展示给用户手动复制
+      promptAction.showToast({ message: url });
     }
   }
 
@@ -107,6 +117,12 @@ export struct AboutPage {
                 .backgroundColor($r('app.color.surface'))
                 .fontColor($r('app.color.text_primary'))
                 .onClick(() => this.openGitHub())
+              Button($r('app.string.about_telegram'))
+                .layoutWeight(1)
+                .height(UiSpec.BTN_HEIGHT)
+                .backgroundColor($r('app.color.surface'))
+                .fontColor($r('app.color.text_primary'))
+                .onClick(() => this.openTelegram())
             }.width('100%')
           }
           .alignItems(HorizontalAlign.Start)

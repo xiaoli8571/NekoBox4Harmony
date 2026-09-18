@@ -137,6 +137,30 @@
       "value": "Liquid glass effect"
     },
     {
+      "name": "network_change_reset_connections",
+      "value": "Reset connections on network change"
+    },
+    {
+      "name": "network_change_reset_connections_sum",
+      "value": "Reconnect automatically after Wi-Fi/mobile data switch"
+    },
+    {
+      "name": "wake_reset_connections",
+      "value": "Reset connections on app foreground"
+    },
+    {
+      "name": "wake_reset_connections_sum",
+      "value": "Reset the connection when the app returns to the foreground (matches Android wake reset; off by default)"
+    },
+    {
+      "name": "profile_traffic_statistics",
+      "value": "Per-profile traffic statistics"
+    },
+    {
+      "name": "profile_traffic_statistics_sum",
+      "value": "Add this session's traffic to the profile record on disconnect and show the cumulative total on the node card"
+    },
+    {
       "name": "per_app_proxy",
       "value": "Per-app proxy"
     },
@@ -163,6 +187,38 @@
     {
       "name": "reading_apps",
       "value": "Loading…"
+    },
+    {
+      "name": "invert_selections",
+      "value": "Invert"
+    },
+    {
+      "name": "clear_selections",
+      "value": "Clear selections"
+    },
+    {
+      "name": "export_selections_clipboard",
+      "value": "Export list to clipboard"
+    },
+    {
+      "name": "import_selections_clipboard",
+      "value": "Import list from clipboard"
+    },
+    {
+      "name": "action_export_msg",
+      "value": "Copied to clipboard"
+    },
+    {
+      "name": "action_export_err",
+      "value": "Copy failed"
+    },
+    {
+      "name": "action_import_msg",
+      "value": "Imported from clipboard"
+    },
+    {
+      "name": "action_import_err",
+      "value": "Clipboard is not a valid app list (package names after a newline are required)"
     },
     {
       "name": "backup_restore",
@@ -221,6 +277,54 @@
       "value": "Delete subscription and profiles"
     },
     {
+      "name": "subscription_settings",
+      "value": "Subscription settings"
+    },
+    {
+      "name": "auto_update",
+      "value": "Auto update"
+    },
+    {
+      "name": "auto_update_delay",
+      "value": "Update interval (hours)"
+    },
+    {
+      "name": "update_when_connected_only",
+      "value": "Update only when VPN is connected"
+    },
+    {
+      "name": "update_when_connected_only_sum",
+      "value": "Skip auto-update while disconnected to save traffic"
+    },
+    {
+      "name": "deduplication",
+      "value": "Deduplicate on update"
+    },
+    {
+      "name": "deduplication_sum",
+      "value": "Skip duplicate nodes by type + server + port + UUID (off by default; keeps all nodes the subscription returns)"
+    },
+    {
+      "name": "force_resolve",
+      "value": "Force resolve"
+    },
+    {
+      "name": "force_resolve_sum",
+      "value": "Resolve node server hostnames to IPs on update, keeping the original domain as SNI (off by default)"
+    },
+    {
+      "name": "subscription_user_agent",
+      "value": "Custom User-Agent"
+    },
+    {
+      "name": "subscription_user_agent_hint",
+      "value": "Leave empty for the default UA"
+    },
+    {
+      "name": "subscription_setting_saved",
+      "value": "Setting saved"
+    },
+    {
       "name": "add",
       "value": "Add"
     },
@@ -239,6 +343,82 @@
     {
       "name": "route_rule_remark",
       "value": "Rule remark"
+    },
+    {
+      "name": "add_profile_methods_scan_qr_code",
+      "value": "Scan QR code"
+    },
+    {
+      "name": "action_import_file",
+      "value": "Import from file"
+    },
+    {
+      "name": "no_proxies_found_in_file",
+      "value": "No proxies found in the file"
+    },
+    {
+      "name": "import_file_message",
+      "value": "Parsed %1$d profiles from the file. Import them?"
+    },
+    {
+      "name": "import_file_failed",
+      "value": "File import failed: %1$s"
+    },
+    {
+      "name": "scan_no_content",
+      "value": "No importable content in the QR code"
+    },
+    {
+      "name": "scan_failed_use_paste",
+      "value": "Scan failed: %1$s. Please use paste import instead"
+    },
+    {
+      "name": "route_rule_domains",
+      "value": "Domains"
+    },
+    {
+      "name": "route_rule_domains_hint",
+      "value": "Comma separated. Prefixes: geosite:cn / full:example.com / domain:example.com / keyword:example / regexp:^example"
+    },
+    {
+      "name": "route_rule_ip",
+      "value": "Destination IP"
+    },
+    {
+      "name": "route_rule_port",
+      "value": "Destination port"
+    },
+    {
+      "name": "route_rule_source",
+      "value": "Source IP"
+    },
+    {
+      "name": "route_rule_source_port",
+      "value": "Source port"
+    },
+    {
+      "name": "route_rule_network",
+      "value": "Network"
+    },
+    {
+      "name": "route_rule_protocol",
+      "value": "Protocol"
+    },
+    {
+      "name": "route_rule_any",
+      "value": "Any"
+    },
+    {
+      "name": "route_rule_packages",
+      "value": "App packages"
+    },
+    {
+      "name": "route_rule_config",
+      "value": "Custom config"
+    },
+    {
+      "name": "route_rule_config_hint",
+      "value": "JSON fragment for this rule, shallow-merged with the fields above"
     },
     {
       "name": "domain",
@@ -333,12 +513,48 @@
       "value": "Logs"
     },
     {
+      "name": "log_export",
+      "value": "Export"
+    },
+    {
+      "name": "log_clear",
+      "value": "Clear"
+    },
+    {
+      "name": "log_search_hint",
+      "value": "Search logs"
+    },
+    {
+      "name": "log_export_empty",
+      "value": "No logs to export"
+    },
+    {
+      "name": "log_exported",
+      "value": "Logs exported"
+    },
+    {
       "name": "import_link_subscription",
       "value": "Import subscription"
     },
     {
       "name": "confirm_delete_route_rule",
       "value": "Delete this route rule?"
+    },
+    {
+      "name": "route_reset",
+      "value": "Reset routes"
+    },
+    {
+      "name": "route_reset_confirm",
+      "value": "All custom route rules and remote rule sets will be cleared. Continue?"
+    },
+    {
+      "name": "route_reset_empty",
+      "value": "No route rules to clear"
+    },
+    {
+      "name": "route_reset_done",
+      "value": "All route rules cleared"
     },
     {
       "name": "route_rule_empty_hint",
@@ -441,6 +657,18 @@
       "value": "Fetching subscription…"
     },
     {
+      "name": "import_confirm",
+      "value": "Confirm import"
+    },
+    {
+      "name": "subscription_import_message",
+      "value": "Confirm importing subscription \"%1$s\"? If the source is untrusted, your IP and network behavior may be leaked."
+    },
+    {
+      "name": "profile_import_message",
+      "value": "Confirm importing profile \"%1$s\"?"
+    },
+    {
       "name": "clash_no_importable_profiles",
       "value": "The subscription returned Clash format but no importable profiles. Unsupported profiles skipped"
     },
@@ -455,6 +683,70 @@
     {
       "name": "ungrouped",
       "value": "Ungrouped"
+    },
+    {
+      "name": "move_to_group",
+      "value": "Move to group"
+    },
+    {
+      "name": "move_to_group_title",
+      "value": "Move to group"
+    },
+    {
+      "name": "move_to_group_done",
+      "value": "Profile moved"
+    },
+    {
+      "name": "profile_group",
+      "value": "Group"
+    },
+    {
+      "name": "group_settings",
+      "value": "Group Settings"
+    },
+    {
+      "name": "group_settings_saved",
+      "value": "Group settings saved"
+    },
+    {
+      "name": "use_selector",
+      "value": "Use selector"
+    },
+    {
+      "name": "use_selector_sum",
+      "value": "Emit a kernel selector outbound for this group with all its members as candidates (matches Android groupIsSelector)"
+    },
+    {
+      "name": "front_proxy",
+      "value": "Front proxy"
+    },
+    {
+      "name": "landing_proxy",
+      "value": "Landing Proxy"
+    },
+    {
+      "name": "option_none",
+      "value": "None"
+    },
+    {
+      "name": "route_outbound_profile",
+      "value": "Profile"
+    },
+    {
+      "name": "route_outbound_profile_active",
+      "value": "Profile (set)"
+    },
+    {
+      "name": "route_rule_profile_target",
+      "value": "Target profile"
+    },
+    {
+      "name": "route_rule_profile_missing",
+      "value": "Profile deleted"
+    },
+    {
+      "name": "route_no_profiles",
+      "value": "No profiles available to target"
     },
     {
       "name": "local_profile",
@@ -571,6 +863,10 @@
     {
       "name": "subscription_link_use_home",
       "value": "This is a subscription link. Use Import link on the home page."
+    },
+    {
+      "name": "subscription_container_unsupported",
+      "value": "sn://subscription is a private SagerNet container format and is not supported. Use the subscription URL or a Clash share link instead."
     },
     {
       "name": "unrecognized_profile_link",
@@ -737,6 +1033,14 @@
       "value": "Geo data downloaded. Reconnect to enable direct routing for cn."
     },
     {
+      "name": "geo_import_complete",
+      "value": "Imported custom Geo data: %1$s. Reconnect to apply"
+    },
+    {
+      "name": "geo_import_failed",
+      "value": "Import failed: %1$s"
+    },
+    {
       "name": "download_failed",
       "value": "Download failed"
     },
@@ -877,6 +1181,54 @@
       "value": "Download data"
     },
     {
+      "name": "settings_geo_import",
+      "value": "Import file"
+    },
+    {
+      "name": "settings_geo_import_hint",
+      "value": "Import geoip.db / geosite.db from a file (overrides built-in cn databases)"
+    },
+    {
+      "name": "settings_geo_site",
+      "value": "GeoSite database"
+    },
+    {
+      "name": "settings_geo_ip",
+      "value": "GeoIP database"
+    },
+    {
+      "name": "geo_asset_status",
+      "value": "%1$s · version %2$s"
+    },
+    {
+      "name": "geo_asset_absent",
+      "value": "Not downloaded"
+    },
+    {
+      "name": "settings_geo_update_one",
+      "value": "Update"
+    },
+    {
+      "name": "settings_geo_updated",
+      "value": "%1$s updated"
+    },
+    {
+      "name": "settings_geo_delete",
+      "value": "Delete"
+    },
+    {
+      "name": "settings_geo_delete_confirm",
+      "value": "Delete %1$s? cn routing in rule mode will stop working"
+    },
+    {
+      "name": "settings_geo_deleted",
+      "value": "%1$s deleted"
+    },
+    {
+      "name": "settings_geo_delete_failed",
+      "value": "Delete failed: %1$s"
+    },
+    {
       "name": "settings_subs_empty",
       "value": "No subscriptions yet. Paste a subscription URL via “Import link” on the home page; it will be tracked here automatically."
     },
@@ -907,6 +1259,18 @@
     {
       "name": "settings_tun_stack",
       "value": "TUN stack"
+    },
+    {
+      "name": "settings_tun_mtu",
+      "value": "TUN MTU"
+    },
+    {
+      "name": "latency_test_url",
+      "value": "URL Test (real connection)"
+    },
+    {
+      "name": "latency_test_tcp",
+      "value": "TCPing (handshake only)"
     },
     {
       "name": "settings_remote_dns",
@@ -1014,7 +1378,27 @@
     },
     {
       "name": "backup_restore_summary",
-      "value": "Restored %1$d nodes, %2$d groups, all settings, %3$d subscriptions and %4$d route rules"
+      "value": "Restored %1$d nodes, %2$d groups, all settings, %3$d subscriptions, %4$d route rules and %5$d remote rule sets"
+    },
+    {
+      "name": "backup_restore_summary_stopped",
+      "value": "Stopped VPN and restored %1$d nodes, %2$d groups, all settings, %3$d subscriptions, %4$d route rules and %5$d remote rule sets"
+    },
+    {
+      "name": "backup_restore_busy",
+      "value": "A restore is already in progress. Please wait."
+    },
+    {
+      "name": "backup_vpn_disconnect_timeout",
+      "value": "Timed out waiting for VPN to stop. Restore was not started."
+    },
+    {
+      "name": "backup_restore_rolled_back",
+      "value": "Restore failed and the original data was fully rolled back"
+    },
+    {
+      "name": "backup_rollback_failed",
+      "value": "Restore failed and rollback was incomplete: %1$s"
     },
     {
       "name": "backup_op_failed",
@@ -1261,6 +1645,18 @@
       "value": "Group name; leave empty for ungrouped"
     },
     {
+      "name": "sub_group_apply_hint",
+      "value": "Saving moves all profiles of this subscription into the group (created if missing; empty = Ungrouped)"
+    },
+    {
+      "name": "sub_group_applied",
+      "value": "Subscription profiles moved to group %1$s"
+    },
+    {
+      "name": "sub_group_applied_none",
+      "value": "Subscription profiles moved to Ungrouped"
+    },
+    {
       "name": "subscription_name_optional",
       "value": "Subscription name (optional)"
     },
@@ -1357,6 +1753,10 @@
       "value": "Tools"
     },
     {
+      "name": "nav_docs",
+      "value": "Documentation"
+    },
+    {
       "name": "nav_about",
       "value": "About"
     },
@@ -1367,6 +1767,26 @@
     {
       "name": "test_current_group",
       "value": "Test this group"
+    },
+    {
+      "name": "test_all_nodes",
+      "value": "Test all nodes"
+    },
+    {
+      "name": "update_current_subscription",
+      "value": "Update current subscription"
+    },
+    {
+      "name": "current_subscription_missing",
+      "value": "The selected profile does not belong to a subscription"
+    },
+    {
+      "name": "clear_traffic_statistics",
+      "value": "Clear traffic statistics"
+    },
+    {
+      "name": "traffic_stats_cleared",
+      "value": "Traffic statistics cleared"
     },
     {
       "name": "clear_test_results",
@@ -1423,6 +1843,14 @@
     {
       "name": "outbound_config_copied",
       "value": "Outbound config copied"
+    },
+    {
+      "name": "export_outbound_config_file",
+      "value": "Export config to file"
+    },
+    {
+      "name": "outbound_config_exported",
+      "value": "Outbound config exported to file"
     },
     {
       "name": "export_failed_generic",
@@ -1489,12 +1917,20 @@
       "value": "Export node links"
     },
     {
+      "name": "export_all_nodes_file",
+      "value": "Export nodes to file"
+    },
+    {
       "name": "export_all_empty",
       "value": "Nothing to export"
     },
     {
       "name": "export_all_done",
       "value": "Exported %1$d links"
+    },
+    {
+      "name": "export_all_file_done",
+      "value": "Exported %1$d links to file"
     },
     {
       "name": "sub_last_update",
@@ -1589,6 +2025,10 @@
       "value": "GitHub"
     },
     {
+      "name": "about_telegram",
+      "value": "Telegram group"
+    },
+    {
       "name": "check_update",
       "value": "Check for updates"
     },
@@ -1621,6 +2061,22 @@
       "value": "General"
     },
     {
+      "name": "settings_auto_connect",
+      "value": "Auto connect on launch"
+    },
+    {
+      "name": "settings_auto_connect_desc",
+      "value": "Connect to the selected profile when the app opens"
+    },
+    {
+      "name": "latency_test_mode",
+      "value": "Latency test method"
+    },
+    {
+      "name": "latency_test_mode_desc",
+      "value": "URL Test actually visits the test URL through the proxy, so it only counts as reachable when the full path works. TCPing only checks the server port handshake, so dead nodes may still appear green."
+    },
+    {
       "name": "settings_route",
       "value": "Route"
     },
@@ -1641,6 +2097,10 @@
       "value": "Connection test URL"
     },
     {
+      "name": "settings_test_url_desc",
+      "value": "URL Test visits this URL through the profile. The default is gstatic; change it to another 204/HTTP endpoint if the egress cannot reach it."
+    },
+    {
       "name": "settings_test_concurrent",
       "value": "Test concurrency"
     },
@@ -1651,6 +2111,14 @@
     {
       "name": "settings_notification_group",
       "value": "Show group name in notification"
+    },
+    {
+      "name": "settings_speed_interval",
+      "value": "Notification refresh interval (ms)"
+    },
+    {
+      "name": "settings_speed_interval_sum",
+      "value": "How often the persistent notification refreshes speed and traffic. Valid range 500-10000, default 1000"
     },
     {
       "name": "settings_sub_allow_insecure",
@@ -1691,6 +2159,14 @@
     {
       "name": "settings_direct_dns_strategy",
       "value": "Direct DNS domain strategy"
+    },
+    {
+      "name": "settings_server_dns_strategy",
+      "value": "Proxy server domain strategy"
+    },
+    {
+      "name": "settings_server_dns_strategy_hint",
+      "value": "IP preference used when resolving the proxy server's own domain (matches Android domain_strategy_for_server)"
     },
     {
       "name": "strategy_default",
@@ -1763,6 +2239,10 @@
     {
       "name": "error_chain_empty",
       "value": "Chain requires at least one node"
+    },
+    {
+      "name": "error_circular_reference",
+      "value": "This profile would create a circular reference"
     },
     {
       "name": "error_ssh_password_required",
@@ -1887,6 +2367,30 @@
     {
       "name": "settings_global_custom_config_desc",
       "value": "Shallow-merged into the generated sing-box config; invalid JSON is ignored"
+    },
+    {
+      "name": "show_bottom_bar",
+      "value": "Show bottom bar like SagerNet"
+    },
+    {
+      "name": "ipv6_modes",
+      "value": "IPv6 route"
+    },
+    {
+      "name": "ipv6_mode_disable",
+      "value": "Disable"
+    },
+    {
+      "name": "ipv6_mode_enable",
+      "value": "Enable"
+    },
+    {
+      "name": "ipv6_mode_prefer",
+      "value": "Prefer"
+    },
+    {
+      "name": "ipv6_mode_only",
+      "value": "Only"
     }
   ]
 }

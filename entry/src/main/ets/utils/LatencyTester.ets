@@ -1,6 +1,6 @@
 import socket from '@ohos.net.socket';
 import common from '@ohos.app.ability.common';
-import { AppSettings, Profile } from '../model/Profile';
+import { AppSettings, Profile, ProfileGroup } from '../model/Profile';
 import { buildLatencyTestConfig, LatencyTestConfig } from '../core/ConfigBuilder';
 import { CoreManager } from '../core/CoreManager';
 import { LogStore } from '../model/Store';
@@ -64,10 +64,10 @@ export async function testProfiles(profiles: Array<Profile>,
 export async function urlTestProfiles(targets: Array<Profile>, allProfiles: Array<Profile>,
   settings: AppSettings, context: common.Context,
   onResult: (id: string, ms: number) => void, concurrency: number = 4,
-  timeoutMs: number = 5000): Promise<void> {
+  timeoutMs: number = 5000, groups: Array<ProfileGroup> = []): Promise<void> {
   let cfg: LatencyTestConfig;
   try {
-    cfg = buildLatencyTestConfig(targets, allProfiles, settings, CoreManager.testLogFilePath(context));
+    cfg = buildLatencyTestConfig(targets, allProfiles, settings, CoreManager.testLogFilePath(context), groups);
   } catch (e) {
     const msg = e instanceof Error ? e.message : `${e}`;
     LogStore.addLog(`[test] 测速配置生成失败,回退 TCPing: ${msg}`);

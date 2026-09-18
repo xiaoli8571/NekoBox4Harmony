@@ -9,11 +9,11 @@ import wantAgent from '@ohos.app.ability.wantAgent';
 import commonEventManager from '@ohos.commonEventManager';
 import BusinessError from '@ohos.base';
 import { Profile, ProfileGroup, AppSettings } from '../model/Profile';
-import { initStore, loadProfiles, loadGroups, loadSettings, getPendingProfileId, setPendingProfileId, clearPendingProfileId, setRunningProfileId, LogStore } from '../model/Store';
-import { buildCoreConfig } from '../core/ConfigBuilder';
+import { initStore, loadProfiles, loadGroups, loadSettings, getPendingProfileId, setPendingProfileId, clearPendingProfileId, setRunningProfileId, mutateProfiles, LogStore } from '../model/Store';
+import { buildCoreConfig, effectiveIpv6Mode } from '../core/ConfigBuilder';
 import { loadRouteRules, RouteRule, loadRemoteRuleSets, RemoteRuleSet } from '../model/RouteRule';
 import { CoreManager } from '../core/CoreManager';
-import { publishVpnLog, publishVpnStatus, publishVpnTraffic, VPN_EVENT_LATENCY } from '../core/VpnIpc';
+import { publishVpnLog, publishVpnStatus, publishVpnTraffic, VPN_EVENT_LATENCY, VPN_EVENT_APP_FOREGROUND } from '../core/VpnIpc';
 import { geoReady, geoSitePath as geoSiteFile, geoIpPath as geoIpFile } from '../utils/GeoAssets';
 import { fetchTrafficTotals } from '../utils/TrafficStats';
 
@@ -52,6 +52,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   private currentRunId: string = '';
   private currentNodeName: string = '';
   private latencySubscribed: boolean = false;
+  private foregroundSubscribed: boolean = false;
   private teardownPromise: Promise<void> | null = null;
   private lifecycleGeneration: number = 0;
   private restartRequested: boolean = false;
@@ -69,6 +70,9 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   private notificationTotalDown: number = 0;
   private notificationSettings: AppSettings | null = null;
   private notificationGroupName: string = '';
+  // 网络变化重置连接(对齐安卓 networkChangeResetConnections)
+  private netConnection: connection.NetConnection | null = null;
+  private netChangeGeneration: number = 0;
 
   onCreate(want: Want): void {
     this.hookLifecycle('onCreate', want);
@@ -101,7 +105,79 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       publishVpnLog(line);
     });
     this.subscribeLatencyEvents();
+    this.subscribeForegroundEvents();
+    this.registerNetworkChange();
     this.tryStart();
+  }
+
+  /**
+   * 网络变化时重置连接(对齐安卓 networkChangeResetConnections):
+   * 默认开启;Wi-Fi/移动数据切换会造成旧 socket 全部失效,重启隧道恢复连通性。
+   * 短时间多次网络变化由 generation 去重,只在最后一次变化后重连一次。
+   * 本 SDK 的回调挂在 NetConnection 对象上(需 register),没有自由函数 on/off。
+   */
+  private registerNetworkChange(): void {
+    if (this.netConnection !== null) {
+      return;
+    }
+    try {
+      const conn = connection.createNetConnection();
+      conn.on('netAvailable', () => {
+        this.handleNetworkChange('网络可用');
+      });
+      conn.on('netLost', () => {
+        this.handleNetworkChange('网络丢失');
+      });
+      conn.on('netCapabilitiesChange', () => {
+        this.handleNetworkChange('网络能力变化');
+      });
+      conn.register((err: BusinessError) => {
+        if (err) {
+          LogStore.addLog(`[vpn] 注册网络变化监听失败: ${err.message}`);
+        }
+      });
+      this.netConnection = conn;
+    } catch (e) {
+      LogStore.addLog(`[vpn] 创建网络监听对象失败: ${e}`);
+    }
+  }
+
+  private handleNetworkChange(reason: string): void {
+    if (!this.started || this.starting) {
+      return;
+    }
+    const generation = ++this.netChangeGeneration;
+    setTimeout(() => {
+      if (generation !== this.netChangeGeneration) {
+        // 期间又发生了网络变化,等最后一次再处理
+        return;
+      }
+      void this.resetConnectionsAfterNetworkChange(reason);
+    }, 1500);
+  }
+
+  private async resetConnectionsAfterNetworkChange(reason: string): Promise<void> {
+    try {
+      const settings = await loadSettings();
+      if (!settings.networkChangeResetConnections) {
+        return;
+      }
+      if (!this.started || this.starting) {
+        return;
+      }
+      const profileId = this.currentRunId;
+      if (profileId.length === 0) {
+        return;
+      }
+      LogStore.addLog(`[vpn] ${reason},重置连接…`);
+      setPendingProfileId(profileId);
+      this.forceRestartRequested = true;
+      await this.teardown(true);
+      await this.tryStart();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : `${e}`;
+      LogStore.addLog(`[vpn] 网络变化重连失败: ${msg}`);
+    }
   }
 
   private subscribeLatencyEvents(): void {
@@ -138,11 +214,67 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     });
   }
 
+  /**
+   * 应用回到前台时重置连接(对齐安卓 wakeResetConnections):
+   * 安卓在设备退出 Doze 闲置模式时重置;鸿蒙 SDK 无屏幕亮灭事件订阅,
+   * 退而用「应用回到前台」近似(用户唤醒设备后通常会打开应用)。
+   * 需手动在设置里开启,默认关闭。
+   */
+  private subscribeForegroundEvents(): void {
+    if (this.foregroundSubscribed) {
+      return;
+    }
+    this.foregroundSubscribed = true;
+    const info: commonEventManager.CommonEventSubscribeInfo = { events: [VPN_EVENT_APP_FOREGROUND] };
+    commonEventManager.createSubscriber(info).then((subscriber: commonEventManager.CommonEventSubscriber) => {
+      commonEventManager.subscribe(subscriber,
+        (err: BusinessError, data: commonEventManager.CommonEventData) => {
+          if (err || data === undefined || data.event !== VPN_EVENT_APP_FOREGROUND) {
+            return;
+          }
+          void this.resetConnectionsAfterWake();
+        });
+    }).catch((e: Object) => {
+      this.foregroundSubscribed = false;
+      LogStore.addLog(`[vpn] 前台事件订阅失败: ${e}`);
+    });
+  }
+
+  private unsubscribeForegroundEvents(): void {
+    // 与延迟事件一致:订阅随扩展生命周期存在,此处仅占位,实际注销在进程退出时由系统回收
+  }
+
+  private async resetConnectionsAfterWake(): Promise<void> {
+    try {
+      if (!this.started || this.starting) {
+        return;
+      }
+      const settings = await loadSettings();
+      if (!settings.wakeResetConnections) {
+        return;
+      }
+      const profileId = this.currentRunId;
+      if (profileId.length === 0) {
+        return;
+      }
+      LogStore.addLog('[vpn] 应用回到前台,重置连接…');
+      setPendingProfileId(profileId);
+      this.forceRestartRequested = true;
+      await this.teardown(true);
+      await this.tryStart();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : `${e}`;
+      LogStore.addLog(`[vpn] 唤醒重连失败: ${msg}`);
+    }
+  }
+
   onDisconnect(want: Want): void {
     LogStore.addLog('[vpn] 扩展 onDisconnect');
     this.lifecycleGeneration++;
     this.stopNotificationTrafficPoller();
     this.cancelNotification();
+    this.unregisterNetworkChange();
+    this.unsubscribeForegroundEvents();
     this.teardown();
   }
 
@@ -151,7 +283,24 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.lifecycleGeneration++;
     this.stopNotificationTrafficPoller();
     this.cancelNotification();
+    this.unregisterNetworkChange();
+    this.unsubscribeForegroundEvents();
     this.teardown();
+  }
+
+  private unregisterNetworkChange(): void {
+    if (this.netConnection === null) {
+      return;
+    }
+    const conn = this.netConnection;
+    this.netConnection = null;
+    try {
+      conn.unregister((err: BusinessError) => {
+        // 注销失败不阻断退出
+      });
+    } catch (e) {
+      // 对象已销毁
+    }
   }
 
   private teardown(silent: boolean = false): Promise<void> {
@@ -273,12 +422,12 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     }
     const node: Profile = profile;
     const settings = await loadSettings();
+    const groups = await loadGroups();
     this.notificationSettings = settings;
     // 通知显示分组名(设置开启且节点有分组时)
     this.notificationGroupName = '';
     if (settings.notificationGroup && node.groupId.length > 0) {
       try {
-        const groups = await loadGroups();
         const g = groups.find((item: ProfileGroup) => item.id === node.groupId);
         if (g !== undefined) {
           this.notificationGroupName = g.name;
@@ -310,14 +459,19 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     }
 
     // ---- 2. VpnConfig(LinkAddress.address 是嵌套的 NetAddress 对象) ----
-    // 路由只有"默认 → TUN",防回环靠 protectProcessNet
+    // 路由只有"默认 → TUN",防回环靠 protectProcessNet。
+    // 平台 VPN 与内核 TUN 是两层,规则不同(安卓 VpnService.kt:100-124):
+    //   - 平台层**始终**保留 IPv4 地址/路由(含 ONLY),只有 IPv6 段随模式增删;
+    //   - 内核 TUN 层则由 ConfigBuilder 按模式给出 v4-only / v6-only / 双栈。
+    // 此前把内核语义套到平台层,ONLY 下删掉 IPv4 地址与路由,与安卓不一致。
+    const ipv6Mode = effectiveIpv6Mode(settings);
+    const dualStackOrV6Only = ipv6Mode !== 'disable';
     const addresses: Array<connection.LinkAddress> = [linkAddr('172.19.0.1', 30)];
-    if (settings.ipv6) {
+    if (dualStackOrV6Only) {
       addresses.push(linkAddr('fdfe:dcba:9876::1', 126));
     }
-    const routes: Array<vpnExtension.RouteInfo> = [];
-    routes.push(buildRoute(VPN_TUN_IFNAME, '0.0.0.0', 0, true));
-    if (settings.ipv6) {
+    const routes: Array<vpnExtension.RouteInfo> = [buildRoute(VPN_TUN_IFNAME, '0.0.0.0', 0, true)];
+    if (dualStackOrV6Only) {
       routes.push(buildRoute(VPN_TUN_IFNAME, '::', 0, true));
     }
     const config: vpnExtension.VpnConfig = {
@@ -326,7 +480,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       dnsAddresses: [dnsAddressForApps(settings)],
       mtu: settings.mtu,
       isIPv4Accepted: true,
-      isIPv6Accepted: settings.ipv6
+      isIPv6Accepted: dualStackOrV6Only
     };
     // ---- 2.5 分应用代理(VPN 框架原生支持) ----
     const perAppList: Array<string> = settings.perAppList.split(',')
@@ -380,7 +534,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     }
     const cachePath = logPath.length > 0 ? logPath.substring(0, logPath.lastIndexOf('/') + 1) + 'cache.db' : '';
     const configJson = buildCoreConfig(node, settings, ifname, logPath, geositePath, geoIpPath,
-      customRules, remoteRuleSets, cachePath, profiles);
+      customRules, remoteRuleSets, cachePath, profiles, groups);
     const configPath = CoreManager.writeConfigFile(context, configJson);
     LogStore.addLog(`[vpn] sing-box 配置已写入 ${configPath}`);
 
@@ -478,7 +632,10 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       await this.showConnectedNotification(this.currentNodeName, this.notificationLatencyMs);
     };
     void poll();
-    this.notificationTrafficTimer = setInterval(() => { void poll(); }, 1500);
+    // 通知刷新间隔(对齐安卓 speedInterval,默认 1000ms,允许 500ms~10s)
+    const rawMs = settings.speedIntervalMs;
+    const intervalMs = rawMs >= 500 && rawMs <= 10000 ? rawMs : 1000;
+    this.notificationTrafficTimer = setInterval(() => { void poll(); }, intervalMs);
   }
 
   private stopNotificationTrafficPoller(): void {
@@ -487,6 +644,8 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       clearInterval(this.notificationTrafficTimer);
       this.notificationTrafficTimer = -1;
     }
+    // 会话流量累加到节点历史统计(对齐安卓 TrafficLooper.stop 的 finally traffic post)
+    void this.persistSessionTraffic();
     this.notificationLastUp = 0;
     this.notificationLastDown = 0;
     this.notificationLastAt = 0;
@@ -494,6 +653,41 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.notificationDownSpeed = 0;
     this.notificationTotalUp = 0;
     this.notificationTotalDown = 0;
+  }
+
+  /**
+   * 把本次会话的上下行累计写入节点记录(对齐安卓 profileTrafficStatistics):
+   * 鸿蒙无内核级按出站统计,单出站场景下会话总量即当前节点流量。
+   * 开关关闭则跳过;累加后通知 UI 进程刷新节点卡显示。
+   */
+  private async persistSessionTraffic(): Promise<void> {
+    try {
+      const up = this.notificationTotalUp;
+      const down = this.notificationTotalDown;
+      const profileId = this.currentRunId;
+      if (profileId.length === 0 || (up <= 0 && down <= 0)) {
+        return;
+      }
+      const settings = await loadSettings();
+      if (!settings.profileTrafficStatistics) {
+        return;
+      }
+      await mutateProfiles((profiles: Array<Profile>): Array<Profile> => {
+        for (let i = 0; i < profiles.length; i++) {
+          if (profiles[i].id === profileId) {
+            profiles[i].rx = Math.max(0, profiles[i].rx) + down;
+            profiles[i].tx = Math.max(0, profiles[i].tx) + up;
+            profiles[i].updatedAt = Date.now();
+            break;
+          }
+        }
+        return profiles;
+      });
+      publishVpnTraffic(0, 0, up, down);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : `${e}`;
+      LogStore.addLog(`[vpn] 会话流量持久化失败: ${msg}`);
+    }
   }
 
   private formatNotificationSpeed(bytesPerSecond: number): string {

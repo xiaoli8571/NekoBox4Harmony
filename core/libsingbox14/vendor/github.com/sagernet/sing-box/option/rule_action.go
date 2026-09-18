@@ -325,6 +325,10 @@ func (r *RejectActionOptions) UnmarshalJSON(bytes []byte) error {
 type RouteActionSniff struct {
 	Sniffer badoption.Listable[string] `json:"sniffer,omitempty" enum:"tls,http,quic,dns,stun,bittorrent,dtls,ssh,rdp,ntp"`
 	Timeout badoption.Duration         `json:"timeout,omitempty"`
+	// OHOS patch (CORE-04): NekoBoxForAndroid trafficSniffing has a keep/override
+	// distinction; 1.14 upstream dropped the JSON knob but kept the runtime field.
+	// Expose it again so the override mode maps 1:1 (route/route.go:367,743,867).
+	OverrideDestination bool `json:"override_destination,omitempty"`
 }
 
 type RouteActionResolve struct {

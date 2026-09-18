@@ -10,7 +10,7 @@ import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 import backgroundTaskManager from '@ohos.resourceschedule.backgroundTaskManager';
 import wantAgent from '@ohos.app.ability.wantAgent';
 import { initStore, loadSettings, LogStore } from '../model/Store';
-import { subscribeVpnEvents, unsubscribeVpnEvents } from '../core/VpnIpc';
+import { subscribeVpnEvents, unsubscribeVpnEvents, publishAppForeground } from '../core/VpnIpc';
 import { VpnService } from '../core/VpnService';
 import { needAutoUpdate, updateSubscription, markSubSuccess, markSubFailure, setAppContext } from '../core/Subscriptions';
 import { subErrorText } from '../utils/Subscription';
@@ -248,6 +248,8 @@ export default class EntryAbility extends UIAbility {
   onForeground(): void {
     this.applyAppearance();
     this.updateDueSubscriptionsInBackground();
+    // 通知 VPN 扩展:应用回到前台(扩展据此执行「唤醒后重置连接」,对齐安卓 wakeResetConnections)
+    publishAppForeground();
   }
 
   onBackground(): void {

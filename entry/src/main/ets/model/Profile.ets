@@ -122,6 +122,10 @@ export class Profile {
   latencyMs: number = 0;
   latencyTestedAt: number = 0;
 
+  // 历史累计流量(对齐安卓 profileTrafficStatistics 持久化到节点记录)
+  rx: number = 0;
+  tx: number = 0;
+
   updatedAt: number = 0;
 
   // 置顶(节点列表排序时置顶节点恒排在前)
@@ -133,12 +137,16 @@ export class ProfileGroup {
   name: string = '';
   sortOrder: number = 0;
   collapsed: boolean = false;
+  isSelector: boolean = false;
+  // Empty means no wrapper. IDs refer to profiles, not outbound tags.
+  frontProxy: string = '';
+  landingProxy: string = '';
   createdAt: number = 0;
   updatedAt: number = 0;
 }
 
 export class AppSettings {
-  mtu: number = 1400;
+  mtu: number = 9000;                  // 对齐安卓 DataStore.mtu 默认 9000
   stack: string = 'system';            // 内核 go1.24 构建不含 gvisor,仅 system 栈
   mode: string = 'rule';               // rule(规则)/ global(全局)/ direct(直连)
   directDomains: string = '';          // 规则模式:直连域名后缀,逗号分隔
@@ -147,13 +155,14 @@ export class AppSettings {
   directDns: string = '223.5.5.5';     // 直连,用于解析代理服务器域名
   remoteDnsStrategy: string = '';      // auto/prefer_ipv4/prefer_ipv6/ipv4_only/ipv6_only,空=内核默认
   directDnsStrategy: string = '';
+  serverDnsStrategy: string = '';      // 解析代理服务器域名的策略(对齐安卓 domain_strategy_for_server)
   dnsRouting: boolean = true;          // DNS 路由:CN 域名用直连 DNS 解析
-  fakeDns: boolean = false;            // FakeDNS(真机验证项)
+  fakeDns: boolean = false;            // FakeDNS(安卓默认 true;鸿蒙 system 栈真机验证前保守关,见 reaudit DEF-02「按平台能力恢复默认」)
   ipv6: boolean = false;
-  bypassLan: boolean = true;           // 绕过局域网
+  bypassLan: boolean = false;          // 对齐安卓 DataStore.bypassLan 默认 false
   sniffMode: string = 'route';         // off / route(仅用于路由) / override(嗅探并覆盖目标)
   resolveDestination: boolean = false; // 解析目标地址(存档项,配置暂不消费)
-  mixedPort: number = 0;               // 混合代理端口,0=关闭
+  mixedPort: number = 2080;            // 混合代理端口,对齐安卓 getLocalPort 默认 2080,0=关闭
   allowAccess: boolean = false;        // 允许来自局域网的连接
   allowInsecureAll: boolean = false;   // 全局放行不安全 TLS
   subAllowInsecure: boolean = false;   // 订阅请求放行不安全 TLS
@@ -163,15 +172,25 @@ export class AppSettings {
   latencyTestMode: string = 'url';     // url(真连接测试,经内核 URLTest) / tcp(TCPing 握手计时)
   alwaysShowAddress: boolean = false;  // 节点卡始终显示服务器地址
   notificationGroup: boolean = false;  // 通知中显示分组名
+  speedIntervalMs: number = 1000;      // 通知/速率刷新间隔(对齐安卓 speedInterval,默认 1000ms)
   autoUpdateSubs: boolean = true;      // 启动时自动更新到期的订阅
+  autoConnect: boolean = false;        // 启动时自动连接已选中的节点(对齐安卓 isAutoConnect)
   subscriptionUpdateIntervalHours: number = 12;
   hapticFeedback: boolean = true;
   appearance: string = 'system';       // system / light / dark
   profileSortMode: string = 'manual';  // manual / latency / name
   navLayout: string = 'bottom';        // bottom / side
+  showBottomBar: boolean = false;      // Android: retain StatsBar/FAB outside configuration
+  ipv6Mode: string = '';               // Android IPv6Mode: ''(legacy)=由ipv6布尔推导 / disable/enable/prefer/only
   clashApiEnabled: boolean = true;
   clashApiPort: number = 9090;
   clashApiSecret: string = '';
+  // 网络变化(Wi-Fi/移动数据切换)时重置连接,对齐安卓 networkChangeResetConnections
+  networkChangeResetConnections: boolean = true;
+  // 应用回到前台时重置连接,对齐安卓 wakeResetConnections(安卓默认 false)
+  wakeResetConnections: boolean = false;
+  // 每节点流量统计并持久化,对齐安卓 profileTrafficStatistics(安卓默认 true)
+  profileTrafficStatistics: boolean = true;
   liquidGlass: boolean = true;
   perAppMode: string = 'off';          // off / exclude(排除这些应用) / include(仅这些应用走代理)
   perAppList: string = '';             // 应用包名,逗号分隔(如 com.huawei.hmos.browser)

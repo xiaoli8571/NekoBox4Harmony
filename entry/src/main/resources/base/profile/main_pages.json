@@ -3,6 +3,7 @@
     "pages/Index",
     "pages/ProfileEdit",
     "pages/ConnectionsPage",
-    "pages/SubDetailPage"
+    "pages/SubDetailPage",
+    "pages/DocPage"
   ]
 }

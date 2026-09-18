@@ -1,11 +1,14 @@
 import util from '@ohos.util';
 import { Profile, ProfileType } from '../model/Profile';
+import { parseSingBoxConfig, parseSingleOutboundJson } from './Subscription';
 
 /**
  * 分享链接 / 订阅解析 — 对齐 NekoBoxForAndroid 支持的常见格式:
  *   ss://  (SIP002 + 旧版整段 base64)
  *   vmess:// (base64 JSON)
  *   vless:// trojan:// hysteria:// tuic:// http(s):// socks://
+ *   sing-box JSON(完整配置或单个出站对象,对齐安卓 RawUpdater.parseJSON)
+ *   WireGuard .conf(对齐安卓 RawUpdater.parseWireGuard)
  * 整段 base64 的订阅内容也会被自动识别并逐行解析。
  */
 
@@ -20,6 +23,20 @@ export function parseShareText(text: string): Array<Profile> {
   }
   let content = trimmed;
   if (!content.includes('://')) {
+    // sing-box JSON:完整配置({outbounds/endpoints})或单个出站对象
+    if (content.startsWith('{')) {
+      const jsonProfiles = parseSingleOutboundJson(content).profiles;
+      if (jsonProfiles.length > 0) {
+        return jsonProfiles;
+      }
+    }
+    // WireGuard .conf(含 [Interface]/[Peer] 段)
+    if (content.includes('[Interface]')) {
+      const wgProfiles = parseWireGuardConf(content);
+      if (wgProfiles.length > 0) {
+        return wgProfiles;
+      }
+    }
     try {
       const decoded = base64Decode(content);
       if (decoded.includes('://')) {
@@ -499,6 +516,78 @@ function decodeURIComponentSafe(s: string): string {
 /** 供编辑页「粘贴节点链接」使用的单条链接解析。 */
 export function parseSingleLink(link: string): Profile | null {
   return parseOne(link);
+}
+
+/**
+ * WireGuard .conf 解析(对齐安卓 RawUpdater.parseWireGuard):
+ * [Interface] 段取 PrivateKey/Address/MTU,每个 [Peer] 段取 Endpoint/PublicKey/PresharedKey 生成一个节点;
+ * 缺 Endpoint/PublicKey/端口或端口非法的 Peer 跳过,与安卓一致。
+ */
+function parseWireGuardConf(conf: string): Array<Profile> {
+  const lines = conf.split(/[\r\n]+/);
+  let section = '';
+  const iface: Record<string, string> = {};
+  const peers: Array<Record<string, string>> = [];
+  let current: Record<string, string> | null = null;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.length === 0 || line.startsWith('#') || line.startsWith(';')) {
+      continue;
+    }
+    if (line.startsWith('[') && line.endsWith(']')) {
+      section = line.substring(1, line.length - 1).trim().toLowerCase();
+      if (section === 'peer') {
+        current = {};
+        peers.push(current);
+      }
+      continue;
+    }
+    const i = line.indexOf('=');
+    if (i < 0) {
+      continue;
+    }
+    const key = line.substring(0, i).trim().toLowerCase();
+    const val = line.substring(i + 1).trim();
+    if (section === 'interface') {
+      iface[key] = val;
+    } else if (section === 'peer' && current !== null) {
+      current[key] = val;
+    }
+  }
+  const privateKey = iface['privatekey'] !== undefined ? iface['privatekey'] : '';
+  const localAddress = iface['address'] !== undefined ? iface['address'] : '';
+  const mtuRaw = iface['mtu'] !== undefined ? iface['mtu'] : '';
+  const mtu = parseInt(mtuRaw);
+  const result: Array<Profile> = [];
+  for (const peer of peers) {
+    const endpoint = peer['endpoint'] !== undefined ? peer['endpoint'] : '';
+    const lastColon = endpoint.lastIndexOf(':');
+    if (lastColon <= 0) {
+      continue;
+    }
+    let host = endpoint.substring(0, lastColon);
+    if (host.startsWith('[') && host.endsWith(']')) {
+      host = host.substring(1, host.length - 1);
+    }
+    const port = parseInt(endpoint.substring(lastColon + 1));
+    const peerPublicKey = peer['publickey'] !== undefined ? peer['publickey'] : '';
+    if (host.length === 0 || isNaN(port) || port <= 0 || peerPublicKey.length === 0) {
+      continue;
+    }
+    const p = new Profile();
+    p.type = ProfileType.WIREGUARD;
+    p.server = host;
+    p.serverPort = port;
+    p.privateKey = privateKey;
+    p.peerPublicKey = peerPublicKey;
+    p.preSharedKey = peer['presharedkey'] !== undefined ? peer['presharedkey'] : '';
+    p.localAddress = localAddress.length > 0 ? localAddress : '172.16.0.2/32';
+    p.wgMtu = isNaN(mtu) ? 1420 : (mtu > 0 ? mtu : 1420);
+    p.reserved = peer['reserved'] !== undefined ? peer['reserved'] : '';
+    p.name = peer['name'] !== undefined ? peer['name'] : '';
+    result.push(p);
+  }
+  return result;
 }
 
 export { base64Decode, base64Encode };
