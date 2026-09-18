@@ -179,6 +179,21 @@ export async function loadSettings(): Promise<AppSettings> {
   if (s.remoteDns === 'https://8.8.8.8/dns-query' || s.remoteDns === 'udp://8.8.8.8') {
     s.remoteDns = 'tcp://8.8.8.8';
   }
+  // 2.0.2 共存修复一次性迁移(标记落盘后不再重复,用户重新显式开启的开关永久保留):
+  // 1) clashApiPort 9090→19290:9090 是 Clash/mihomo 系应用共用的控制器惯用端口,
+  //    鸿蒙共享回环命名空间下与 SSRVPN 等同类应用互踩,导致彼此"内核看似启动、
+  //    API 探测失败"。
+  // 2) networkChangeResetConnections 强制回滚为关:另一款 VPN 应用建/拆隧道会触发
+  //    netCapabilitiesChange,开着就会反复抢唯一的 VPN 会话槽位形成互踢环。
+  if (!s.coexistFix202609Applied) {
+    s.coexistFix202609Applied = true;
+    if (s.clashApiPort === 9090) {
+      s.clashApiPort = 19290;
+    }
+    s.networkChangeResetConnections = false;
+    await pref.put(KEY_SETTINGS, JSON.stringify(s));
+    await pref.flush();
+  }
   return s;
 }
 
