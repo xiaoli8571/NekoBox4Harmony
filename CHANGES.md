@@ -916,3 +916,15 @@ Existing notification files reviewed:
 
 改动文件:AppScope/app.json5、dist/NekoBox-2.0.1-signed.app(新产物)、CHANGES.md、DEVPLAN.md、PARITY.md
 
+## 2026-09-18 共存修复 2.0.2(与 SSRVPN 等 Clash/mihomo 系应用同机共存)
+
+真机事故:设备同时装 NekoBox 2.0.1 与 SSRVPN 时,SSRVPN 启动 VPN 必然失败(9090 控制器端口互踩 + 唯一 VPN 会话槽位被抢,2.0.1 新增的网络变化强制重连把双方拖进互踢环)。本版在 ArkTS 层修复,不动内核与 module.json5:
+
+1. `networkChangeResetConnections` 默认 **true→false**(Profile.ets):鸿蒙的 netAvailable/netCapabilitiesChange 也会被其它 VPN 应用建/拆隧道触发,强制重连=抢会话槽位;物理网络切换的连通性恢复本就由内核路由与 protectProcessNet 承担。另在 resetConnectionsAfterNetworkChange 加 15s 最小间隔,即便用户在设置页显式开启,也不会被连环事件拉进重连风暴。
+2. `clashApiPort` 默认 **9090→19290**(Profile.ets,对齐 TrafficStats 既有常量,落在 mihomo 系候选端口带 9090/19090/29090 之外):两应用共存时控制器端口互踩是 SSRVPN「内核已启动但 API 探测失败」的直接根因。
+3. Store.loadSettings 新增一次性迁移(coexistFix202609Applied 标记落盘,不重复执行):存量 9090→19290;2.0.1 默认写入的 networkChangeResetConnections=true 回滚一次为 false;用户此后在设置页的显式选择永久保留。
+4. 通知发布失败退避(VpnExtAbility):通知被系统关闭时不再以 speedInterval(1s) 无限重试与刷日志,连续 5 次失败停用周期通知(流量事件与节点统计不受影响),新会话重新启用。
+5. 版本:2.0.1/2000001 → **2.0.2/2000002**;产物 `dist/NekoBox4Harmony-2.0.2-unsigned.hap`(按 AGENTS 约定签名由用户自理)。
+
+改动文件:entry/src/main/ets/model/Profile.ets、entry/src/main/ets/model/Store.ets、entry/src/main/ets/vpnext/VpnExtAbility.ets、AppScope/app.json5、CHANGES.md
+

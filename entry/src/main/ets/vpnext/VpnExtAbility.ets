@@ -70,9 +70,14 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   private notificationTotalDown: number = 0;
   private notificationSettings: AppSettings | null = null;
   private notificationGroupName: string = '';
-  // 网络变化重置连接(对齐安卓 networkChangeResetConnections)
+  /** 连续通知发布失败计数:通知被关闭时不再按 speedInterval(1s) 无界重试刷日志。 */
+  private notificationFailStreak: number = 0;
+  // 网络变化重置连接(功能对齐安卓 networkChangeResetConnections,2.0.2 起默认关)
   private netConnection: connection.NetConnection | null = null;
   private netChangeGeneration: number = 0;
+  /** 两次网络变化强制重连的最小间隔(ms):即便用户显式打开该开关,也为共存兜底,
+   *  防止被其他 VPN 应用建/拆隧道触发的网络事件连环拉进抢槽位互踢环。 */
+  private lastForcedResetAt: number = 0;
 
   onCreate(want: Want): void {
     this.hookLifecycle('onCreate', want);
@@ -111,8 +116,10 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   }
 
   /**
-   * 网络变化时重置连接(对齐安卓 networkChangeResetConnections):
-   * 默认开启;Wi-Fi/移动数据切换会造成旧 socket 全部失效,重启隧道恢复连通性。
+   * 网络变化时重置连接(功能对齐安卓 networkChangeResetConnections,2.0.2 起默认关):
+   * Wi-Fi/移动数据切换会造成旧 socket 全部失效,重启隧道恢复连通性。
+   * 鸿蒙上其它 VPN 应用建/拆隧道也会触发本回调,因此叠加 15s 最小间隔合并突发
+   * 事件(真机实证:共存互踢环的放大器就是这条链路,故默认值同步翻转为关)。
    * 短时间多次网络变化由 generation 去重,只在最后一次变化后重连一次。
    * 本 SDK 的回调挂在 NetConnection 对象上(需 register),没有自由函数 on/off。
    */
@@ -169,6 +176,11 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       if (profileId.length === 0) {
         return;
       }
+      const now = Date.now();
+      if (now - this.lastForcedResetAt < 15000) {
+        return; // 15s 窗口内的连环网络事件(常见于另一款 VPN 应用建/拆隧道)直接合并忽略
+      }
+      this.lastForcedResetAt = now;
       LogStore.addLog(`[vpn] ${reason},重置连接…`);
       setPendingProfileId(profileId);
       this.forceRestartRequested = true;
@@ -608,6 +620,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.notificationDownSpeed = 0;
     this.notificationTotalUp = 0;
     this.notificationTotalDown = 0;
+    this.notificationFailStreak = 0;
     const generation = ++this.notificationGeneration;
     const poll = async (): Promise<void> => {
       const startedAt = Date.now();
@@ -718,6 +731,9 @@ export default class VpnExtAbility extends VpnExtensionAbility {
 
   /** 常驻通知:显示当前连接、延迟、实时速率和累计流量,并提供断开操作 */
   private async showConnectedNotification(nodeName: string, latencyMs: number): Promise<void> {
+    if (this.notificationFailStreak >= 5) {
+      return; // 连续 5 次发布失败(通知权限被关):本会话内停用周期通知,流量统计不受影响
+    }
     try {
       const latencyText: string = latencyMs >= 0 ? `${latencyMs}ms` : '--';
       const disconnectAgent = await wantAgent.getWantAgent({
@@ -759,8 +775,13 @@ export default class VpnExtAbility extends VpnExtensionAbility {
         }]
       };
       await notificationManager.publish(request);
+      this.notificationFailStreak = 0;
     } catch (e) {
-      LogStore.addLog(`[vpn] 通知发布失败(忽略): ${e}`);
+      this.notificationFailStreak = this.notificationFailStreak + 1;
+      // 只记首次与停用阈值,避免通知被关闭时以 1Hz 刷爆日志
+      if (this.notificationFailStreak === 1 || this.notificationFailStreak === 5) {
+        LogStore.addLog(`[vpn] 通知发布失败(忽略,连续第 ${this.notificationFailStreak} 次): ${e}`);
+      }
     }
   }
 
