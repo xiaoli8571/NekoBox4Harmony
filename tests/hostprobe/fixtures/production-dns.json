@@ -1,0 +1,558 @@
+[
+  {
+    "name": "disable-fake-false",
+    "config": {
+      "log": {
+        "level": "panic"
+      },
+      "dns": {
+        "servers": [
+          {
+            "tag": "remote",
+            "type": "udp",
+            "server": "127.0.0.1"
+          },
+          {
+            "tag": "local",
+            "type": "udp",
+            "server": "127.0.0.1"
+          }
+        ],
+        "rules": [
+          {
+            "domain": [
+              "direct.parity.test"
+            ],
+            "server": "local",
+            "strategy": "ipv4_only"
+          },
+          {
+            "domain": [
+              "proxy.parity.test"
+            ],
+            "server": "remote",
+            "strategy": "ipv4_only"
+          },
+          {
+            "domain": [
+              "reject.parity.test"
+            ],
+            "action": "predefined",
+            "rcode": 3
+          }
+        ],
+        "final": "remote",
+        "strategy": "ipv4_only"
+      },
+      "outbounds": [
+        {
+          "type": "direct",
+          "tag": "direct"
+        }
+      ],
+      "route": {
+        "final": "direct",
+        "auto_detect_interface": false
+      }
+    }
+  },
+  {
+    "name": "disable-fake-true",
+    "config": {
+      "log": {
+        "level": "panic"
+      },
+      "dns": {
+        "servers": [
+          {
+            "tag": "remote",
+            "type": "udp",
+            "server": "127.0.0.1"
+          },
+          {
+            "tag": "local",
+            "type": "udp",
+            "server": "127.0.0.1"
+          },
+          {
+            "type": "fakeip",
+            "tag": "fake",
+            "inet4_range": "198.18.0.0/15",
+            "inet6_range": "fc00::/18"
+          }
+        ],
+        "rules": [
+          {
+            "domain": [
+              "direct.parity.test"
+            ],
+            "server": "local",
+            "strategy": "ipv4_only"
+          },
+          {
+            "domain": [
+              "proxy.parity.test"
+            ],
+            "server": "fake",
+            "inbound": [
+              "tun-in"
+            ],
+            "strategy": "ipv4_only",
+            "disable_cache": true
+          },
+          {
+            "domain": [
+              "proxy.parity.test"
+            ],
+            "server": "remote",
+            "strategy": "ipv4_only"
+          },
+          {
+            "domain": [
+              "reject.parity.test"
+            ],
+            "action": "predefined",
+            "rcode": 3
+          },
+          {
+            "inbound": [
+              "tun-in"
+            ],
+            "server": "fake",
+            "strategy": "ipv4_only",
+            "disable_cache": true
+          }
+        ],
+        "final": "remote",
+        "strategy": "ipv4_only"
+      },
+      "outbounds": [
+        {
+          "type": "direct",
+          "tag": "direct"
+        }
+      ],
+      "route": {
+        "final": "direct",
+        "auto_detect_interface": false
+      }
+    }
+  },
+  {
+    "name": "enable-fake-false",
+    "config": {
+      "log": {
+        "level": "panic"
+      },
+      "dns": {
+        "servers": [
+          {
+            "tag": "remote",
+            "type": "udp",
+            "server": "127.0.0.1"
+          },
+          {
+            "tag": "local",
+            "type": "udp",
+            "server": "127.0.0.1"
+          }
+        ],
+        "rules": [
+          {
+            "domain": [
+              "direct.parity.test"
+            ],
+            "server": "local",
+            "strategy": "prefer_ipv4"
+          },
+          {
+            "domain": [
+              "proxy.parity.test"
+            ],
+            "server": "remote",
+            "strategy": "prefer_ipv4"
+          },
+          {
+            "domain": [
+              "reject.parity.test"
+            ],
+            "action": "predefined",
+            "rcode": 3
+          }
+        ],
+        "final": "remote",
+        "strategy": "prefer_ipv4"
+      },
+      "outbounds": [
+        {
+          "type": "direct",
+          "tag": "direct"
+        }
+      ],
+      "route": {
+        "final": "direct",
+        "auto_detect_interface": false
+      }
+    }
+  },
+  {
+    "name": "enable-fake-true",
+    "config": {
+      "log": {
+        "level": "panic"
+      },
+      "dns": {
+        "servers": [
+          {
+            "tag": "remote",
+            "type": "udp",
+            "server": "127.0.0.1"
+          },
+          {
+            "tag": "local",
+            "type": "udp",
+            "server": "127.0.0.1"
+          },
+          {
+            "type": "fakeip",
+            "tag": "fake",
+            "inet4_range": "198.18.0.0/15",
+            "inet6_range": "fc00::/18"
+          }
+        ],
+        "rules": [
+          {
+            "domain": [
+              "direct.parity.test"
+            ],
+            "server": "local",
+            "strategy": "prefer_ipv4"
+          },
+          {
+            "domain": [
+              "proxy.parity.test"
+            ],
+            "server": "fake",
+            "inbound": [
+              "tun-in"
+            ],
+            "strategy": "ipv4_only",
+            "disable_cache": true
+          },
+          {
+            "domain": [
+              "proxy.parity.test"
+            ],
+            "server": "remote",
+            "strategy": "prefer_ipv4"
+          },
+          {
+            "domain": [
+              "reject.parity.test"
+            ],
+            "action": "predefined",
+            "rcode": 3
+          },
+          {
+            "inbound": [
+              "tun-in"
+            ],
+            "server": "fake",
+            "strategy": "ipv4_only",
+            "disable_cache": true
+          }
+        ],
+        "final": "remote",
+        "strategy": "prefer_ipv4"
+      },
+      "outbounds": [
+        {
+          "type": "direct",
+          "tag": "direct"
+        }
+      ],
+      "route": {
+        "final": "direct",
+        "auto_detect_interface": false
+      }
+    }
+  },
+  {
+    "name": "prefer-fake-false",
+    "config": {
+      "log": {
+        "level": "panic"
+      },
+      "dns": {
+        "servers": [
+          {
+            "tag": "remote",
+            "type": "udp",
+            "server": "127.0.0.1"
+          },
+          {
+            "tag": "local",
+            "type": "udp",
+            "server": "127.0.0.1"
+          }
+        ],
+        "rules": [
+          {
+            "domain": [
+              "direct.parity.test"
+            ],
+            "server": "local",
+            "strategy": "prefer_ipv6"
+          },
+          {
+            "domain": [
+              "proxy.parity.test"
+            ],
+            "server": "remote",
+            "strategy": "prefer_ipv6"
+          },
+          {
+            "domain": [
+              "reject.parity.test"
+            ],
+            "action": "predefined",
+            "rcode": 3
+          }
+        ],
+        "final": "remote",
+        "strategy": "prefer_ipv6"
+      },
+      "outbounds": [
+        {
+          "type": "direct",
+          "tag": "direct"
+        }
+      ],
+      "route": {
+        "final": "direct",
+        "auto_detect_interface": false
+      }
+    }
+  },
+  {
+    "name": "prefer-fake-true",
+    "config": {
+      "log": {
+        "level": "panic"
+      },
+      "dns": {
+        "servers": [
+          {
+            "tag": "remote",
+            "type": "udp",
+            "server": "127.0.0.1"
+          },
+          {
+            "tag": "local",
+            "type": "udp",
+            "server": "127.0.0.1"
+          },
+          {
+            "type": "fakeip",
+            "tag": "fake",
+            "inet4_range": "198.18.0.0/15",
+            "inet6_range": "fc00::/18"
+          }
+        ],
+        "rules": [
+          {
+            "domain": [
+              "direct.parity.test"
+            ],
+            "server": "local",
+            "strategy": "prefer_ipv6"
+          },
+          {
+            "domain": [
+              "proxy.parity.test"
+            ],
+            "server": "fake",
+            "inbound": [
+              "tun-in"
+            ],
+            "strategy": "ipv4_only",
+            "disable_cache": true
+          },
+          {
+            "domain": [
+              "proxy.parity.test"
+            ],
+            "server": "remote",
+            "strategy": "prefer_ipv6"
+          },
+          {
+            "domain": [
+              "reject.parity.test"
+            ],
+            "action": "predefined",
+            "rcode": 3
+          },
+          {
+            "inbound": [
+              "tun-in"
+            ],
+            "server": "fake",
+            "strategy": "ipv4_only",
+            "disable_cache": true
+          }
+        ],
+        "final": "remote",
+        "strategy": "prefer_ipv6"
+      },
+      "outbounds": [
+        {
+          "type": "direct",
+          "tag": "direct"
+        }
+      ],
+      "route": {
+        "final": "direct",
+        "auto_detect_interface": false
+      }
+    }
+  },
+  {
+    "name": "only-fake-false",
+    "config": {
+      "log": {
+        "level": "panic"
+      },
+      "dns": {
+        "servers": [
+          {
+            "tag": "remote",
+            "type": "udp",
+            "server": "127.0.0.1"
+          },
+          {
+            "tag": "local",
+            "type": "udp",
+            "server": "127.0.0.1"
+          }
+        ],
+        "rules": [
+          {
+            "domain": [
+              "direct.parity.test"
+            ],
+            "server": "local",
+            "strategy": "ipv6_only"
+          },
+          {
+            "domain": [
+              "proxy.parity.test"
+            ],
+            "server": "remote",
+            "strategy": "ipv6_only"
+          },
+          {
+            "domain": [
+              "reject.parity.test"
+            ],
+            "action": "predefined",
+            "rcode": 3
+          }
+        ],
+        "final": "remote",
+        "strategy": "ipv6_only"
+      },
+      "outbounds": [
+        {
+          "type": "direct",
+          "tag": "direct"
+        }
+      ],
+      "route": {
+        "final": "direct",
+        "auto_detect_interface": false
+      }
+    }
+  },
+  {
+    "name": "only-fake-true",
+    "config": {
+      "log": {
+        "level": "panic"
+      },
+      "dns": {
+        "servers": [
+          {
+            "tag": "remote",
+            "type": "udp",
+            "server": "127.0.0.1"
+          },
+          {
+            "tag": "local",
+            "type": "udp",
+            "server": "127.0.0.1"
+          },
+          {
+            "type": "fakeip",
+            "tag": "fake",
+            "inet4_range": "198.18.0.0/15",
+            "inet6_range": "fc00::/18"
+          }
+        ],
+        "rules": [
+          {
+            "domain": [
+              "direct.parity.test"
+            ],
+            "server": "local",
+            "strategy": "ipv6_only"
+          },
+          {
+            "domain": [
+              "proxy.parity.test"
+            ],
+            "server": "fake",
+            "inbound": [
+              "tun-in"
+            ],
+            "strategy": "ipv4_only",
+            "disable_cache": true
+          },
+          {
+            "domain": [
+              "proxy.parity.test"
+            ],
+            "server": "remote",
+            "strategy": "ipv6_only"
+          },
+          {
+            "domain": [
+              "reject.parity.test"
+            ],
+            "action": "predefined",
+            "rcode": 3
+          },
+          {
+            "inbound": [
+              "tun-in"
+            ],
+            "server": "fake",
+            "strategy": "ipv4_only",
+            "disable_cache": true
+          }
+        ],
+        "final": "remote",
+        "strategy": "ipv6_only"
+      },
+      "outbounds": [
+        {
+          "type": "direct",
+          "tag": "direct"
+        }
+      ],
+      "route": {
+        "final": "direct",
+        "auto_detect_interface": false
+      }
+    }
+  }
+]

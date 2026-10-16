@@ -1,0 +1,151 @@
+{
+  "color": [
+    {
+      "name": "start_window_background",
+      "value": "#F5F7FA"
+    },
+    {
+      "name": "app_background",
+      "value": "#F5F7FA"
+    },
+    {
+      "name": "surface",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "surface_selected",
+      "value": "#E8F1FF"
+    },
+    {
+      "name": "primary",
+      "value": "#2364D8"
+    },
+    {
+      "name": "primary_pressed",
+      "value": "#1B53B8"
+    },
+    {
+      "name": "text_primary",
+      "value": "#182230"
+    },
+    {
+      "name": "text_secondary",
+      "value": "#5D6B7E"
+    },
+    {
+      "name": "divider",
+      "value": "#E4E7EC"
+    },
+    {
+      "name": "success",
+      "value": "#0C7A3D"
+    },
+    {
+      "name": "warning",
+      "value": "#A85B00"
+    },
+    {
+      "name": "error",
+      "value": "#C5221B"
+    },
+    {
+      "name": "protocol_vmess",
+      "value": "#7C3AED"
+    },
+    {
+      "name": "protocol_vless",
+      "value": "#2563EB"
+    },
+    {
+      "name": "protocol_trojan",
+      "value": "#DB2777"
+    },
+    {
+      "name": "protocol_shadowsocks",
+      "value": "#0891B2"
+    },
+    {
+      "name": "protocol_hysteria2",
+      "value": "#EA580C"
+    },
+    {
+      "name": "protocol_tuic",
+      "value": "#15803D"
+    },
+    {
+      "name": "text_disabled",
+      "value": "#9E9E9E"
+    },
+    {
+      "name": "control_disabled",
+      "value": "#BBBBBB"
+    },
+    {
+      "name": "shadow_color",
+      "value": "#40000000"
+    },
+    {
+      "name": "power_icon",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "btn_ring",
+      "value": "#240A59F7"
+    },
+    {
+      "name": "btn_glow",
+      "value": "#660A59F7"
+    },
+    {
+      "name": "bg_page",
+      "value": "#FAFAF9"
+    },
+    {
+      "name": "mono",
+      "value": "#17181A"
+    },
+    {
+      "name": "text_1",
+      "value": "#17181A"
+    },
+    {
+      "name": "text_2",
+      "value": "#5F646B"
+    },
+    {
+      "name": "text_3",
+      "value": "#6E6A63"
+    },
+    {
+      "name": "hairline",
+      "value": "#ECEAE5"
+    },
+    {
+      "name": "hairline_2",
+      "value": "#E7E5E0"
+    },
+    {
+      "name": "dot_live",
+      "value": "#16A34A"
+    },
+    {
+      "name": "ring_live",
+      "value": "#6616A34A"
+    },
+    {
+      "name": "warn_fg",
+      "value": "#B45309"
+    },
+    {
+      "name": "fab_bg",
+      "value": "#CC2364D8"
+    },
+    {
+      "name": "fab_running",
+      "value": "#CC12A150"
+    }
+  ]
+}
+
+
+

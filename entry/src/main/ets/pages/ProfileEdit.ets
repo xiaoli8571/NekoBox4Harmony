@@ -1,0 +1,835 @@
+import router from '@ohos.router';
+import promptAction from '@ohos.promptAction';
+import { UiSpec } from '../common/UiSpec';
+import common from '@ohos.app.ability.common';
+import { Profile, ProfileGroup, ProfileType, profileTypeLabel, supportsTransport, needsTlsByDefault } from '../model/Profile';
+import { initStore, loadProfiles, saveProfiles, loadGroups, readPrefString } from '../model/Store';
+import { getClipboardText } from '../utils/ClipboardHelper';
+import { parseSingleLink, parseShareText } from '../utils/LinkParser';
+import { unwrapSubscriptionLink, isSagerNetSubscriptionContainer } from '../utils/Subscription';
+import { isCustomOutboundTypeSupported } from '../core/ConfigBuilder';
+
+const ALL_TYPES: Array<string> = [
+  ProfileType.SHADOWSOCKS, ProfileType.VMESS, ProfileType.VLESS, ProfileType.TROJAN,
+  ProfileType.HYSTERIA, ProfileType.HYSTERIA2, ProfileType.TUIC, ProfileType.WIREGUARD,
+  ProfileType.HTTP, ProfileType.SOCKS, ProfileType.SSH, ProfileType.SHADOWTLS,
+  ProfileType.ANYTLS, ProfileType.SNELL, ProfileType.CUSTOM, ProfileType.CHAIN
+];
+const TRANSPORTS: Array<string> = ['', 'ws', 'grpc', 'http', 'httpupgrade', 'quic'];
+const SS_METHODS: Array<string> = [
+  'aes-128-gcm', 'aes-192-gcm', 'aes-256-gcm', 'chacha20-ietf-poly1305', 'xchacha20-ietf-poly1305',
+  '2022-blake3-aes-128-gcm', '2022-blake3-aes-256-gcm', '2022-blake3-chacha20-poly1305',
+  'none', 'aes-128-ctr', 'aes-192-ctr', 'aes-256-ctr', 'aes-128-cfb', 'aes-192-cfb', 'aes-256-cfb',
+  'rc4-md5', 'chacha20-ietf', 'xchacha20'
+];
+const SS_PLUGINS: Array<string> = ['', 'obfs-local', 'v2ray-plugin'];
+const PACKET_ENCODINGS: Array<string> = ['', 'packetaddr', 'xudp'];
+const SSH_AUTH_TYPES: Array<string> = ['none', 'password', 'private_key'];
+const MUX_PROTOCOLS: Array<string> = ['h2mux', 'smux', 'yamux'];
+const UTLS_FINGERPRINTS: Array<string> = ['', 'chrome', 'firefox', 'edge', 'safari', '360', 'qq', 'ios', 'android', 'random', 'randomized'];
+
+@Entry
+@Component
+struct ProfileEdit {
+  @State p: Profile = new Profile();
+  @State isNew: boolean = true;
+  @State pasteText: string = '';
+  @State allProfiles: Array<Profile> = [];
+  @State groups: Array<ProfileGroup> = [];
+  private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+
+  aboutToAppear(): void {
+    const id: string = AppStorage.get<string>('editProfileId') ?? '';
+    initStore(this.context).then(async () => {
+      const profiles = await loadProfiles();
+      this.allProfiles = profiles;
+      this.groups = await loadGroups();
+      const found = profiles.find(x => x.id === id);
+      if (found !== undefined) {
+        this.p = found;
+        this.isNew = false;
+      } else {
+        this.p = new Profile();
+        this.p.id = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+        this.isNew = true;
+        // 新建节点默认带入最近使用的订阅分组(按名称匹配;无同名分组则保持未分组)
+        const recentGroupName = await readPrefString('recent_subscription_group', '');
+        if (recentGroupName.trim().length > 0) {
+          const groups = await loadGroups();
+          const matched = groups.find(g => g.name === recentGroupName.trim());
+          if (matched !== undefined) {
+            this.p.groupId = matched.id;
+          }
+        }
+      }
+    });
+  }
+
+  validationError(): ResourceStr {
+    if (this.p.type === ProfileType.CUSTOM) {
+      if (this.p.customOutbound.trim().length === 0) {
+        return $r('app.string.error_custom_outbound_required');
+      }
+      try {
+        const parsed = JSON.parse(this.p.customOutbound) as Record<string, Object>;
+        if (parsed['type'] === undefined) {
+          return $r('app.string.error_custom_outbound_type');
+        }
+        const customType = `${parsed['type']}`;
+        if (!isCustomOutboundTypeSupported(customType)) {
+          return $r('app.string.error_custom_type_unsupported', customType);
+        }
+      } catch (e) {
+        return $r('app.string.error_extra_json');
+      }
+      return '';
+    }
+    if (this.p.type === ProfileType.CHAIN) {
+      if (this.chainIds().length === 0) {
+        return $r('app.string.error_chain_empty');
+      }
+      // 保存前再核一遍循环引用(防御外部修改 chainIds 的场景)
+      for (const cand of this.chainCandidates()) {
+        if (this.chainSelected(cand.id) && !this.chainSelectionAllowed(cand)) {
+          return $r('app.string.error_circular_reference');
+        }
+      }
+      return '';
+    }
+    if (this.p.server.trim().length === 0) {
+      return $r('app.string.error_server_required');
+    }
+    if (!Number.isInteger(this.p.serverPort) || this.p.serverPort < 1 || this.p.serverPort > 65535) {
+      return $r('app.string.error_port_range');
+    }
+    const server = this.p.server.trim().toLowerCase();
+    if (server === '127.0.0.1' || server === 'localhost' || server === '::1' || server === '[::1]') {
+      return $r('app.string.error_loopback_server');
+    }
+    const uuidRequired = this.p.type === ProfileType.VMESS || this.p.type === ProfileType.VLESS
+      || this.p.type === ProfileType.TUIC;
+    if (uuidRequired && !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(this.p.uuid.trim())) {
+      return $r('app.string.error_invalid_uuid');
+    }
+    if (this.p.type === ProfileType.SHADOWSOCKS) {
+      if (this.p.method.trim().length === 0) {
+        return $r('app.string.error_ss_method_required');
+      }
+      if (this.p.password.length === 0) {
+        return $r('app.string.error_ss_password_required');
+      }
+    }
+    if ((this.p.type === ProfileType.TROJAN || this.p.type === ProfileType.HYSTERIA
+      || this.p.type === ProfileType.HYSTERIA2 || this.p.type === ProfileType.ANYTLS
+      || this.p.type === ProfileType.SNELL)
+      && this.p.password.length === 0) {
+      return $r('app.string.error_auth_password_required');
+    }
+    if (this.p.type === ProfileType.TUIC && this.p.password.length === 0) {
+      return $r('app.string.error_tuic_password_required');
+    }
+    if (this.p.type === ProfileType.SSH && this.p.sshAuthType === 'password' && this.p.password.length === 0) {
+      return $r('app.string.error_ssh_password_required');
+    }
+    if (this.p.type === ProfileType.SSH && this.p.sshAuthType === 'private_key' && this.p.privateKey.trim().length === 0) {
+      return $r('app.string.error_ssh_key_required');
+    }
+    if (this.p.type === ProfileType.WIREGUARD && this.p.privateKey.trim().length === 0) {
+      return $r('app.string.error_wireguard_key_required');
+    }
+    if (this.p.realityPublicKey.length > 0
+      && !/^[A-Za-z0-9_-]{32,64}$/.test(this.p.realityPublicKey.trim())) {
+      return $r('app.string.error_reality_public_key');
+    }
+    if (this.p.realityShortId.length > 0
+      && !/^[0-9a-fA-F]{2,16}$/.test(this.p.realityShortId.trim())) {
+      return $r('app.string.error_reality_short_id');
+    }
+    if (this.p.extra.trim().length > 0) {
+      try {
+        JSON.parse(this.p.extra);
+      } catch (e) {
+        return $r('app.string.error_extra_json');
+      }
+    }
+    return '';
+  }
+
+  async save(): Promise<void> {
+    const validationError = this.validationError();
+    if (validationError !== '') {
+      promptAction.showToast({ message: validationError });
+      return;
+    }
+    if (this.p.name.trim().length === 0) {
+      this.p.name = this.p.type === ProfileType.CUSTOM
+        ? `Custom-${Date.now() % 10000}`
+        : `${this.p.server.trim()}:${this.p.serverPort}`;
+    }
+    this.p.server = this.p.server.trim();
+    try {
+      await initStore(this.context);
+      const profiles = await loadProfiles();
+      const idx = profiles.findIndex(x => x.id === this.p.id);
+      this.p.updatedAt = Date.now();
+      if (idx >= 0) {
+        profiles[idx] = this.p;
+      } else {
+        profiles.push(this.p);
+      }
+      await saveProfiles(profiles);
+      promptAction.showToast({ message: $r('app.string.saved') });
+      router.back();
+    } catch (e) {
+      promptAction.showToast({ message: $r('app.string.save_failed_reason', e instanceof Error ? e.message : `${e}`) });
+    }
+  }
+
+  /** 解析输入框中的分享链接。单条填入表单，多条直接批量保存，避免新建节点入口只导入第一条。 */
+  async applyPasted(): Promise<void> {
+    const t = this.pasteText.trim();
+    if (t.length === 0) {
+      promptAction.showToast({ message: $r('app.string.paste_link_first') });
+      return;
+    }
+    const firstLine = t.split(/[\r\n]+/)[0].trim();
+    if (isSagerNetSubscriptionContainer(firstLine)) {
+      promptAction.showToast({ message: $r('app.string.subscription_container_unsupported') });
+      return;
+    }
+    if (unwrapSubscriptionLink(firstLine) !== null
+      || firstLine.startsWith('http://') || firstLine.startsWith('https://')) {
+      promptAction.showToast({ message: $r('app.string.subscription_link_use_home') });
+      return;
+    }
+    try {
+      const list = parseShareText(t);
+      if (list.length === 0) {
+        const p = parseSingleLink(firstLine);
+        if (p !== null) {
+          list.push(p);
+        }
+      }
+      if (list.length === 0) {
+        promptAction.showToast({ message: $r('app.string.unrecognized_profile_link') });
+        return;
+      }
+      if (list.length === 1) {
+        list[0].id = this.p.id;
+        this.p = list[0];
+        promptAction.showToast({ message: $r('app.string.parsed_review_save') });
+        return;
+      }
+      await initStore(this.context);
+      const profiles = await loadProfiles();
+      const now = Date.now();
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i];
+        item.id = `${now}_${i}_${Math.floor(Math.random() * 100000)}`;
+        item.updatedAt = now;
+        profiles.push(item);
+      }
+      await saveProfiles(profiles);
+      this.allProfiles = profiles;
+      promptAction.showToast({ message: $r('app.string.imported_count', list.length) });
+      router.back();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : `${e}`;
+      promptAction.showToast({ message: $r('app.string.parse_failed_reason', msg) });
+    }
+  }
+
+  async readClipboardIntoBox(): Promise<void> {
+    const t = await getClipboardText();
+    if (t.trim().length === 0) {
+      promptAction.showToast({ message: $r('app.string.clipboard_empty_paste_manually_short') });
+      return;
+    }
+    this.pasteText = t;
+  }
+
+  // ---- 链式代理选择状态 ----
+  chainIds(): Array<string> {
+    return this.p.chainIds.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+  }
+
+  chainSelected(id: string): boolean {
+    return this.chainIds().indexOf(id) >= 0;
+  }
+
+  toggleChain(id: string): void {
+    const ids = this.chainIds();
+    const idx = ids.indexOf(id);
+    if (idx >= 0) {
+      ids.splice(idx, 1);
+    } else {
+      ids.push(id);
+    }
+    this.p.chainIds = ids.join(',');
+  }
+
+  moveChain(id: string, delta: number): void {
+    const ids = this.chainIds();
+    const idx = ids.indexOf(id);
+    const target = idx + delta;
+    if (idx < 0 || target < 0 || target >= ids.length) {
+      return;
+    }
+    const tmp = ids[idx];
+    ids[idx] = ids[target];
+    ids[target] = tmp;
+    this.p.chainIds = ids.join(',');
+  }
+
+  chainName(id: string): string {
+    const found = this.allProfiles.find(x => x.id === id);
+    return found === undefined ? id : found.name;
+  }
+
+  chainCandidates(): Array<Profile> {
+    return this.allProfiles.filter(x => x.id !== this.p.id && x.type !== ProfileType.CHAIN);
+  }
+
+  /**
+   * 递归判断链式节点 chainProfile 是否(直接或间接)包含 targetId,
+   * 对齐安卓 ChainSettingsActivity.testProfileContains。
+   */
+  private chainContains(chainProfile: Profile, targetId: string, visited: Set<string>): boolean {
+    if (chainProfile.id === targetId) {
+      return true;
+    }
+    if (visited.has(chainProfile.id)) {
+      return false;
+    }
+    visited.add(chainProfile.id);
+    if (chainProfile.type !== ProfileType.CHAIN) {
+      return false;
+    }
+    const memberIds = chainProfile.chainIds.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+    for (const memberId of memberIds) {
+      const member = this.allProfiles.find(x => x.id === memberId);
+      if (member !== undefined && this.chainContains(member, targetId, visited)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 候选节点加入当前链是否安全(双向环路检测,比安卓多覆盖「候选包含编辑节点」这一方向) */
+  chainSelectionAllowed(candidate: Profile): boolean {
+    if (candidate.id === this.p.id) {
+      return false;
+    }
+    // 已选中的直接放行(允许取消勾选)
+    if (this.chainSelected(candidate.id)) {
+      return true;
+    }
+    // 方向一:候选(若是链)间接包含正在编辑的节点
+    if (this.chainContains(candidate, this.p.id, new Set<string>())) {
+      return false;
+    }
+    // 方向二:任意已选成员间接包含候选
+    const selected = this.chainIds();
+    for (const memberId of selected) {
+      const member = this.allProfiles.find(x => x.id === memberId);
+      if (member !== undefined && this.chainContains(member, candidate.id, new Set<string>())) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  build() {
+    Column() {
+    Column() {
+      Row() {
+        Text('←').fontSize(22).onClick(() => router.back()).padding(8)
+        Text(this.isNew ? $r('app.string.profile_new_title') : $r('app.string.profile_edit_title'))
+          .fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
+        Button($r('app.string.save')).height(34).onClick(() => this.save())
+      }
+      .width('100%').padding(12)
+
+      Scroll() {
+        Column({ space: 10 }) {
+          // 快捷:手动粘贴节点链接解析(不依赖剪贴板权限)
+          Column({ space: UiSpec.GAP_SM }) {
+            TextArea({
+              text: this.pasteText,
+              placeholder: $r('app.string.profile_link_placeholder')
+            })
+              .height(88)
+              .onChange((v: string) => {
+                this.pasteText = v;
+              })
+            Row({ space: UiSpec.GAP_SM }) {
+              Button($r('app.string.read_from_clipboard'))
+                .layoutWeight(1)
+                .height(UiSpec.BTN_HEIGHT)
+                .backgroundColor($r('app.color.surface'))
+                .fontColor($r('app.color.text_primary'))
+                .onClick(() => this.readClipboardIntoBox())
+              Button($r('app.string.parse_and_fill'))
+                .layoutWeight(1)
+                .height(UiSpec.BTN_HEIGHT)
+                .backgroundColor($r('app.color.primary'))
+                .fontColor($r('app.color.surface'))
+                .onClick(() => this.applyPasted())
+            }
+            .width('100%')
+          }
+          .alignItems(HorizontalAlign.Start)
+          .width('100%')
+          .padding(UiSpec.GAP_MD)
+          .borderRadius(UiSpec.CARD_RADIUS)
+          .backgroundColor($r('app.color.surface'))
+
+          // 协议类型
+          Column() {
+            Text($r('app.string.protocol_type')).fontSize(13).fontColor($r('app.color.text_secondary'))
+            Select(ALL_TYPES.map((t: string) => ({ value: profileTypeLabel(t) } as SelectOption)))
+              .selected(ALL_TYPES.indexOf(this.p.type))
+              .value(profileTypeLabel(this.p.type))
+              .onSelect((index: number) => {
+                this.p.type = ALL_TYPES[index];
+              })
+          }.alignItems(HorizontalAlign.Start).width('100%')
+
+          if (this.p.type === ProfileType.CUSTOM) {
+            this.CustomFields()
+          } else if (this.p.type === ProfileType.CHAIN) {
+            this.ChainFields()
+          } else {
+            this.CommonFields()
+            if (this.p.type === ProfileType.SHADOWSOCKS) {
+              this.SsFields()
+            }
+            if (this.p.type === ProfileType.VMESS) {
+              this.VmessFields()
+            }
+            if (this.p.type === ProfileType.VLESS) {
+              this.VlessFields()
+            }
+            if (this.p.type === ProfileType.TROJAN) {
+              this.PasswordFields($r('app.string.password_trojan'))
+            }
+            if (this.p.type === ProfileType.HYSTERIA) {
+              this.HysteriaFields()
+            }
+            if (this.p.type === ProfileType.HYSTERIA2) {
+              this.Hysteria2Fields()
+            }
+            if (this.p.type === ProfileType.TUIC) {
+              this.TuicFields()
+            }
+            if (this.p.type === ProfileType.WIREGUARD) {
+              this.WireguardFields()
+            }
+            if (this.p.type === ProfileType.SSH) {
+              this.SshFields()
+            }
+            if (this.p.type === ProfileType.SHADOWTLS) {
+              this.ShadowTlsFields()
+            }
+            if (this.p.type === ProfileType.ANYTLS) {
+              this.PasswordFields($r('app.string.password_anytls'))
+            }
+            if (this.p.type === ProfileType.SNELL) {
+              this.PasswordFields($r('app.string.password_snell'))
+            }
+            if (this.p.type === ProfileType.HTTP || this.p.type === ProfileType.SOCKS) {
+              this.UserPassFields()
+            }
+            if (supportsTransport(this.p.type)) {
+              this.TransportFields()
+            }
+            if (this.p.tls || needsTlsByDefault(this.p.type) || this.p.realityPublicKey.length > 0) {
+              this.TlsFields()
+            }
+            if (this.p.mux && supportsTransport(this.p.type)) {
+              this.MuxFields()
+            }
+            this.AdvancedFields()
+          }
+        }
+        .width('100%')
+        .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: UiSpec.GAP_MD, bottom: UiSpec.GAP_MD })
+      }
+        .edgeEffect(EdgeEffect.Spring)
+      .layoutWeight(1)
+      .align(Alignment.Top)
+    }
+    .width('100%')
+    .height('100%')
+    }
+    .width('100%')
+    .height('100%')
+    .alignItems(HorizontalAlign.Center)
+    .backgroundColor($r('app.color.app_background'))
+    .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
+  }
+
+  @Builder
+  Field(label: ResourceStr, placeholder: ResourceStr, val: string, onChange: (v: string) => void, inputType: InputType = InputType.Normal) {
+    Column() {
+      Text(label).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+      TextInput({ text: val, placeholder: placeholder })
+        .type(inputType)
+        .width('100%')
+        .height(40)
+        .onChange(onChange)
+    }.alignItems(HorizontalAlign.Start).width('100%')
+  }
+
+  @Builder
+  ToggleRow(label: ResourceStr, val: boolean, onChange: (v: boolean) => void) {
+    Row() {
+      Text(label).fontSize(14).layoutWeight(1)
+      Toggle({ type: ToggleType.Switch, isOn: val })
+        .onChange(onChange)
+    }.width('100%')
+  }
+
+  @Builder
+  SelectRow(label: ResourceStr, options: Array<string>, selected: number, onSelect: (index: number) => void) {
+    Column() {
+      Text(label).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+      Select(options.map((t: string) => ({ value: t } as SelectOption)))
+        .selected(selected < 0 ? 0 : selected)
+        .value(options[selected < 0 ? 0 : selected])
+        .onSelect(onSelect)
+    }.alignItems(HorizontalAlign.Start).width('100%')
+  }
+
+  @Builder
+  CommonFields() {
+    Column({ space: 10 }) {
+      this.Field($r('app.string.profile_name'), $r('app.string.profile_name_placeholder'), this.p.name, (v: string) => { this.p.name = v; })
+      this.Field($r('app.string.server_address'), 'domain or IP', this.p.server, (v: string) => { this.p.server = v; })
+      this.Field($r('app.string.port'), '443', `${this.p.serverPort === 0 ? '' : this.p.serverPort}`,
+        (v: string) => { this.p.serverPort = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+      this.GroupSelectRow()
+    }
+  }
+
+  /** 分组选择(对齐安卓 ProfileSettingsActivity 的分组 Preference) */
+  @Builder
+  GroupSelectRow() {
+    Column() {
+      Text($r('app.string.profile_group')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+      Select(this.groupOptions())
+        .selected(this.groupSelectedIndex())
+        .value(this.groupCurrentValue())
+        .onSelect((index: number) => {
+          this.p.groupId = index <= 0 ? '' : this.groups[index - 1].id;
+        })
+    }.alignItems(HorizontalAlign.Start).width('100%')
+  }
+
+  private groupOptions(): Array<SelectOption> {
+    const opts: Array<SelectOption> = [{ value: $r('app.string.ungrouped') } as SelectOption];
+    for (const g of this.groups) {
+      opts.push({ value: g.name } as SelectOption);
+    }
+    return opts;
+  }
+
+  private groupSelectedIndex(): number {
+    if (this.p.groupId.length === 0) {
+      return 0;
+    }
+    const i = this.groups.findIndex(g => g.id === this.p.groupId);
+    // 分组已被删除时回落到「未分组」显示,保存时保持原值不变
+    return i < 0 ? 0 : i + 1;
+  }
+
+  private groupCurrentValue(): ResourceStr {
+    const idx = this.groupSelectedIndex();
+    if (idx <= 0) {
+      return $r('app.string.ungrouped');
+    }
+    return this.groups[idx - 1].name;
+  }
+
+  @Builder
+  SsFields() {
+    Column({ space: 10 }) {
+      this.SelectRow($r('app.string.encryption_method'), SS_METHODS,
+        SS_METHODS.indexOf(this.p.method), (index: number) => { this.p.method = SS_METHODS[index]; })
+      this.Field($r('app.string.password'), 'password', this.p.password, (v: string) => { this.p.password = v; })
+      this.SelectRow($r('app.string.ss_plugin'), SS_PLUGINS,
+        SS_PLUGINS.indexOf(this.p.ssPlugin) < 0 ? 0 : SS_PLUGINS.indexOf(this.p.ssPlugin),
+        (index: number) => { this.p.ssPlugin = SS_PLUGINS[index]; })
+      if (this.p.ssPlugin.length > 0) {
+        this.Field($r('app.string.ss_plugin_opts'), 'obfs=http;obfs-host=example.com', this.p.ssPluginOpts,
+          (v: string) => { this.p.ssPluginOpts = v; })
+      }
+    }
+  }
+
+  @Builder
+  VmessFields() {
+    Column({ space: 10 }) {
+      this.Field('UUID', 'uuid', this.p.uuid, (v: string) => { this.p.uuid = v; })
+      this.Field('alterId', '0', `${this.p.alterId}`, (v: string) => { this.p.alterId = parseInt(v.length > 0 ? v : '0'); },
+        InputType.Number)
+      this.Field($r('app.string.encryption_security'), 'auto', this.p.security, (v: string) => { this.p.security = v; })
+      this.SelectRow($r('app.string.packet_encoding'), PACKET_ENCODINGS,
+        PACKET_ENCODINGS.indexOf(this.p.packetEncoding) < 0 ? 0 : PACKET_ENCODINGS.indexOf(this.p.packetEncoding),
+        (index: number) => { this.p.packetEncoding = PACKET_ENCODINGS[index]; })
+    }
+  }
+
+  @Builder
+  VlessFields() {
+    Column({ space: 10 }) {
+      this.Field('UUID', 'uuid', this.p.uuid, (v: string) => { this.p.uuid = v; })
+      this.Field('Flow', $r('app.string.empty_or_xtls_vision'), this.p.flow, (v: string) => { this.p.flow = v; })
+      this.SelectRow($r('app.string.packet_encoding'), PACKET_ENCODINGS,
+        PACKET_ENCODINGS.indexOf(this.p.packetEncoding) < 0 ? 0 : PACKET_ENCODINGS.indexOf(this.p.packetEncoding),
+        (index: number) => { this.p.packetEncoding = PACKET_ENCODINGS[index]; })
+    }
+  }
+
+  @Builder
+  PasswordFields(label: ResourceStr) {
+    this.Field(label, 'password', this.p.password, (v: string) => { this.p.password = v; })
+  }
+
+  @Builder
+  HysteriaFields() {
+    Column({ space: 10 }) {
+      this.Field($r('app.string.auth_string'), 'auth', this.p.password, (v: string) => { this.p.password = v; })
+      this.Field($r('app.string.upload_mbps'), '100', `${this.p.upMbps}`, (v: string) => { this.p.upMbps = parseInt(v.length > 0 ? v : '0'); },
+        InputType.Number)
+      this.Field($r('app.string.download_mbps'), '100', `${this.p.downMbps}`, (v: string) => { this.p.downMbps = parseInt(v.length > 0 ? v : '0'); },
+        InputType.Number)
+      this.Field('obfs (Salamander)', $r('app.string.empty_or_password'), this.p.obfs, (v: string) => { this.p.obfs = v; })
+    }
+  }
+
+  @Builder
+  Hysteria2Fields() {
+    Column({ space: 10 }) {
+      this.PasswordFields($r('app.string.password_hysteria2'))
+      this.Field($r('app.string.upload_mbps_optional'), '100', `${this.p.upMbps > 0 ? this.p.upMbps : ''}`,
+        (v: string) => { this.p.upMbps = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+      this.Field($r('app.string.download_mbps_optional'), '100', `${this.p.downMbps > 0 ? this.p.downMbps : ''}`,
+        (v: string) => { this.p.downMbps = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+      this.Field($r('app.string.obfs_password_optional'), $r('app.string.salamander_password'), this.p.obfs, (v: string) => { this.p.obfs = v; })
+      this.Field($r('app.string.server_ports_optional'), '2080:3000,4000', this.p.serverPorts,
+        (v: string) => { this.p.serverPorts = v; })
+      this.Field($r('app.string.hop_interval_seconds'), '30', `${this.p.hopInterval > 0 ? this.p.hopInterval : ''}`,
+        (v: string) => { this.p.hopInterval = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+    }
+  }
+
+  @Builder
+  TuicFields() {
+    Column({ space: 10 }) {
+      this.Field('UUID', 'uuid', this.p.uuid, (v: string) => { this.p.uuid = v; })
+      this.Field($r('app.string.password'), $r('app.string.password_optional_placeholder'), this.p.password, (v: string) => { this.p.password = v; })
+      this.Field($r('app.string.congestion_control'), 'bbr / cubic / new_reno', this.p.congestionControl, (v: string) => { this.p.congestionControl = v; })
+      this.Field($r('app.string.udp_relay_mode'), 'native / quic', this.p.udpRelayMode, (v: string) => { this.p.udpRelayMode = v; })
+      this.ToggleRow($r('app.string.reduce_rtt'), this.p.reduceRtt, (v: boolean) => { this.p.reduceRtt = v; })
+      this.ToggleRow($r('app.string.disable_sni'), this.p.disableSni, (v: boolean) => { this.p.disableSni = v; })
+    }
+  }
+
+  @Builder
+  WireguardFields() {
+    Column({ space: 10 }) {
+      this.Field($r('app.string.local_address_cidr'), '172.16.0.2/32', this.p.localAddress, (v: string) => { this.p.localAddress = v; })
+      this.Field($r('app.string.private_key'), '', this.p.privateKey, (v: string) => { this.p.privateKey = v; })
+      this.Field($r('app.string.peer_public_key'), '', this.p.peerPublicKey, (v: string) => { this.p.peerPublicKey = v; })
+      this.Field($r('app.string.pre_shared_key_optional'), '', this.p.preSharedKey, (v: string) => { this.p.preSharedKey = v; })
+      this.Field($r('app.string.wg_mtu'), '1420', `${this.p.wgMtu > 0 ? this.p.wgMtu : ''}`,
+        (v: string) => { this.p.wgMtu = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+      this.Field($r('app.string.wg_reserved'), '1,2,3', this.p.reserved, (v: string) => { this.p.reserved = v; })
+    }
+  }
+
+  @Builder
+  SshFields() {
+    Column({ space: 10 }) {
+      this.Field($r('app.string.username_optional'), 'root', this.p.username, (v: string) => { this.p.username = v; })
+      this.SelectRow($r('app.string.ssh_auth_type'), SSH_AUTH_TYPES,
+        SSH_AUTH_TYPES.indexOf(this.p.sshAuthType) < 0 ? 1 : SSH_AUTH_TYPES.indexOf(this.p.sshAuthType),
+        (index: number) => { this.p.sshAuthType = SSH_AUTH_TYPES[index]; })
+      if (this.p.sshAuthType === 'password') {
+        this.Field($r('app.string.password'), 'password', this.p.password, (v: string) => { this.p.password = v; })
+      }
+      if (this.p.sshAuthType === 'private_key') {
+        this.Field($r('app.string.private_key'), '-----BEGIN OPENSSH PRIVATE KEY-----', this.p.privateKey,
+          (v: string) => { this.p.privateKey = v; })
+        this.Field($r('app.string.private_key_passphrase_optional'), 'passphrase', this.p.privateKeyPassphrase,
+          (v: string) => { this.p.privateKeyPassphrase = v; })
+      }
+      this.Field($r('app.string.ssh_host_key_optional'), 'AAAAE2VjZHNh…', this.p.hostKey, (v: string) => { this.p.hostKey = v; })
+    }
+  }
+
+  @Builder
+  ShadowTlsFields() {
+    Column({ space: 10 }) {
+      this.SelectRow($r('app.string.shadowtls_version'), ['2', '3'], this.p.shadowtlsVersion === 2 ? 0 : 1,
+        (index: number) => { this.p.shadowtlsVersion = index === 0 ? 2 : 3; })
+      this.Field($r('app.string.password'), $r('app.string.password_optional_placeholder'), this.p.password,
+        (v: string) => { this.p.password = v; })
+    }
+  }
+
+  @Builder
+  UserPassFields() {
+    Column({ space: 10 }) {
+      this.Field($r('app.string.username_optional'), 'username', this.p.username, (v: string) => { this.p.username = v; })
+      this.Field($r('app.string.password_optional'), 'password', this.p.password, (v: string) => { this.p.password = v; })
+    }
+  }
+
+  @Builder
+  CustomFields() {
+    Column({ space: 10 }) {
+      this.Field($r('app.string.profile_name'), $r('app.string.profile_name_placeholder'), this.p.name,
+        (v: string) => { this.p.name = v; })
+      Column() {
+        Text($r('app.string.custom_outbound_json')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+        TextArea({ text: this.p.customOutbound, placeholder: '{"type":"hysteria2","server":"…","server_port":443}' })
+          .height(160)
+          .fontSize(12)
+          .fontFamily('monospace')
+          .width('100%')
+          .onChange((v: string) => { this.p.customOutbound = v; })
+      }.alignItems(HorizontalAlign.Start).width('100%')
+      Text($r('app.string.custom_outbound_hint'))
+        .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+    }
+  }
+
+  @Builder
+  ChainFields() {
+    Column({ space: 10 }) {
+      this.Field($r('app.string.profile_name'), $r('app.string.profile_name_placeholder'), this.p.name,
+        (v: string) => { this.p.name = v; })
+      Text($r('app.string.chain_select_hint'))
+        .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
+      List({ space: 4 }) {
+        ForEach(this.chainCandidates(), (cand: Profile) => {
+          ListItem() {
+            Row({ space: 8 }) {
+              if (this.chainSelected(cand.id)) {
+                Text(`${this.chainIds().indexOf(cand.id) + 1}`)
+                  .fontSize(12).fontWeight(700).fontColor($r('app.color.surface'))
+                  .backgroundColor($r('app.color.primary'))
+                  .width(22).height(22).borderRadius(11).textAlign(TextAlign.Center)
+              }
+              Text(cand.name)
+                .fontSize(14).layoutWeight(1)
+                .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+                .fontColor(this.chainSelectionAllowed(cand) ? $r('app.color.text_1') : $r('app.color.text_3'))
+              if (this.chainSelected(cand.id)) {
+                Text('↑').fontSize(13).padding({ left: 6, right: 6 }).onClick(() => this.moveChain(cand.id, -1))
+                Text('↓').fontSize(13).padding({ left: 6, right: 6 }).onClick(() => this.moveChain(cand.id, 1))
+              }
+              Toggle({ type: ToggleType.Checkbox, isOn: this.chainSelected(cand.id) })
+                .enabled(this.chainSelectionAllowed(cand))
+                .onChange((selected: boolean) => {
+                  if (!this.chainSelectionAllowed(cand)) {
+                    promptAction.showToast({ message: $r('app.string.error_circular_reference') });
+                    return;
+                  }
+                  this.toggleChain(cand.id);
+                })
+            }.width('100%').padding({ top: 6, bottom: 6 })
+          }
+        }, (cand: Profile) => cand.id)
+      }
+        .edgeEffect(EdgeEffect.Spring)
+      .width('100%')
+      .height(240)
+    }
+  }
+
+  @Builder
+  TransportFields() {
+    Column() {
+      Text($r('app.string.transport')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+      Select(TRANSPORTS.map((t: string) => ({ value: t === '' ? $r('app.string.tcp_none') : t } as SelectOption)))
+        .selected(TRANSPORTS.indexOf(this.p.transport) < 0 ? 0 : TRANSPORTS.indexOf(this.p.transport))
+        .value(this.p.transport === '' ? $r('app.string.tcp_none') : this.p.transport)
+        .onSelect((index: number) => { this.p.transport = TRANSPORTS[index]; })
+      if (this.p.transport === 'ws' || this.p.transport === 'http' || this.p.transport === 'httpupgrade') {
+        this.Field('Path', '/', this.p.path, (v: string) => { this.p.path = v; })
+        this.Field('Host', $r('app.string.domain_placeholder'), this.p.host, (v: string) => { this.p.host = v; })
+      }
+      if (this.p.transport === 'grpc') {
+        this.Field('serviceName', '', this.p.serviceName, (v: string) => { this.p.serviceName = v; })
+      }
+      if (this.p.transport === 'ws') {
+        this.Field($r('app.string.ws_early_data'), '0', `${this.p.wsEarlyData > 0 ? this.p.wsEarlyData : ''}`,
+          (v: string) => { this.p.wsEarlyData = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+        this.Field($r('app.string.ws_early_data_header'), 'Sec-WebSocket-Protocol', this.p.wsEarlyDataHeaderName,
+          (v: string) => { this.p.wsEarlyDataHeaderName = v; })
+      }
+    }.alignItems(HorizontalAlign.Start).width('100%')
+  }
+
+  @Builder
+  TlsFields() {
+    Column({ space: 10 }) {
+      Row() {
+        Text($r('app.string.enable_tls')).fontSize(14).layoutWeight(1)
+        Toggle({ type: ToggleType.Switch, isOn: this.p.tls })
+          .onChange((v: boolean) => { this.p.tls = v; })
+      }.width('100%')
+
+      this.Field('SNI', $r('app.string.sni_placeholder'), this.p.sni, (v: string) => { this.p.sni = v; })
+      this.SelectRow($r('app.string.utls_fingerprint'), UTLS_FINGERPRINTS,
+        UTLS_FINGERPRINTS.indexOf(this.p.fingerprint) < 0 ? 0 : UTLS_FINGERPRINTS.indexOf(this.p.fingerprint),
+        (index: number) => { this.p.fingerprint = UTLS_FINGERPRINTS[index]; })
+      this.Field($r('app.string.alpn_comma_separated'), $r('app.string.alpn_placeholder'), this.p.alpn, (v: string) => { this.p.alpn = v; })
+      this.Field($r('app.string.reality_public_key_optional'), '', this.p.realityPublicKey, (v: string) => { this.p.realityPublicKey = v; })
+      this.Field($r('app.string.reality_short_id_optional'), '', this.p.realityShortId, (v: string) => { this.p.realityShortId = v; })
+      Column() {
+        Text($r('app.string.certificates_optional')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+        TextArea({ text: this.p.certificates, placeholder: '-----BEGIN CERTIFICATE-----' })
+          .height(90).fontSize(12).width('100%')
+          .onChange((v: string) => { this.p.certificates = v; })
+      }.alignItems(HorizontalAlign.Start).width('100%')
+
+      this.ToggleRow($r('app.string.enable_ech'), this.p.ech, (v: boolean) => { this.p.ech = v; })
+      if (this.p.ech) {
+        this.Field($r('app.string.ech_config_optional'), 'base64 config', this.p.echConfig,
+          (v: string) => { this.p.echConfig = v; })
+      }
+
+      Row() {
+        Text($r('app.string.allow_insecure_tls')).fontSize(14).layoutWeight(1)
+        Toggle({ type: ToggleType.Switch, isOn: this.p.allowInsecure })
+          .onChange((v: boolean) => { this.p.allowInsecure = v; })
+      }.width('100%')
+    }
+  }
+
+  @Builder
+  MuxFields() {
+    Column({ space: 10 }) {
+      this.SelectRow($r('app.string.mux_protocol'), MUX_PROTOCOLS,
+        MUX_PROTOCOLS.indexOf(this.p.muxProtocol) < 0 ? 0 : MUX_PROTOCOLS.indexOf(this.p.muxProtocol),
+        (index: number) => { this.p.muxProtocol = MUX_PROTOCOLS[index]; })
+      this.Field($r('app.string.mux_max_streams'), '8', `${this.p.muxMaxStreams > 0 ? this.p.muxMaxStreams : ''}`,
+        (v: string) => { this.p.muxMaxStreams = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
+      this.ToggleRow($r('app.string.mux_padding'), this.p.muxPadding, (v: boolean) => { this.p.muxPadding = v; })
+    }
+  }
+
+  @Builder
+  AdvancedFields() {
+    Column({ space: 10 }) {
+      this.Field($r('app.string.extra_json_advanced'), '{"dialer":{}}', this.p.extra,
+        (v: string) => { this.p.extra = v; })
+      Text($r('app.string.profile_edit_footer_hint'))
+        .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+    }
+  }
+}

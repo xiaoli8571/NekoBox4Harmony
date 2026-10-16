@@ -1,0 +1,2560 @@
+{
+  "string": [
+    {
+      "name": "app_name",
+      "value": "NekoBox"
+    },
+    {
+      "name": "permission_read_pasteboard_reason",
+      "value": "用于从剪贴板读取并导入订阅链接或节点配置"
+    },
+    {
+      "name": "permission_get_bundle_info_privileged_reason",
+      "value": "用于分应用代理模式下枚举已安装应用列表以供选择"
+    },
+    {
+      "name": "brand_name",
+      "value": "NEKOBOX"
+    },
+    {
+      "name": "subscription_management",
+      "value": "订阅管理"
+    },
+    {
+      "name": "search_nodes",
+      "value": "搜索节点"
+    },
+    {
+      "name": "module_desc",
+      "value": "sing-box VPN client"
+    },
+    {
+      "name": "cancel",
+      "value": "取消"
+    },
+    {
+      "name": "delete",
+      "value": "删除"
+    },
+    {
+      "name": "save",
+      "value": "保存"
+    },
+    {
+      "name": "back",
+      "value": "返回"
+    },
+    {
+      "name": "reload",
+      "value": "重新加载"
+    },
+    {
+      "name": "import_action",
+      "value": "导入"
+    },
+    {
+      "name": "read_from_clipboard",
+      "value": "从剪贴板读取"
+    },
+    {
+      "name": "mode_rule",
+      "value": "规则"
+    },
+    {
+      "name": "mode_global",
+      "value": "全局"
+    },
+    {
+      "name": "mode_direct",
+      "value": "直连"
+    },
+    {
+      "name": "status_disconnected",
+      "value": "未连接"
+    },
+    {
+      "name": "settings_title",
+      "value": "设置"
+    },
+    {
+      "name": "profile_new_title",
+      "value": "新建节点"
+    },
+    {
+      "name": "profile_edit_title",
+      "value": "编辑节点"
+    },
+    {
+      "name": "subscription_detail_title",
+      "value": "订阅详情"
+    },
+    {
+      "name": "route_rules_title",
+      "value": "自定义路由规则"
+    },
+    {
+      "name": "loading_settings",
+      "value": "正在加载设置…"
+    },
+    {
+      "name": "settings_load_failed",
+      "value": "设置加载失败"
+    },
+    {
+      "name": "outbound_mode",
+      "value": "出站模式"
+    },
+    {
+      "name": "route_rules_description",
+      "value": "按域名、IP、端口指定代理、直连或拒绝"
+    },
+    {
+      "name": "enter",
+      "value": "进入 ›"
+    },
+    {
+      "name": "subscriptions",
+      "value": "订阅"
+    },
+    {
+      "name": "appearance_and_interaction",
+      "value": "外观与交互"
+    },
+    {
+      "name": "follow_system",
+      "value": "跟随系统"
+    },
+    {
+      "name": "light_mode",
+      "value": "浅色"
+    },
+    {
+      "name": "dark_mode",
+      "value": "深色"
+    },
+    {
+      "name": "haptic_feedback",
+      "value": "触感反馈"
+    },
+    {
+      "name": "liquid_glass",
+      "value": "液态玻璃效果"
+    },
+    {
+      "name": "network_change_reset_connections",
+      "value": "网络变化时重置连接"
+    },
+    {
+      "name": "network_change_reset_connections_sum",
+      "value": "Wi-Fi 与移动数据切换后自动重连,恢复连通性"
+    },
+    {
+      "name": "wake_reset_connections",
+      "value": "回到前台时重置连接"
+    },
+    {
+      "name": "wake_reset_connections_sum",
+      "value": "应用回到前台时自动重连(对齐安卓唤醒后重置,默认关闭)"
+    },
+    {
+      "name": "profile_traffic_statistics",
+      "value": "节点流量统计"
+    },
+    {
+      "name": "profile_traffic_statistics_sum",
+      "value": "断开连接时把本次会话流量累加到节点记录,并在节点卡显示历史累计"
+    },
+    {
+      "name": "per_app_proxy",
+      "value": "分应用代理"
+    },
+    {
+      "name": "per_app_off",
+      "value": "关闭"
+    },
+    {
+      "name": "per_app_exclude",
+      "value": "排除模式"
+    },
+    {
+      "name": "per_app_include",
+      "value": "仅这些走代理"
+    },
+    {
+      "name": "search_apps",
+      "value": "搜索应用名称或包名"
+    },
+    {
+      "name": "read_apps",
+      "value": "读取应用"
+    },
+    {
+      "name": "reading_apps",
+      "value": "读取中…"
+    },
+    {
+      "name": "invert_selections",
+      "value": "反选"
+    },
+    {
+      "name": "clear_selections",
+      "value": "清除选择"
+    },
+    {
+      "name": "export_selections_clipboard",
+      "value": "导出列表到剪贴板"
+    },
+    {
+      "name": "import_selections_clipboard",
+      "value": "从剪贴板导入列表"
+    },
+    {
+      "name": "action_export_msg",
+      "value": "已复制到剪贴板"
+    },
+    {
+      "name": "action_export_err",
+      "value": "复制失败"
+    },
+    {
+      "name": "action_import_msg",
+      "value": "已从剪贴板导入"
+    },
+    {
+      "name": "action_import_err",
+      "value": "剪贴板内容不是有效的应用列表(需以换行分隔的包名)"
+    },
+    {
+      "name": "backup_restore",
+      "value": "备份与恢复"
+    },
+    {
+      "name": "processing",
+      "value": "处理中…"
+    },
+    {
+      "name": "export_backup_file",
+      "value": "导出备份文件"
+    },
+    {
+      "name": "restore_from_file",
+      "value": "从文件恢复"
+    },
+    {
+      "name": "backup_to_clipboard",
+      "value": "备份到剪贴板"
+    },
+    {
+      "name": "restore_from_clipboard",
+      "value": "从剪贴板恢复"
+    },
+    {
+      "name": "clipboard_empty",
+      "value": "剪贴板为空"
+    },
+    {
+      "name": "loading_subscription",
+      "value": "正在加载订阅…"
+    },
+    {
+      "name": "subscription_load_failed",
+      "value": "订阅加载失败"
+    },
+    {
+      "name": "subscription_not_found",
+      "value": "订阅不存在"
+    },
+    {
+      "name": "unnamed_subscription",
+      "value": "未命名订阅"
+    },
+    {
+      "name": "updating",
+      "value": "正在更新…"
+    },
+    {
+      "name": "update_now",
+      "value": "立即更新"
+    },
+    {
+      "name": "delete_subscription_profiles",
+      "value": "删除订阅及节点"
+    },
+    {
+      "name": "subscription_settings",
+      "value": "订阅设置"
+    },
+    {
+      "name": "auto_update",
+      "value": "自动更新"
+    },
+    {
+      "name": "auto_update_delay",
+      "value": "更新间隔(小时)"
+    },
+    {
+      "name": "update_when_connected_only",
+      "value": "仅在 VPN 已连接时更新"
+    },
+    {
+      "name": "update_when_connected_only_sum",
+      "value": "未连接时跳过自动更新,避免空跑流量"
+    },
+    {
+      "name": "deduplication",
+      "value": "更新时去重"
+    },
+    {
+      "name": "deduplication_sum",
+      "value": "按 类型+服务器+端口+UUID 跳过重复节点(默认关闭,保留订阅返回的全部节点)"
+    },
+    {
+      "name": "force_resolve",
+      "value": "强制解析"
+    },
+    {
+      "name": "force_resolve_sum",
+      "value": "更新订阅时把节点服务器域名解析为 IP,原域名保留到 SNI(默认关闭)"
+    },
+    {
+      "name": "subscription_user_agent",
+      "value": "自定义 User-Agent"
+    },
+    {
+      "name": "subscription_user_agent_hint",
+      "value": "留空使用默认 UA"
+    },
+    {
+      "name": "subscription_setting_saved",
+      "value": "设置已保存"
+    },
+    {
+      "name": "add",
+      "value": "添加"
+    },
+    {
+      "name": "loading_route_rules",
+      "value": "正在加载路由规则…"
+    },
+    {
+      "name": "route_rules_load_failed",
+      "value": "路由规则加载失败"
+    },
+    {
+      "name": "no_route_rules",
+      "value": "暂无自定义路由规则"
+    },
+    {
+      "name": "route_builtin_geo_ready",
+      "value": "内置 cn 直连分流已启用"
+    },
+    {
+      "name": "route_builtin_geo_missing",
+      "value": "Geo 数据未下载,cn 直连分流未启用"
+    },
+    {
+      "name": "route_builtin_geo_desc",
+      "value": "规则模式连接时自动注入 geosite:cn(中国域名)与 geoip:cn(中国 IP)直连规则,国内流量不绕代理;此规则由内核执行,不在下方自定义列表中显示"
+    },
+    {
+      "name": "route_settings_title",
+      "value": "路由设置"
+    },
+    {
+      "name": "route_settings_hint",
+      "value": "分流全局参数与 geo 资产管理(自设置页合并而来);改动即存,重连 VPN 后生效"
+    },
+    {
+      "name": "route_rule_remark",
+      "value": "规则备注"
+    },
+    {
+      "name": "add_profile_methods_scan_qr_code",
+      "value": "扫码添加"
+    },
+    {
+      "name": "action_import_file",
+      "value": "从文件导入"
+    },
+    {
+      "name": "no_proxies_found_in_file",
+      "value": "文件中未找到可用节点"
+    },
+    {
+      "name": "import_file_message",
+      "value": "从文件解析出 %1$d 个节点,确认导入?"
+    },
+    {
+      "name": "import_file_failed",
+      "value": "文件导入失败:%1$s"
+    },
+    {
+      "name": "scan_no_content",
+      "value": "二维码中没有可导入的内容"
+    },
+    {
+      "name": "scan_failed_use_paste",
+      "value": "扫码失败:%1$s,请改用粘贴导入"
+    },
+    {
+      "name": "route_rule_domains",
+      "value": "域名"
+    },
+    {
+      "name": "route_rule_domains_hint",
+      "value": "逗号分隔。前缀语法:geosite:cn / full:例.com / domain:例.com / keyword:例 / regexp:^example"
+    },
+    {
+      "name": "route_rule_ip",
+      "value": "目的 IP"
+    },
+    {
+      "name": "route_rule_port",
+      "value": "目的端口"
+    },
+    {
+      "name": "route_rule_source",
+      "value": "源 IP"
+    },
+    {
+      "name": "route_rule_source_port",
+      "value": "源端口"
+    },
+    {
+      "name": "route_rule_network",
+      "value": "网络"
+    },
+    {
+      "name": "route_rule_protocol",
+      "value": "协议"
+    },
+    {
+      "name": "route_rule_any",
+      "value": "任意"
+    },
+    {
+      "name": "route_rule_packages",
+      "value": "应用包名"
+    },
+    {
+      "name": "route_rule_app_name",
+      "value": "应用名"
+    },
+    {
+      "name": "route_rule_app_name_hint",
+      "value": "如 微信(仅备注用)"
+    },
+    {
+      "name": "route_rule_packages_effective",
+      "value": "生效"
+    },
+    {
+      "name": "route_rule_packages_note",
+      "value": "勾选「生效」后该规则才按包名匹配进程;多个包名用英文逗号分隔"
+    },
+    {
+      "name": "route_rule_config",
+      "value": "自定义配置"
+    },
+    {
+      "name": "route_rule_config_hint",
+      "value": "规则的 JSON 片段,与上面字段浅合并"
+    },
+    {
+      "name": "domain",
+      "value": "完整域名"
+    },
+    {
+      "name": "domain_suffix",
+      "value": "域名后缀"
+    },
+    {
+      "name": "domain_keyword",
+      "value": "域名关键字"
+    },
+    {
+      "name": "port",
+      "value": "端口"
+    },
+    {
+      "name": "proxy",
+      "value": "代理"
+    },
+    {
+      "name": "reject",
+      "value": "拒绝"
+    },
+    {
+      "name": "delete_rule",
+      "value": "删除规则"
+    },
+    {
+      "name": "profile_name",
+      "value": "名称"
+    },
+    {
+      "name": "profile_name_placeholder",
+      "value": "节点名称"
+    },
+    {
+      "name": "server_address",
+      "value": "服务器地址"
+    },
+    {
+      "name": "password",
+      "value": "密码"
+    },
+    {
+      "name": "protocol_type",
+      "value": "协议类型"
+    },
+    {
+      "name": "transport",
+      "value": "传输层"
+    },
+    {
+      "name": "enable_tls",
+      "value": "启用 TLS"
+    },
+    {
+      "name": "allow_insecure_tls",
+      "value": "允许不安全 TLS (insecure)"
+    },
+    {
+      "name": "multiplex",
+      "value": "多路复用 (mux)"
+    },
+    {
+      "name": "parse_and_fill",
+      "value": "解析并填入"
+    },
+    {
+      "name": "speed_test",
+      "value": "测速"
+    },
+    {
+      "name": "speed_testing",
+      "value": "测速中"
+    },
+    {
+      "name": "connect",
+      "value": "连接"
+    },
+    {
+      "name": "disconnect",
+      "value": "断开连接"
+    },
+    {
+      "name": "start_vpn",
+      "value": "启动 VPN"
+    },
+    {
+      "name": "logs",
+      "value": "日志"
+    },
+    {
+      "name": "log_export",
+      "value": "导出"
+    },
+    {
+      "name": "log_clear",
+      "value": "清空"
+    },
+    {
+      "name": "log_search_hint",
+      "value": "搜索日志"
+    },
+    {
+      "name": "log_export_empty",
+      "value": "没有可导出的日志"
+    },
+    {
+      "name": "log_exported",
+      "value": "日志已导出"
+    },
+    {
+      "name": "import_link_subscription",
+      "value": "导入订阅"
+    },
+    {
+      "name": "confirm_delete_route_rule",
+      "value": "删除这条路由规则?"
+    },
+    {
+      "name": "route_reset",
+      "value": "重置路由"
+    },
+    {
+      "name": "route_reset_confirm",
+      "value": "将清空全部自定义路由规则与远程规则集，确定继续?"
+    },
+    {
+      "name": "route_reset_empty",
+      "value": "没有可清空的路由规则"
+    },
+    {
+      "name": "route_reset_done",
+      "value": "已清空全部路由规则"
+    },
+    {
+      "name": "route_rule_empty_hint",
+      "value": "点击右上角“添加”创建第一条规则。"
+    },
+    {
+      "name": "comma_separated_values",
+      "value": "多个值使用英文逗号分隔"
+    },
+    {
+      "name": "route_rule_order_hint",
+      "value": "规则按列表顺序匹配，修改后重新连接 VPN 生效。"
+    },
+    {
+      "name": "subscription_update_complete",
+      "value": "订阅更新完成"
+    },
+    {
+      "name": "added",
+      "value": "新增"
+    },
+    {
+      "name": "removed",
+      "value": "移除"
+    },
+    {
+      "name": "update_failed",
+      "value": "更新失败"
+    },
+    {
+      "name": "confirm_delete_subscription",
+      "value": "删除订阅及其节点"
+    },
+    {
+      "name": "subscription_missing_hint",
+      "value": "该订阅可能已被删除，请返回订阅列表。"
+    },
+    {
+      "name": "profile_count",
+      "value": "节点数量"
+    },
+    {
+      "name": "used_traffic",
+      "value": "已用流量"
+    },
+    {
+      "name": "total_traffic",
+      "value": "总流量"
+    },
+    {
+      "name": "unknown",
+      "value": "未知"
+    },
+    {
+      "name": "consecutive_failures",
+      "value": "连续失败"
+    },
+    {
+      "name": "no_recognizable_profiles",
+      "value": "未解析到可识别的节点"
+    },
+    {
+      "name": "select_or_create_profile",
+      "value": "请先选择或创建一个节点"
+    },
+    {
+      "name": "testing_profiles",
+      "value": "正在测试节点，共"
+    },
+    {
+      "name": "speed_test_complete",
+      "value": "测速完成，结果已保存"
+    },
+    {
+      "name": "speed_test_degraded",
+      "value": "%1$s；已回退为 TCPing（仅握手延迟，不代表真连接可用）"
+    },
+    {
+      "name": "speed_test_bind_fallback",
+      "value": "绑定物理网卡后全部失败，已改为直连测速重测"
+    },
+    {
+      "name": "latency_stale",
+      "value": "已过期"
+    },
+    {
+      "name": "settings_test_timeout",
+      "value": "测速超时 (毫秒)"
+    },
+    {
+      "name": "settings_test_retries",
+      "value": "失败重试次数"
+    },
+    {
+      "name": "settings_test_samples",
+      "value": "每节点取样次数 (取平均)"
+    },
+    {
+      "name": "settings_test_expect_status",
+      "value": "响应判定"
+    },
+    {
+      "name": "test_expect_2xx",
+      "value": "仅 2xx 算通 (推荐)"
+    },
+    {
+      "name": "test_expect_any",
+      "value": "任意响应码算通"
+    },
+    {
+      "name": "settings_test_bypass_tunnel",
+      "value": "测速绕过当前隧道"
+    },
+    {
+      "name": "settings_test_bypass_tunnel_hint",
+      "value": "开启后测速流量绑定物理网卡直出，测的是节点本身；关闭则测的是「节点套当前节点」，连接中测速会整体偏高"
+    },
+    {
+      "name": "settings_latency_stale",
+      "value": "延迟结果有效期 (小时)"
+    },
+    {
+      "name": "timeout",
+      "value": "超时"
+    },
+    {
+      "name": "disconnect_first",
+      "value": "请先断开当前连接"
+    },
+    {
+      "name": "switching_wait",
+      "value": "正在切换，请稍候"
+    },
+    {
+      "name": "switching_to",
+      "value": "正在切换到"
+    },
+    {
+      "name": "clipboard_empty_paste_manually",
+      "value": "剪贴板为空，请手动粘贴到输入框"
+    },
+    {
+      "name": "paste_subscription_or_profile_link",
+      "value": "请先粘贴订阅链接或节点链接"
+    },
+    {
+      "name": "fetching_subscription",
+      "value": "正在获取订阅…"
+    },
+    {
+      "name": "import_confirm",
+      "value": "确认导入"
+    },
+    {
+      "name": "subscription_import_message",
+      "value": "确认导入订阅 “%1$s”?如果来源不可信,你的 IP 与网络行为可能被泄漏。"
+    },
+    {
+      "name": "profile_import_message",
+      "value": "确认导入节点 “%1$s”?"
+    },
+    {
+      "name": "clash_no_importable_profiles",
+      "value": "订阅返回 Clash 格式，但没有可导入的节点。跳过的不支持协议数"
+    },
+    {
+      "name": "imported_profiles",
+      "value": "已导入节点数"
+    },
+    {
+      "name": "import_failed",
+      "value": "导入失败"
+    },
+    {
+      "name": "ungrouped",
+      "value": "未分组"
+    },
+    {
+      "name": "move_to_group",
+      "value": "移动到分组"
+    },
+    {
+      "name": "move_to_group_title",
+      "value": "移动到分组"
+    },
+    {
+      "name": "move_to_group_done",
+      "value": "已移动节点"
+    },
+    {
+      "name": "profile_group",
+      "value": "分组"
+    },
+    {
+      "name": "group_settings",
+      "value": "分组设置"
+    },
+    {
+      "name": "group_settings_saved",
+      "value": "分组设置已保存"
+    },
+    {
+      "name": "use_selector",
+      "value": "启用 selector"
+    },
+    {
+      "name": "use_selector_sum",
+      "value": "组内生成内核 selector 出站,本组全部节点作为候选(对齐安卓 groupIsSelector)"
+    },
+    {
+      "name": "use_auto_select",
+      "value": "启用自动选最快"
+    },
+    {
+      "name": "use_auto_select_sum",
+      "value": "组内生成内核 urltest 出站,周期做真连接探测并自动留在延迟最低的节点(等价 Clash 的 url-test 组);与「启用 selector」互斥"
+    },
+    {
+      "name": "front_proxy",
+      "value": "前置代理"
+    },
+    {
+      "name": "landing_proxy",
+      "value": "落地代理"
+    },
+    {
+      "name": "option_none",
+      "value": "无"
+    },
+    {
+      "name": "route_outbound_profile",
+      "value": "指定节点"
+    },
+    {
+      "name": "route_outbound_profile_active",
+      "value": "节点(已指定)"
+    },
+    {
+      "name": "route_rule_profile_target",
+      "value": "目标节点"
+    },
+    {
+      "name": "route_rule_profile_missing",
+      "value": "节点已删除"
+    },
+    {
+      "name": "route_no_profiles",
+      "value": "暂无节点,无法指定"
+    },
+    {
+      "name": "local_profile",
+      "value": "本地节点"
+    },
+    {
+      "name": "subscription_profile",
+      "value": "订阅节点"
+    },
+    {
+      "name": "protocol_export_unsupported",
+      "value": "该协议暂不支持导出"
+    },
+    {
+      "name": "profile_link_copied",
+      "value": "节点链接已复制"
+    },
+    {
+      "name": "url_test_requires_connection",
+      "value": "URL Test 需要先连接该节点"
+    },
+    {
+      "name": "url_test_current_profile_only",
+      "value": "URL Test 仅支持当前连接节点"
+    },
+    {
+      "name": "confirm_delete_profile",
+      "value": "删除节点"
+    },
+    {
+      "name": "unpin",
+      "value": "取消置顶"
+    },
+    {
+      "name": "pin",
+      "value": "置顶"
+    },
+    {
+      "name": "copy_share_link",
+      "value": "复制分享链接"
+    },
+    {
+      "name": "view_subscription",
+      "value": "查看订阅"
+    },
+    {
+      "name": "irreversible",
+      "value": "不可撤销"
+    },
+    {
+      "name": "total",
+      "value": "总计"
+    },
+    {
+      "name": "import_content_placeholder",
+      "value": "粘贴订阅链接(http…)、节点链接(vless:// 等)或 base64 订阅内容"
+    },
+    {
+      "name": "saved",
+      "value": "已保存"
+    },
+    {
+      "name": "save_failed",
+      "value": "保存失败"
+    },
+    {
+      "name": "paste_link_first",
+      "value": "请先粘贴链接内容"
+    },
+    {
+      "name": "error_server_required",
+      "value": "服务器地址不能为空"
+    },
+    {
+      "name": "error_port_range",
+      "value": "端口必须是 1 到 65535 之间的整数"
+    },
+    {
+      "name": "error_loopback_server",
+      "value": "远程代理服务器不能使用 127.0.0.1、localhost 或 ::1，请填写真实服务器地址"
+    },
+    {
+      "name": "error_invalid_uuid",
+      "value": "请输入有效的 UUID"
+    },
+    {
+      "name": "error_ss_method_required",
+      "value": "Shadowsocks 加密方式不能为空"
+    },
+    {
+      "name": "error_ss_password_required",
+      "value": "Shadowsocks 密码不能为空"
+    },
+    {
+      "name": "error_auth_password_required",
+      "value": "认证密码不能为空"
+    },
+    {
+      "name": "error_tuic_password_required",
+      "value": "TUIC 密码不能为空"
+    },
+    {
+      "name": "error_reality_public_key",
+      "value": "REALITY 公钥格式不正确"
+    },
+    {
+      "name": "error_reality_short_id",
+      "value": "REALITY short_id 必须是 2 到 16 位十六进制字符"
+    },
+    {
+      "name": "error_extra_json",
+      "value": "附加 JSON 格式不正确"
+    },
+    {
+      "name": "subscription_link_use_home",
+      "value": "这是订阅链接，请回主页使用“导入订阅”"
+    },
+    {
+      "name": "subscription_container_unsupported",
+      "value": "sn://subscription 为 SagerNet 私有容器格式，暂不支持，请改用订阅地址或 Clash 分享链接"
+    },
+    {
+      "name": "unrecognized_profile_link",
+      "value": "无法识别节点链接，请检查内容"
+    },
+    {
+      "name": "parsed_review_save",
+      "value": "已解析，请核对后保存"
+    },
+    {
+      "name": "parse_failed",
+      "value": "解析失败"
+    },
+    {
+      "name": "clipboard_empty_paste_manually_short",
+      "value": "剪贴板为空，请手动粘贴"
+    },
+    {
+      "name": "profile_link_placeholder",
+      "value": "粘贴 vless://、vmess://、ss://、trojan:// 等节点链接（支持多条，取第一条）"
+    },
+    {
+      "name": "password_trojan",
+      "value": "密码 (Trojan)"
+    },
+    {
+      "name": "password_anytls",
+      "value": "密码 (AnyTLS)"
+    },
+    {
+      "name": "password_snell",
+      "value": "密码 (Snell v4)"
+    },
+    {
+      "name": "encryption_method",
+      "value": "加密方式"
+    },
+    {
+      "name": "encryption_security",
+      "value": "加密 (security)"
+    },
+    {
+      "name": "empty_or_xtls_vision",
+      "value": "留空 / xtls-rprx-vision"
+    },
+    {
+      "name": "auth_string",
+      "value": "认证字符串 (auth_str)"
+    },
+    {
+      "name": "upload_mbps",
+      "value": "上行 Mbps"
+    },
+    {
+      "name": "download_mbps",
+      "value": "下行 Mbps"
+    },
+    {
+      "name": "empty_or_password",
+      "value": "留空 / 密码"
+    },
+    {
+      "name": "password_hysteria2",
+      "value": "密码 (Hysteria2)"
+    },
+    {
+      "name": "upload_mbps_optional",
+      "value": "上行 Mbps (可空)"
+    },
+    {
+      "name": "download_mbps_optional",
+      "value": "下行 Mbps (可空)"
+    },
+    {
+      "name": "obfs_password_optional",
+      "value": "obfs 混淆密码 (可空)"
+    },
+    {
+      "name": "salamander_password",
+      "value": "salamander 密码"
+    },
+    {
+      "name": "password_optional_placeholder",
+      "value": "password (可空)"
+    },
+    {
+      "name": "congestion_control",
+      "value": "拥塞控制"
+    },
+    {
+      "name": "udp_relay_mode",
+      "value": "UDP 中继模式"
+    },
+    {
+      "name": "local_address_cidr",
+      "value": "本地地址 (CIDR)"
+    },
+    {
+      "name": "private_key",
+      "value": "本机私钥 (private_key)"
+    },
+    {
+      "name": "peer_public_key",
+      "value": "对端公钥 (peer public_key)"
+    },
+    {
+      "name": "pre_shared_key_optional",
+      "value": "预共享密钥 (可选)"
+    },
+    {
+      "name": "username_optional",
+      "value": "用户名 (可选)"
+    },
+    {
+      "name": "password_optional",
+      "value": "密码 (可选)"
+    },
+    {
+      "name": "tcp_none",
+      "value": "TCP (无)"
+    },
+    {
+      "name": "domain_placeholder",
+      "value": "域名"
+    },
+    {
+      "name": "sni_placeholder",
+      "value": "留空则使用服务器地址"
+    },
+    {
+      "name": "alpn_comma_separated",
+      "value": "ALPN (逗号分隔)"
+    },
+    {
+      "name": "alpn_placeholder",
+      "value": "h2,http/1.1 或 h3"
+    },
+    {
+      "name": "utls_fingerprint",
+      "value": "uTLS 指纹 (fp, 留空默认)"
+    },
+    {
+      "name": "reality_public_key_optional",
+      "value": "REALITY 公钥 (pbk, 可选)"
+    },
+    {
+      "name": "reality_short_id_optional",
+      "value": "REALITY short_id (可选)"
+    },
+    {
+      "name": "extra_json_advanced",
+      "value": "附加 JSON (高级, 与出站对象合并)"
+    },
+    {
+      "name": "profile_edit_footer_hint",
+      "value": "长按主页节点可删除；支持从剪贴板导入节点链接与 base64 订阅"
+    },
+    {
+      "name": "geo_downloading",
+      "value": "正在下载 Geo 数据（约 1 MB，多源尝试）…"
+    },
+    {
+      "name": "geo_download_complete",
+      "value": "Geo 数据下载完成，重新连接后启用 cn 直连分流"
+    },
+    {
+      "name": "geo_import_complete",
+      "value": "已导入自定义 Geo 数据:%1$s,重新连接后生效"
+    },
+    {
+      "name": "geo_import_failed",
+      "value": "导入失败: %1$s"
+    },
+    {
+      "name": "download_failed",
+      "value": "下载失败"
+    },
+    {
+      "name": "saved_reconnect_vpn",
+      "value": "已保存，重新连接 VPN 后生效"
+    },
+    {
+      "name": "no_installed_apps_manual",
+      "value": "未读取到已安装应用，请使用下方包名输入框。"
+    },
+    {
+      "name": "app_list_failed_manual",
+      "value": "无法读取应用列表，请使用下方包名输入框"
+    },
+    {
+      "name": "backup_file_empty",
+      "value": "备份文件为空"
+    },
+    {
+      "name": "backup_file_too_large",
+      "value": "备份文件超过 20 MiB"
+    },
+    {
+      "name": "backup_file_incomplete",
+      "value": "备份文件未完整读取"
+    },
+    {
+      "name": "backup_export_cancelled",
+      "value": "已取消导出备份"
+    },
+    {
+      "name": "backup_file_exported",
+      "value": "备份文件已导出"
+    },
+    {
+      "name": "export_failed",
+      "value": "导出失败: %1$s"
+    },
+    {
+      "name": "backup_import_cancelled",
+      "value": "已取消导入备份"
+    },
+    {
+      "name": "restore_failed",
+      "value": "恢复失败: %1$s"
+    },
+    {
+      "name": "updating_subscription",
+      "value": "正在更新订阅…"
+    },
+    {
+      "name": "index_testing_count",
+      "value": "正在测速 %1$d 个节点…"
+    },
+    {
+      "name": "switching_to_name",
+      "value": "切换到 %1$s…"
+    },
+    {
+      "name": "clash_skipped_count",
+      "value": "无可导入节点,跳过 %1$d 条"
+    },
+    {
+      "name": "imported_from_sub",
+      "value": "已导入 %1$d 个节点,来自订阅 %2$s"
+    },
+    {
+      "name": "imported_count",
+      "value": "已导入 %1$d 个节点"
+    },
+    {
+      "name": "import_failed_reason",
+      "value": "导入失败: %1$s"
+    },
+    {
+      "name": "confirm_delete_profile_name",
+      "value": "确认删除节点 “%1$s”?"
+    },
+    {
+      "name": "traffic_speed_total",
+      "value": "↑ %1$s  ↓ %2$s   ·   总 ↑ %3$s  ↓ %4$s"
+    },
+    {
+      "name": "settings_mode_switched_rule",
+      "value": "已切换为规则模式,重连后生效"
+    },
+    {
+      "name": "settings_mode_switched_global",
+      "value": "已切换为全局模式,重连后生效"
+    },
+    {
+      "name": "settings_mode_switched_direct",
+      "value": "已切换为直连模式,重连后生效"
+    },
+    {
+      "name": "settings_mode_desc_direct",
+      "value": "所有流量直连(不走代理)"
+    },
+    {
+      "name": "settings_mode_desc_global",
+      "value": "所有流量走代理"
+    },
+    {
+      "name": "settings_mode_desc_rule",
+      "value": "私网与自定义列表直连,其余走代理"
+    },
+    {
+      "name": "settings_custom_routes_title",
+      "value": "自定义路由规则"
+    },
+    {
+      "name": "settings_direct_domain_suffix",
+      "value": "直连域名后缀(逗号分隔)"
+    },
+    {
+      "name": "settings_direct_cidr",
+      "value": "直连 IP 段(逗号分隔 CIDR)"
+    },
+    {
+      "name": "settings_geo_ready",
+      "value": "✓ Geo 数据已就绪(cn 直连分流已启用)"
+    },
+    {
+      "name": "settings_geo_missing",
+      "value": "未下载 Geo 数据(cn 分流不可用)"
+    },
+    {
+      "name": "settings_geo_downloading",
+      "value": "下载中…"
+    },
+    {
+      "name": "settings_geo_redownload",
+      "value": "重新下载"
+    },
+    {
+      "name": "settings_geo_download",
+      "value": "下载数据"
+    },
+    {
+      "name": "settings_geo_import",
+      "value": "导入文件"
+    },
+    {
+      "name": "settings_geo_import_hint",
+      "value": "从文件导入 geoip.srs / geosite.srs(覆盖内置 cn 库)"
+    },
+    {
+      "name": "settings_geo_site",
+      "value": "GeoSite 库"
+    },
+    {
+      "name": "settings_geo_ip",
+      "value": "GeoIP 库"
+    },
+    {
+      "name": "geo_asset_status",
+      "value": "%1$s · 版本 %2$s"
+    },
+    {
+      "name": "geo_asset_absent",
+      "value": "未下载"
+    },
+    {
+      "name": "settings_geo_update_one",
+      "value": "更新"
+    },
+    {
+      "name": "settings_geo_updated",
+      "value": "已更新 %1$s"
+    },
+    {
+      "name": "settings_geo_delete",
+      "value": "删除"
+    },
+    {
+      "name": "settings_geo_delete_confirm",
+      "value": "删除 %1$s?规则模式下 cn 分流将不再生效"
+    },
+    {
+      "name": "settings_geo_deleted",
+      "value": "已删除 %1$s"
+    },
+    {
+      "name": "settings_geo_delete_failed",
+      "value": "删除失败:%1$s"
+    },
+    {
+      "name": "settings_subs_empty",
+      "value": "暂无订阅。在主页「导入订阅」粘贴订阅地址后会自动记录到这里。"
+    },
+    {
+      "name": "settings_sub_never_updated",
+      "value": "从未更新"
+    },
+    {
+      "name": "settings_sub_updated_at",
+      "value": "更新于 %1$s"
+    },
+    {
+      "name": "settings_sub_traffic",
+      "value": "已用 %1$s / %2$s"
+    },
+    {
+      "name": "settings_sub_expire",
+      "value": "到期: %1$s"
+    },
+    {
+      "name": "update_action",
+      "value": "更新"
+    },
+    {
+      "name": "settings_auto_update_subs",
+      "value": "启动时自动更新订阅"
+    },
+    {
+      "name": "settings_tun_stack",
+      "value": "TUN 协议栈"
+    },
+    {
+      "name": "settings_tun_mtu",
+      "value": "TUN MTU"
+    },
+    {
+      "name": "latency_test_url",
+      "value": "URL Test(真连接)"
+    },
+    {
+      "name": "latency_test_tcp",
+      "value": "TCPing(仅握手)"
+    },
+    {
+      "name": "settings_remote_dns",
+      "value": "远程 DNS (经代理, 防泄漏)"
+    },
+    {
+      "name": "settings_remote_dns_hint",
+      "value": "远程 DNS 的主机部分必须是 IP(如 https://8.8.8.8/dns-query),避免启动时引导解析"
+    },
+    {
+      "name": "settings_direct_dns",
+      "value": "直连 DNS (用于解析代理服务器域名)"
+    },
+    {
+      "name": "settings_enable_ipv6",
+      "value": "启用 IPv6"
+    },
+    {
+      "name": "appearance_follow_system",
+      "value": "跟随系统"
+    },
+    {
+      "name": "appearance_light",
+      "value": "浅色"
+    },
+    {
+      "name": "appearance_dark",
+      "value": "深色"
+    },
+    {
+      "name": "settings_theme_note",
+      "value": "主题选项会保存为应用偏好；受当前 SDK 能力限制，部分页面需重新进入后刷新。"
+    },
+    {
+      "name": "settings_per_app_hint_exclude",
+      "value": "不走 VPN 的应用包名,逗号分隔"
+    },
+    {
+      "name": "settings_per_app_hint_include",
+      "value": "仅走 VPN 的应用包名,逗号分隔"
+    },
+    {
+      "name": "settings_per_app_manual_note",
+      "value": "应用列表读取失败时仍可手动输入包名，多个包名用逗号分隔，重连后生效。"
+    },
+    {
+      "name": "settings_clipboard_backup_done",
+      "value": "备份已复制到剪贴板"
+    },
+    {
+      "name": "settings_clipboard_backup_failed",
+      "value": "备份失败: %1$s"
+    },
+    {
+      "name": "settings_clipboard_empty",
+      "value": "剪贴板为空"
+    },
+    {
+      "name": "settings_backup_desc",
+      "value": "备份包含节点、分组、设置、订阅和自定义路由规则，以带版本的 JSON 存于剪贴板。"
+    },
+    {
+      "name": "settings_insecure_tls",
+      "value": "全局放行不安全 TLS"
+    },
+    {
+      "name": "settings_insecure_tls_desc",
+      "value": "调试自签证书节点时使用"
+    },
+    {
+      "name": "settings_reconnect_note",
+      "value": "注意:修改设置后需重新连接 VPN 才会生效。"
+    },
+    {
+      "name": "download_failed_reason",
+      "value": "下载失败: %1$s"
+    },
+    {
+      "name": "save_failed_reason",
+      "value": "保存失败: %1$s"
+    },
+    {
+      "name": "app_list_failed_reason",
+      "value": "无法读取应用列表: %1$s"
+    },
+    {
+      "name": "sub_update_result",
+      "value": "订阅更新完成: 新增 %1$d, 移除 %2$d"
+    },
+    {
+      "name": "sub_update_skipped",
+      "value": "有 %1$d 个节点内核不支持而跳过"
+    },
+    {
+      "name": "sub_update_not_modified",
+      "value": "订阅内容未变更"
+    },
+    {
+      "name": "update_failed_reason",
+      "value": "更新失败: %1$s"
+    },
+    {
+      "name": "backup_invalid_json",
+      "value": "备份文件不是有效的 JSON"
+    },
+    {
+      "name": "backup_bad_format",
+      "value": "备份内容格式不正确"
+    },
+    {
+      "name": "backup_unsupported_version",
+      "value": "不支持的备份版本: %1$d"
+    },
+    {
+      "name": "backup_restore_summary",
+      "value": "已恢复 %1$d 个节点、%2$d 个分组、全部设置、%3$d 个订阅、%4$d 条路由规则和 %5$d 个远程规则集"
+    },
+    {
+      "name": "backup_restore_summary_stopped",
+      "value": "已停止 VPN，并恢复 %1$d 个节点、%2$d 个分组、全部设置、%3$d 个订阅、%4$d 条路由规则和 %5$d 个远程规则集"
+    },
+    {
+      "name": "backup_restore_busy",
+      "value": "已有恢复任务正在进行，请稍候"
+    },
+    {
+      "name": "backup_vpn_disconnect_timeout",
+      "value": "等待 VPN 停止超时，未开始恢复"
+    },
+    {
+      "name": "backup_restore_rolled_back",
+      "value": "恢复失败，原有数据已完整回滚"
+    },
+    {
+      "name": "backup_rollback_failed",
+      "value": "恢复失败且回滚未完全成功: %1$s"
+    },
+    {
+      "name": "backup_op_failed",
+      "value": "操作失败: %1$s"
+    },
+    {
+      "name": "confirm_delete_sub_name",
+      "value": "确认删除订阅 “%1$s”(共 %2$d 个节点)?"
+    },
+    {
+      "name": "profile_count_value",
+      "value": "节点数: %1$d"
+    },
+    {
+      "name": "used_traffic_value",
+      "value": "已用流量: %1$s"
+    },
+    {
+      "name": "total_traffic_value",
+      "value": "总流量: %1$s"
+    },
+    {
+      "name": "total_traffic_unknown",
+      "value": "总流量: 未知"
+    },
+    {
+      "name": "consecutive_failures_value",
+      "value": "连续失败: %1$d 次"
+    },
+    {
+      "name": "status_connecting",
+      "value": "正在建立 VPN…"
+    },
+    {
+      "name": "status_disconnecting",
+      "value": "正在断开…"
+    },
+    {
+      "name": "status_switching",
+      "value": "正在切换节点…"
+    },
+    {
+      "name": "status_start_timeout",
+      "value": "建立 VPN 超时:扩展没有完成启动,请到「日志」页查看卡在哪一步"
+    },
+    {
+      "name": "status_awaiting_auth",
+      "value": "等待 VPN 授权…"
+    },
+    {
+      "name": "status_connected_node",
+      "value": "已连接: %1$s"
+    },
+    {
+      "name": "status_start_failed",
+      "value": "启动 VPN 服务失败: %1$s"
+    },
+    {
+      "name": "status_connect_failed",
+      "value": "连接失败: %1$s"
+    },
+    {
+      "name": "notification_vpn_connected",
+      "value": "VPN 已连接"
+    },
+    {
+      "name": "notification_node_latency",
+      "value": "%1$s · %2$s"
+    },
+    {
+      "name": "notification_disconnect",
+      "value": "断开"
+    },
+    {
+      "name": "profile_sort_mode",
+      "value": "节点排序"
+    },
+    {
+      "name": "sort_manual",
+      "value": "手动"
+    },
+    {
+      "name": "sort_latency",
+      "value": "按延迟"
+    },
+    {
+      "name": "sort_name",
+      "value": "按名称"
+    },
+    {
+      "name": "move_up",
+      "value": "上移"
+    },
+    {
+      "name": "move_down",
+      "value": "下移"
+    },
+    {
+      "name": "test_group",
+      "value": "测速本组"
+    },
+    {
+      "name": "group_latency_untested",
+      "value": "%1$d 未测"
+    },
+    {
+      "name": "group_latency_minimum",
+      "value": "最低 %1$dms"
+    },
+    {
+      "name": "share_profile",
+      "value": "分享节点"
+    },
+    {
+      "name": "share_subscription",
+      "value": "分享订阅链接"
+    },
+    {
+      "name": "share_link_title",
+      "value": "分享节点链接"
+    },
+    {
+      "name": "share_subscription_title",
+      "value": "分享订阅链接"
+    },
+    {
+      "name": "share_link_copied",
+      "value": "分享链接已复制"
+    },
+    {
+      "name": "remote_rule_sets",
+      "value": "远程规则集"
+    },
+    {
+      "name": "add_remote_rule_set",
+      "value": "添加规则集"
+    },
+    {
+      "name": "remote_rule_set_name",
+      "value": "规则集名称"
+    },
+    {
+      "name": "remote_rule_set_url",
+      "value": "规则集 URL（.srs）"
+    },
+    {
+      "name": "rule_set_site",
+      "value": "域名规则"
+    },
+    {
+      "name": "rule_set_ip",
+      "value": "IP 规则"
+    },
+    {
+      "name": "remote_rule_set_updated",
+      "value": "最近更新: %1$s"
+    },
+    {
+      "name": "remote_rule_set_error",
+      "value": "最近错误: %1$s"
+    },
+    {
+      "name": "clash_api_settings",
+      "value": "连接统计 API"
+    },
+    {
+      "name": "clash_api_enabled",
+      "value": "启用连接统计"
+    },
+    {
+      "name": "clash_api_port",
+      "value": "监听端口"
+    },
+    {
+      "name": "clash_api_secret",
+      "value": "访问密钥"
+    },
+    {
+      "name": "clash_api_reconnect_hint",
+      "value": "更改后需重新连接 VPN 才能生效"
+    },
+    {
+      "name": "connections_title_count",
+      "value": "连接 (%1$d)"
+    },
+    {
+      "name": "refresh",
+      "value": "刷新"
+    },
+    {
+      "name": "connections_api_unavailable",
+      "value": "无法访问连接统计 API，当前显示 TUN 总速率"
+    },
+    {
+      "name": "connection_closed",
+      "value": "已断开该连接"
+    },
+    {
+      "name": "connection_close_failed",
+      "value": "关闭失败: %1$s"
+    },
+    {
+      "name": "connections_loading",
+      "value": "正在加载连接…"
+    },
+    {
+      "name": "connections_unavailable",
+      "value": "连接信息暂不可用"
+    },
+    {
+      "name": "connections_empty",
+      "value": "暂无活动连接"
+    },
+    {
+      "name": "connections_empty_hint",
+      "value": "启动 VPN 并访问网络后，连接会显示在这里。"
+    },
+    {
+      "name": "parse_failed_reason",
+      "value": "解析失败: %1$s"
+    },
+    {
+      "name": "upload",
+      "value": "上传"
+    },
+    {
+      "name": "download",
+      "value": "下载"
+    },
+    {
+      "name": "traffic",
+      "value": "流量"
+    },
+    {
+      "name": "sub_group_edit",
+      "value": "分组"
+    },
+    {
+      "name": "sub_group_dialog_title",
+      "value": "设置订阅分组"
+    },
+    {
+      "name": "sub_group_hint",
+      "value": "输入分组名称,留空为未分组"
+    },
+    {
+      "name": "sub_group_apply_hint",
+      "value": "保存后该订阅全部节点移入此分组(分组不存在时自动创建;留空=移入未分组)"
+    },
+    {
+      "name": "sub_group_applied",
+      "value": "已将订阅节点移入分组 %1$s"
+    },
+    {
+      "name": "sub_group_applied_none",
+      "value": "已将订阅节点移入未分组"
+    },
+    {
+      "name": "subscription_name_optional",
+      "value": "订阅名称（可选）"
+    },
+    {
+      "name": "sub_group_none_count",
+      "value": "未分组 · %1$d"
+    },
+    {
+      "name": "sub_group_value",
+      "value": "分组：%1$s"
+    },
+    {
+      "name": "add_entry",
+      "value": "添加"
+    },
+    {
+      "name": "subscription_no_expiry",
+      "value": "未提供到期时间"
+    },
+    {
+      "name": "subscription_days_remaining",
+      "value": "剩余 %1$d 天"
+    },
+    {
+      "name": "home",
+      "value": "首页"
+    },
+    {
+      "name": "nodes",
+      "value": "节点"
+    },
+    {
+      "name": "url_test",
+      "value": "URL 测试"
+    },
+    {
+      "name": "url_test_result",
+      "value": "URL 测试：%1$d 毫秒"
+    },
+    {
+      "name": "nav_layout",
+      "value": "导航栏位置"
+    },
+    {
+      "name": "nav_layout_side",
+      "value": "侧边栏"
+    },
+    {
+      "name": "nav_layout_bottom",
+      "value": "底部菜单栏"
+    },
+    {
+      "name": "settings_network",
+      "value": "网络"
+    },
+    {
+      "name": "settings_about",
+      "value": "其他"
+    },
+    {
+      "name": "settings_about_version",
+      "value": "版本"
+    },
+    {
+      "name": "notification_upload",
+      "value": "上行"
+    },
+    {
+      "name": "notification_download",
+      "value": "下行"
+    },
+    {
+      "name": "notification_total",
+      "value": "累计"
+    },
+    {
+      "name": "nav_config",
+      "value": "配置"
+    },
+    {
+      "name": "nav_groups",
+      "value": "分组"
+    },
+    {
+      "name": "nav_route",
+      "value": "路由"
+    },
+    {
+      "name": "nav_dashboard",
+      "value": "面板"
+    },
+    {
+      "name": "nav_tools",
+      "value": "工具"
+    },
+    {
+      "name": "nav_about",
+      "value": "关于"
+    },
+    {
+      "name": "drawer_footer",
+      "value": "NekoBox for Harmony"
+    },
+    {
+      "name": "test_current_group",
+      "value": "测速本组"
+    },
+    {
+      "name": "test_all_nodes",
+      "value": "测速全部节点"
+    },
+    {
+      "name": "update_current_subscription",
+      "value": "更新当前订阅"
+    },
+    {
+      "name": "current_subscription_missing",
+      "value": "当前选中的节点不属于任何订阅"
+    },
+    {
+      "name": "clear_traffic_statistics",
+      "value": "清除流量统计"
+    },
+    {
+      "name": "traffic_stats_cleared",
+      "value": "已清除累计流量统计"
+    },
+    {
+      "name": "clear_test_results",
+      "value": "清除测试结果"
+    },
+    {
+      "name": "dedup_action",
+      "value": "移除重复节点"
+    },
+    {
+      "name": "delete_unavailable",
+      "value": "删除不可用节点"
+    },
+    {
+      "name": "dedup_done",
+      "value": "已移除 %1$d 个节点"
+    },
+    {
+      "name": "dedup_none",
+      "value": "没有发现重复节点"
+    },
+    {
+      "name": "no_unavailable_nodes",
+      "value": "没有不可用节点"
+    },
+    {
+      "name": "confirm_delete_unavailable",
+      "value": "确认删除 %1$d 个不可用节点?"
+    },
+    {
+      "name": "test_results_cleared",
+      "value": "已清除测试结果"
+    },
+    {
+      "name": "no_profiles_title",
+      "value": "还没有节点"
+    },
+    {
+      "name": "no_profiles_hint",
+      "value": "导入订阅或新建节点开始使用"
+    },
+    {
+      "name": "group_empty_nodes",
+      "value": "该分组暂无节点"
+    },
+    {
+      "name": "import_from_clipboard",
+      "value": "从剪贴板导入"
+    },
+    {
+      "name": "export_outbound_config",
+      "value": "导出 sing-box 配置"
+    },
+    {
+      "name": "outbound_config_copied",
+      "value": "出站配置已复制"
+    },
+    {
+      "name": "export_outbound_config_file",
+      "value": "导出配置到文件"
+    },
+    {
+      "name": "outbound_config_exported",
+      "value": "出站配置已导出到文件"
+    },
+    {
+      "name": "export_failed_generic",
+      "value": "导出失败: %1$s"
+    },
+    {
+      "name": "dashboard_disabled_title",
+      "value": "Clash API 未启用"
+    },
+    {
+      "name": "dashboard_disabled_desc",
+      "value": "在「设置 → Clash API」中开启后即可使用 yacd 面板"
+    },
+    {
+      "name": "dashboard_hint",
+      "value": "面板由内核 clash_api 提供,需 VPN 运行时访问"
+    },
+    {
+      "name": "update_all_subs",
+      "value": "更新全部订阅"
+    },
+    {
+      "name": "new_group_hint",
+      "value": "新建分组名称…"
+    },
+    {
+      "name": "add_group",
+      "value": "新建分组"
+    },
+    {
+      "name": "group_node_count",
+      "value": "%1$d 个节点"
+    },
+    {
+      "name": "clear_group",
+      "value": "清空分组"
+    },
+    {
+      "name": "confirm_clear_group",
+      "value": "确认清空该分组的 %1$d 个节点?"
+    },
+    {
+      "name": "group_name_required",
+      "value": "请输入分组名称"
+    },
+    {
+      "name": "confirm_delete_group",
+      "value": "确认删除分组「%1$s」?组内节点将移至未分组"
+    },
+    {
+      "name": "groups_empty",
+      "value": "暂无订阅与分组"
+    },
+    {
+      "name": "group_type_label",
+      "value": "类型"
+    },
+    {
+      "name": "group_type_manual",
+      "value": "手动分组"
+    },
+    {
+      "name": "group_type_subscription",
+      "value": "订阅分组"
+    },
+    {
+      "name": "group_sub_link_hint",
+      "value": "订阅链接(http/https)"
+    },
+    {
+      "name": "group_sub_url_required",
+      "value": "请输入有效的订阅链接"
+    },
+    {
+      "name": "group_sub_fetch_now",
+      "value": "创建后立即拉取节点"
+    },
+    {
+      "name": "group_created",
+      "value": "分组已创建"
+    },
+    {
+      "name": "group_subscription_created",
+      "value": "订阅分组已创建"
+    },
+    {
+      "name": "group_status_empty",
+      "value": "空"
+    },
+    {
+      "name": "group_rename_label",
+      "value": "分组名称"
+    },
+    {
+      "name": "group_name_exists",
+      "value": "同名分组已存在"
+    },
+    {
+      "name": "group_manual_note",
+      "value": "手动分组:节点通过「移动到分组」加入"
+    },
+    {
+      "name": "home_sub_empty",
+      "value": "该订阅暂无节点,可在分组页更新订阅"
+    },
+    {
+      "name": "home_manual_view",
+      "value": "手动"
+    },
+    {
+      "name": "group_sub_note",
+      "value": "每个订阅就是一个分组;在首页底部选择订阅即可查看它下面的分组"
+    },
+    {
+      "name": "group_sub_group_count",
+      "value": "%d 个分组"
+    },
+    {
+      "name": "share_sub_link",
+      "value": "分享订阅"
+    },
+    {
+      "name": "sub_link_copied",
+      "value": "订阅链接已复制"
+    },
+    {
+      "name": "export_all_nodes",
+      "value": "导出节点链接"
+    },
+    {
+      "name": "export_all_nodes_file",
+      "value": "导出节点到文件"
+    },
+    {
+      "name": "export_all_empty",
+      "value": "没有可导出的节点"
+    },
+    {
+      "name": "export_all_done",
+      "value": "已导出 %1$d 条链接"
+    },
+    {
+      "name": "export_all_file_done",
+      "value": "已导出 %1$d 条链接到文件"
+    },
+    {
+      "name": "sub_last_update",
+      "value": "更新于 %1$s"
+    },
+    {
+      "name": "sub_not_updated",
+      "value": "未更新"
+    },
+    {
+      "name": "sub_traffic_used_remain",
+      "value": "%1$s / 剩余 %2$s"
+    },
+    {
+      "name": "sub_traffic_used",
+      "value": "已用 %1$s"
+    },
+    {
+      "name": "stun_title",
+      "value": "NAT 行为发现(STUN)"
+    },
+    {
+      "name": "stun_desc",
+      "value": "通过 STUN 服务器探测公网映射地址与 NAT 特征"
+    },
+    {
+      "name": "stun_test",
+      "value": "测试"
+    },
+    {
+      "name": "stun_testing",
+      "value": "测试中…"
+    },
+    {
+      "name": "stun_server_required",
+      "value": "请输入 STUN 服务器"
+    },
+    {
+      "name": "stun_public_endpoint",
+      "value": "公网映射地址"
+    },
+    {
+      "name": "stun_latency",
+      "value": "响应耗时 %1$d ms"
+    },
+    {
+      "name": "stun_nat_cone",
+      "value": "两次探测映射一致(Cone NAT 特征)"
+    },
+    {
+      "name": "stun_nat_symmetric",
+      "value": "两次探测映射变化(对称 NAT 特征)"
+    },
+    {
+      "name": "stun_failed",
+      "value": "STUN 测试失败: %1$s"
+    },
+    {
+      "name": "reset_title",
+      "value": "恢复出厂设置"
+    },
+    {
+      "name": "reset_desc",
+      "value": "清空节点、分组、订阅、路由规则与设置,恢复初始状态"
+    },
+    {
+      "name": "reset_action",
+      "value": "恢复出厂"
+    },
+    {
+      "name": "reset_confirm",
+      "value": "确认恢复出厂?该操作不可撤销"
+    },
+    {
+      "name": "reset_confirm_final",
+      "value": "再次确认:将清空全部数据!"
+    },
+    {
+      "name": "reset_done",
+      "value": "已恢复出厂设置"
+    },
+    {
+      "name": "reset_failed",
+      "value": "恢复出厂失败: %1$s"
+    },
+    {
+      "name": "about_core_version",
+      "value": "内核版本"
+    },
+    {
+      "name": "about_github",
+      "value": "项目主页"
+    },
+    {
+      "name": "about_telegram",
+      "value": "加入交流群"
+    },
+    {
+      "name": "check_update",
+      "value": "检查更新"
+    },
+    {
+      "name": "checking_update",
+      "value": "检查中…"
+    },
+    {
+      "name": "check_update_failed",
+      "value": "检查更新失败(网络不可用?)"
+    },
+    {
+      "name": "check_update_latest",
+      "value": "已是最新版本"
+    },
+    {
+      "name": "check_update_new",
+      "value": "发现新版本 %1$s,即将打开项目主页"
+    },
+    {
+      "name": "about_license_title",
+      "value": "开源许可"
+    },
+    {
+      "name": "about_license_body",
+      "value": "sing-box 为 GPL-3.0;应用图标来自 NekoBoxForAndroid(GPL-3.0)。"
+    },
+    {
+      "name": "settings_general",
+      "value": "常规"
+    },
+    {
+      "name": "settings_auto_connect",
+      "value": "启动时自动连接"
+    },
+    {
+      "name": "settings_auto_connect_desc",
+      "value": "打开应用时自动连接当前选中的节点"
+    },
+    {
+      "name": "latency_test_mode",
+      "value": "测速方式"
+    },
+    {
+      "name": "latency_test_mode_desc",
+      "value": "URL Test 通过代理实际访问下方测试网址,只有全链路可用才计绿;TCPing 仅测服务器端口握手,失效节点也可能显示绿色。"
+    },
+    {
+      "name": "settings_route",
+      "value": "路由"
+    },
+    {
+      "name": "settings_dns",
+      "value": "DNS"
+    },
+    {
+      "name": "settings_inbound",
+      "value": "入站"
+    },
+    {
+      "name": "settings_log_level",
+      "value": "日志级别"
+    },
+    {
+      "name": "settings_test_url",
+      "value": "连接测试 URL"
+    },
+    {
+      "name": "settings_test_url_desc",
+      "value": "URL Test 会经节点实际访问此网址;默认 gstatic,若节点出口访问不通可自行改为其他 204/HTTP 地址。"
+    },
+    {
+      "name": "settings_test_concurrent",
+      "value": "测速并发数"
+    },
+    {
+      "name": "settings_always_show_address",
+      "value": "始终显示服务器地址"
+    },
+    {
+      "name": "settings_notification_group",
+      "value": "通知中显示分组名"
+    },
+    {
+      "name": "settings_speed_interval",
+      "value": "通知刷新间隔(毫秒)"
+    },
+    {
+      "name": "settings_speed_interval_sum",
+      "value": "常驻通知速率/流量刷新频率,有效范围 500~10000,默认 1000"
+    },
+    {
+      "name": "settings_sub_allow_insecure",
+      "value": "订阅请求放行不安全 TLS"
+    },
+    {
+      "name": "settings_sub_allow_insecure_desc",
+      "value": "仅影响订阅下载的 HTTPS 请求"
+    },
+    {
+      "name": "settings_bypass_lan",
+      "value": "绕过局域网"
+    },
+    {
+      "name": "settings_bypass_lan_desc",
+      "value": "局域网地址直连,不走代理"
+    },
+    {
+      "name": "settings_sniff",
+      "value": "流量嗅探"
+    },
+    {
+      "name": "sniff_off",
+      "value": "关闭"
+    },
+    {
+      "name": "sniff_route",
+      "value": "仅用于路由"
+    },
+    {
+      "name": "sniff_override",
+      "value": "嗅探并覆盖"
+    },
+    {
+      "name": "settings_remote_dns_strategy",
+      "value": "远程 DNS 域名策略"
+    },
+    {
+      "name": "settings_direct_dns_strategy",
+      "value": "直连 DNS 域名策略"
+    },
+    {
+      "name": "settings_server_dns_strategy",
+      "value": "代理服务器域名策略"
+    },
+    {
+      "name": "settings_server_dns_strategy_hint",
+      "value": "解析代理服务器自身域名时的 IP 优先级(对齐安卓 domain_strategy_for_server)"
+    },
+    {
+      "name": "strategy_default",
+      "value": "默认"
+    },
+    {
+      "name": "strategy_auto",
+      "value": "auto"
+    },
+    {
+      "name": "strategy_prefer_ipv4",
+      "value": "prefer_ipv4"
+    },
+    {
+      "name": "strategy_prefer_ipv6",
+      "value": "prefer_ipv6"
+    },
+    {
+      "name": "strategy_ipv4_only",
+      "value": "ipv4_only"
+    },
+    {
+      "name": "strategy_ipv6_only",
+      "value": "ipv6_only"
+    },
+    {
+      "name": "settings_dns_routing",
+      "value": "DNS 路由"
+    },
+    {
+      "name": "settings_dns_routing_desc",
+      "value": "CN 域名用直连 DNS 解析"
+    },
+    {
+      "name": "settings_fakedns",
+      "value": "FakeDNS"
+    },
+    {
+      "name": "settings_fakedns_desc",
+      "value": "用假 IP 加速域名分流(真机验证项)"
+    },
+    {
+      "name": "settings_mixed_port",
+      "value": "混合代理端口"
+    },
+    {
+      "name": "settings_mixed_port_hint",
+      "value": "0 = 关闭"
+    },
+    {
+      "name": "settings_allow_access",
+      "value": "允许来自局域网的连接"
+    },
+    {
+      "name": "settings_allow_access_desc",
+      "value": "混合入站监听 0.0.0.0"
+    },
+    {
+      "name": "error_custom_outbound_required",
+      "value": "自定义出站 JSON 不能为空"
+    },
+    {
+      "name": "error_custom_outbound_type",
+      "value": "自定义出站 JSON 缺少 type 字段"
+    },
+    {
+      "name": "error_custom_type_unsupported",
+      "value": "内核不支持该自定义协议类型: %s"
+    },
+    {
+      "name": "error_chain_empty",
+      "value": "链式代理至少选择一个节点"
+    },
+    {
+      "name": "error_circular_reference",
+      "value": "该节点会形成循环引用,不能加入链式代理"
+    },
+    {
+      "name": "error_ssh_password_required",
+      "value": "SSH 密码不能为空"
+    },
+    {
+      "name": "error_ssh_key_required",
+      "value": "SSH 私钥不能为空"
+    },
+    {
+      "name": "error_wireguard_key_required",
+      "value": "WireGuard 私钥不能为空"
+    },
+    {
+      "name": "ss_plugin",
+      "value": "SS 插件"
+    },
+    {
+      "name": "ss_plugin_opts",
+      "value": "插件配置"
+    },
+    {
+      "name": "packet_encoding",
+      "value": "包编码"
+    },
+    {
+      "name": "server_ports_optional",
+      "value": "端口跳跃(可选)"
+    },
+    {
+      "name": "hop_interval_seconds",
+      "value": "跳跃间隔(秒)"
+    },
+    {
+      "name": "reduce_rtt",
+      "value": "0-RTT 握手"
+    },
+    {
+      "name": "disable_sni",
+      "value": "禁用 SNI"
+    },
+    {
+      "name": "wg_mtu",
+      "value": "WireGuard MTU"
+    },
+    {
+      "name": "wg_reserved",
+      "value": "Reserved"
+    },
+    {
+      "name": "ssh_auth_type",
+      "value": "认证方式"
+    },
+    {
+      "name": "private_key_passphrase_optional",
+      "value": "私钥口令(可选)"
+    },
+    {
+      "name": "ssh_host_key_optional",
+      "value": "服务器公钥(可选)"
+    },
+    {
+      "name": "shadowtls_version",
+      "value": "ShadowTLS 版本"
+    },
+    {
+      "name": "custom_outbound_json",
+      "value": "自定义出站 JSON"
+    },
+    {
+      "name": "custom_outbound_hint",
+      "value": "完整的 sing-box 出站对象,tag 自动改为 proxy"
+    },
+    {
+      "name": "chain_select_hint",
+      "value": "勾选节点组成链(勾选顺序=流量顺序:前置→落地)"
+    },
+    {
+      "name": "ws_early_data",
+      "value": "WS 早期数据(字节)"
+    },
+    {
+      "name": "ws_early_data_header",
+      "value": "早期数据请求头"
+    },
+    {
+      "name": "certificates_optional",
+      "value": "证书(可选)"
+    },
+    {
+      "name": "enable_ech",
+      "value": "启用 ECH"
+    },
+    {
+      "name": "ech_config_optional",
+      "value": "ECH 配置(可选)"
+    },
+    {
+      "name": "mux_protocol",
+      "value": "Mux 协议"
+    },
+    {
+      "name": "mux_max_streams",
+      "value": "Mux 最大流数"
+    },
+    {
+      "name": "mux_padding",
+      "value": "Mux padding"
+    },
+    {
+      "name": "settings_resolve_destination",
+      "value": "解析目标地址"
+    },
+    {
+      "name": "settings_resolve_destination_desc",
+      "value": "连接前先解析域名,让 IP 类规则(如 geoip)能匹配域名流量"
+    },
+    {
+      "name": "settings_global_custom_config",
+      "value": "全局自定义配置 JSON"
+    },
+    {
+      "name": "settings_global_custom_config_desc",
+      "value": "与生成的 sing-box 根配置浅合并,非法 JSON 会被忽略"
+    },
+    {
+      "name": "show_bottom_bar",
+      "value": "像 SagerNet 一样显示底栏"
+    },
+    {
+      "name": "ipv6_modes",
+      "value": "IPv6 路由"
+    },
+    {
+      "name": "ipv6_mode_disable",
+      "value": "禁用"
+    },
+    {
+      "name": "ipv6_mode_enable",
+      "value": "启用"
+    },
+    {
+      "name": "ipv6_mode_prefer",
+      "value": "优先"
+    },
+    {
+      "name": "ipv6_mode_only",
+      "value": "仅"
+    }
+  ]
+}

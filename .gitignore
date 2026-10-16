@@ -1,0 +1,12 @@
+.git/
+*.class
+node_modules/
+build/
+dist/
+.hvigor/
+.idea/
+.codegenie/
+.clangd/
+.clang-tidy/
+*.hap
+local.properties

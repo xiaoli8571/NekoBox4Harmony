@@ -1,0 +1,69 @@
+{
+  "app": {
+    // 本地签名段 —— 由 scripts/inject-signing.js 写入。
+    // ⚠️ 不要提交这段(见 AGENTS.md「注意事项」):签名段是机器本地的,
+    // 提交上去会让其他机器因为找不到证书文件而构建失败(此坑已踩过一次)。
+    // 删掉本行即回到仓库的无签名基线。
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\Administrator\\.ohos\\config\\default_NekoBox4Harmony_K9kMkXBwnbOoLb0zIokBhKYDOLVdxOVPHrAnC28PgUI=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001A8361A368DA646A74990AB728CCAFD92616680BDEE09FC62482198539C11B17248E02B8BCF7F8",
+          "profile": "C:\\Users\\Administrator\\.ohos\\config\\default_NekoBox4Harmony_K9kMkXBwnbOoLb0zIokBhKYDOLVdxOVPHrAnC28PgUI=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\Administrator\\.ohos\\config\\default_NekoBox4Harmony_K9kMkXBwnbOoLb0zIokBhKYDOLVdxOVPHrAnC28PgUI=.p12",
+          "storePassword": "0000001A07B7E2F806F82A57E7C5DC9918E3D502665DD57BF43779DC2E59F25B9A65E17577F5410270FC"
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        "compatibleSdkVersion": "6.1.1(24)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "externalNativeOptions": {
+            "path": "./entry/src/main/cpp/CMakeLists.txt",
+            "arguments": "",
+            "cppFlags": "",
+            "abiFilters": [
+              "arm64-v8a"
+            ]
+          }
+        },
+        "targetSdkVersion": "6.1.1(24)"
+      }
+    ],
+    // ⚠️ 出包必须带 `-p buildMode=release`(见 scripts/build-and-sign.sh)。
+    // 漏掉时 hvigor 按 debug 产出,产物 module.json 里是
+    // "buildMode":"debug" + "debug":true —— 就算签名用的确实是发布证书也一样,
+    // AppGallery 会以「经检测为debug版本」退回(《审核指南》3.5,2026-09-27 踩过)。
+    // 别被 signingConfigs[].type 误导:那是「平台」(HarmonyOS/OpenHarmony),
+    // 与构建模式无关;要 release 得靠这个 buildModeSet + 命令行 -p。
+    "buildModeSet": [
+      {
+        "name": "debug"
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    }
+  ]
+}

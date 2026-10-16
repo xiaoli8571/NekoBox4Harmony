@@ -1,0 +1,64 @@
+{
+  "module": {
+    "name": "entry",
+    "type": "entry",
+    "description": "$string:module_desc",
+    "mainElement": "EntryAbility",
+    "deviceTypes": ["phone", "tablet"],
+    "deliveryWithInstall": true,
+    "installationFree": false,
+    // HAP 内原生库(zip deflate)压缩:libsingbox.so 约 35MB,压缩后 HAP 从 ~38.5MB 降到 ~24MB。
+    // 安装时由系统解压到应用原生库目录,运行不受影响(需真机回归验证一次)。
+    "compressNativeLibs": true,
+    "pages": "$profile:main_pages",
+    "abilities": [
+      {
+        "name": "EntryAbility",
+        "srcEntry": "./ets/entryability/EntryAbility.ets",
+        "description": "$string:module_desc",
+        "icon": "$media:layered_image",
+        "label": "$string:app_name",
+        "startWindowIcon": "$media:icon",
+        "startWindowBackground": "$color:start_window_background",
+        "exported": true,
+        "backgroundModes": ["dataTransfer"],
+        "skills": [
+          {
+            "entities": ["entity.system.home"],
+            "actions": ["action.system.home"]
+          }
+        ]
+      }
+    ],
+    "extensionAbilities": [
+      {
+        "name": "VpnExtAbility",
+        "srcEntry": "./ets/vpnext/VpnExtAbility.ets",
+        "description": "sing-box VPN service",
+        // 本 SDK(HarmonyOS 6.1)合法值为 "vpn";旧文档中的 "vpnExtension" 已不适用
+        "type": "vpn",
+        "exported": false
+      }
+    ],
+    "requestPermissions": [
+      { "name": "ohos.permission.INTERNET" },
+      { "name": "ohos.permission.GET_NETWORK_INFO" },
+      { "name": "ohos.permission.KEEP_BACKGROUND_RUNNING" },
+      { "name": "ohos.permission.GET_BUNDLE_INFO" },
+      // 分应用代理枚举全部已安装应用(对齐安卓 QUERY_ALL_PACKAGES)需
+      // GET_BUNDLE_INFO_PRIVILEGED(system_basic 受限 ACL)。普通 Profile 安装时
+      // 直接拒绝(9568289 grant request permissions failed),故不声明;运行时
+      // 降级为按包名手动查询(bundle.getBundleInfo 普通权限即可)+ AGC ACL 申请。
+      {
+        "name": "ohos.permission.READ_PASTEBOARD",
+        "reason": "$string:permission_read_pasteboard_reason",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      }
+      // 若系统提示缺少 VPN 权限,按 SDK 文档追加(可能属于受限 ACL,需在 AGC 申请):
+      // { "name": "ohos.permission.MANAGE_VPN" }
+    ]
+  }
+}

@@ -1,0 +1,271 @@
+/**
+ * 数据模型 — 参考 NekoBoxForAndroid 的 Profile 概念。
+ * 一个 Profile 对应一个 sing-box 出站(outbound)。
+ */
+
+export class ProfileType {
+  static readonly SHADOWSOCKS: string = 'shadowsocks';
+  static readonly VMESS: string = 'vmess';
+  static readonly VLESS: string = 'vless';
+  static readonly TROJAN: string = 'trojan';
+  static readonly HYSTERIA: string = 'hysteria';
+  static readonly HYSTERIA2: string = 'hysteria2';
+  static readonly TUIC: string = 'tuic';
+  static readonly WIREGUARD: string = 'wireguard';
+  static readonly HTTP: string = 'http';
+  static readonly SOCKS: string = 'socks';
+  static readonly SSH: string = 'ssh';
+  static readonly SHADOWTLS: string = 'shadowtls';
+  static readonly ANYTLS: string = 'anytls';
+  static readonly SNELL: string = 'snell';
+  static readonly CUSTOM: string = 'custom';
+  static readonly CHAIN: string = 'chain';
+}
+
+export class Profile {
+  id: string = '';
+  name: string = '';
+  type: string = ProfileType.SHADOWSOCKS;
+  server: string = '';
+  serverPort: number = 443;
+
+  // shadowsocks
+  method: string = 'aes-128-gcm';
+  password: string = '';
+  ssPlugin: string = '';       // obfs-local / v2ray-plugin(空 = 不用插件)
+  ssPluginOpts: string = '';   // 插件配置串,如 obfs=http;obfs-host=xxx
+
+  // http / socks
+  username: string = '';
+
+  // vmess / vless / tuic
+  uuid: string = '';
+  alterId: number = 0;
+  security: string = 'auto'; // vmess 加密方式
+  flow: string = '';         // vless flow (xtls-rprx-vision)
+  packetEncoding: string = ''; // ''(内核默认) / packetaddr / xudp
+
+  // 传输层 (ws / grpc / http / httpupgrade / quic)
+  transport: string = '';
+  path: string = '';
+  host: string = '';
+  serviceName: string = '';
+  wsEarlyData: number = 0;          // ws 最大早期数据字节
+  wsEarlyDataHeaderName: string = '';
+
+  // TLS / REALITY / ECH
+  tls: boolean = false;
+  sni: string = '';
+  allowInsecure: boolean = false;
+  alpn: string = '';
+  fingerprint: string = '';  // uTLS 指纹(chrome/firefox/safari…);reality 必须启用 uTLS
+  realityPublicKey: string = '';
+  realityShortId: string = '';
+  certificates: string = ''; // PEM 证书,多证书用 \n\n 分隔
+  ech: boolean = false;      // 启用 ECH
+  echConfig: string = '';    // ECH 配置(base64)
+
+  // hysteria
+  upMbps: number = 100;
+  downMbps: number = 100;
+  obfs: string = '';
+
+  // hysteria2 端口跳跃
+  serverPorts: string = '';  // 如 20000-30000,多个逗号分隔(冒号/横线均可)
+  hopInterval: number = 30;  // 端口跳跃间隔(秒)
+
+  // tuic
+  congestionControl: string = 'bbr';
+  udpRelayMode: string = 'native';
+  reduceRtt: boolean = false;
+  disableSni: boolean = false;
+
+  // wireguard(privateKey 与 ssh 私钥共用字段)
+  localAddress: string = '172.16.0.2/32';
+  privateKey: string = '';
+  peerPublicKey: string = '';
+  preSharedKey: string = '';
+  wgMtu: number = 1420;
+  reserved: string = '';     // 逗号分隔 3 个数字
+
+  // ssh
+  sshAuthType: string = 'password'; // none / password / private_key
+  privateKeyPassphrase: string = '';
+  hostKey: string = '';      // 服务器公钥(base64),多值逗号分隔
+
+  // shadowtls
+  shadowtlsVersion: number = 3;
+
+  // multiplex
+  mux: boolean = false;
+  muxProtocol: string = 'h2mux'; // h2mux / smux / yamux
+  muxMaxStreams: number = 8;
+  muxPadding: boolean = true;
+
+  // 附加 sing-box JSON(与出站对象浅合并,用于高级场景)
+  extra: string = '';
+
+  // 自定义配置(type=custom):完整的出站 JSON,tag 强制为 proxy
+  customOutbound: string = '';
+
+  // 链式代理(type=chain):前置→落地顺序的节点 id,逗号分隔
+  chainIds: string = '';
+
+  // 前置代理(对齐 Clash dialer-proxy / sing-box detour):本节点的出站
+  // 要先经由该节点转发。dialerProxyName 是订阅 YAML 里的原始名称,
+  // 由 Subscriptions.updateSubscription 在分配 id 之后解析成 dialerProxyId。
+  // 与 chainIds 的区别:chainIds 表示「本节点本身就是一条链」,
+  // dialerProxyId 表示「本节点之外,前面还要挂一跳」。
+  dialerProxyName: string = '';
+  dialerProxyId: string = '';
+
+  // 来源订阅(自动更新用)
+  subUrl: string = '';
+
+  // 节点分组与组内顺序。空 groupId 表示未分组。
+  groupId: string = '';
+  sortOrder: number = 0;
+
+  // 最近一次延迟测试结果。-1 表示失败，0 表示尚未测试。
+  latencyMs: number = 0;
+  latencyTestedAt: number = 0;
+
+  // 历史累计流量(对齐安卓 profileTrafficStatistics 持久化到节点记录)
+  rx: number = 0;
+  tx: number = 0;
+
+  updatedAt: number = 0;
+
+  // 置顶(节点列表排序时置顶节点恒排在前)
+  pinned: boolean = false;
+}
+
+export class ProfileGroup {
+  id: string = '';
+  name: string = '';
+  sortOrder: number = 0;
+  collapsed: boolean = false;
+  isSelector: boolean = false;
+  // 开启后该分组生成 sing-box urltest 出站(等价 Clash 的 url-test 组):
+  // 内核按 AppSettings.testUrl 周期性做真连接探测,自动留在延迟最低的成员上。
+  // 与 isSelector 互斥 —— selector 由用户手动选,urltest 由内核自动选。
+  autoSelect: boolean = false;
+  // Empty means no wrapper. IDs refer to profiles, not outbound tags.
+  frontProxy: string = '';
+  landingProxy: string = '';
+  createdAt: number = 0;
+  updatedAt: number = 0;
+}
+
+export class AppSettings {
+  mtu: number = 1400;                  // 鸿蒙 VPN TUN 为框架托管 fd(无 offload,TUNGETIFF 被拒),9000 大包被平台丢;原实现 1400
+  stack: string = 'system';            // 内核 go1.24 构建不含 gvisor,仅 system 栈
+  mode: string = 'rule';               // rule(规则)/ global(全局)/ direct(直连)
+  directDomains: string = '';          // 规则模式:直连域名后缀,逗号分隔
+  directIpCidrs: string = '';          // 规则模式:直连 IP 段,逗号分隔
+  remoteDns: string = 'tcp://8.8.8.8'; // 经代理,防泄漏(使用 TCP DNS)
+  directDns: string = '223.5.5.5';     // 直连,用于解析代理服务器域名
+  remoteDnsStrategy: string = '';      // auto/prefer_ipv4/prefer_ipv6/ipv4_only/ipv6_only,空=内核默认
+  directDnsStrategy: string = '';
+  serverDnsStrategy: string = '';      // 解析代理服务器域名的策略(对齐安卓 domain_strategy_for_server)
+  dnsRouting: boolean = true;          // DNS 路由:CN 域名用直连 DNS 解析
+  fakeDns: boolean = false;            // FakeDNS(安卓默认 true;鸿蒙 system 栈真机验证前保守关,见 reaudit DEF-02「按平台能力恢复默认」)
+  ipv6: boolean = false;
+  bypassLan: boolean = false;          // 对齐安卓 DataStore.bypassLan 默认 false
+  sniffMode: string = 'route';         // off / route(仅用于路由) / override(嗅探并覆盖目标)
+  resolveDestination: boolean = false; // 解析目标地址(存档项,配置暂不消费)
+  mixedPort: number = 2080;            // 混合代理端口,对齐安卓 getLocalPort 默认 2080,0=关闭
+  allowAccess: boolean = false;        // 允许来自局域网的连接
+  allowInsecureAll: boolean = false;   // 全局放行不安全 TLS
+  subAllowInsecure: boolean = false;   // 订阅请求放行不安全 TLS
+  logLevel: string = 'info';           // trace/debug/info/warn/error
+  testUrl: string = 'https://www.gstatic.com/generate_204';
+  testConcurrent: number = 5;          // 测速并发数
+  latencyTestMode: string = 'url';     // url(真连接测试,经内核 URLTest) / tcp(TCPing 握手计时)
+  // 单节点超时(毫秒)。此前硬编码 5000,跨境节点偏紧、局域网偏长,开放为可配。
+  testTimeoutMs: number = 5000;
+  // 失败重试次数(0=不重试)。单次探测会被首次 TLS 握手偏慢或偶发丢包误杀。
+  testRetries: number = 1;
+  // 每节点取样次数(1=单点值,>1 取平均)。单点值看不出抖动。
+  testSamples: number = 1;
+  // URL Test 的「期望状态」判定:mihomo 风格。'2xx' = 仅接受 2xx(默认,防假绿);
+  // 'any' = 任意响应码都算通(适合只关心 TCP/TLS 可达的自定义探测地址)。
+  testExpectStatus: string = '2xx';
+  // 测速时把出站绑定物理网卡(SO_BINDTODEVICE),让测速流量绕开正在运行的隧道。
+  // 关掉时测的是"节点套当前节点",连着 VPN 会把全组延迟抬高、结论带偏。
+  // 绑定若导致全组失败,会自动去掉绑定重测一次。
+  testBypassTunnel: boolean = true;
+  // 延迟结果超过该时长即视为陈旧,节点列表以灰色显示而不是沿用旧颜色。
+  latencyStaleMs: number = 6 * 3600 * 1000;
+  alwaysShowAddress: boolean = false;  // 节点卡始终显示服务器地址
+  notificationGroup: boolean = false;  // 通知中显示分组名
+  speedIntervalMs: number = 1000;      // 通知/速率刷新间隔(对齐安卓 speedInterval,默认 1000ms)
+  autoUpdateSubs: boolean = true;      // 启动时自动更新到期的订阅
+  autoConnect: boolean = false;        // 启动时自动连接已选中的节点(对齐安卓 isAutoConnect)
+  subscriptionUpdateIntervalHours: number = 12;
+  hapticFeedback: boolean = true;
+  appearance: string = 'system';       // system / light / dark
+  profileSortMode: string = 'manual';  // manual / latency / name
+  navLayout: string = 'bottom';        // bottom / side
+  showBottomBar: boolean = false;      // Android: retain StatsBar/FAB outside configuration
+  ipv6Mode: string = '';               // Android IPv6Mode: ''(legacy)=由ipv6布尔推导 / disable/enable/prefer/only
+  clashApiEnabled: boolean = true;
+  // Clash API 端口:9090 改为 19290(2.0.2 共存修复)。9090 是 Clash/mihomo 系应用
+  // 共用的 external-controller 惯用默认端口,鸿蒙第三方应用共享回环命名空间,
+  // 多款同类应用共存时控制器端口互踩(对方的就绪探测会看见"端口被占")。
+  // 19290 与 TrafficStats 既有历史常量一致,且刻意落在各同类应用的候选端口带之外。
+  // 存量安装(9090)由 Store.loadSettings 一次性迁移。
+  clashApiPort: number = 19290;
+  clashApiSecret: string = '';
+  // 网络变化(Wi-Fi/移动数据切换)时重置连接:功能对齐安卓 networkChangeResetConnections,
+  // 但默认改为关闭(2.0.1 曾默认开启)。鸿蒙上其它 VPN 应用建/拆隧道同样会触发
+  // netAvailable/netCapabilitiesChange 回调,默认开启会与共存的其他 Clash 系应用
+  // 反复抢占唯一的 VPN 会话槽位,形成互踢环(真机 2026-09-18 实证)。
+  networkChangeResetConnections: boolean = false;
+  // 应用回到前台时重置连接,对齐安卓 wakeResetConnections(安卓默认 false)
+  wakeResetConnections: boolean = false;
+  // 每节点流量统计并持久化,对齐安卓 profileTrafficStatistics(安卓默认 true)
+  profileTrafficStatistics: boolean = true;
+  liquidGlass: boolean = true;
+  perAppMode: string = 'off';          // off / exclude(排除这些应用) / include(仅这些应用走代理)
+  perAppList: string = '';             // 应用包名,逗号分隔(如 com.huawei.hmos.browser)
+  globalCustomConfig: string = '';     // 全局自定义配置 JSON(与根对象浅合并)
+  // 2.0.2 共存修复一次性迁移标记:loadSettings 首次读到 false 时执行迁移并置 true
+  // 落盘;此后不再重复迁移,用户在设置页重新打开的开关一律保留。
+  coexistFix202609Applied: boolean = false;
+}
+
+export function profileTypeLabel(type: string): string {
+  switch (type) {
+    case ProfileType.SHADOWSOCKS: return 'Shadowsocks';
+    case ProfileType.VMESS: return 'VMess';
+    case ProfileType.VLESS: return 'VLESS';
+    case ProfileType.TROJAN: return 'Trojan';
+    case ProfileType.HYSTERIA: return 'Hysteria';
+    case ProfileType.HYSTERIA2: return 'Hysteria2';
+    case ProfileType.TUIC: return 'TUIC';
+    case ProfileType.WIREGUARD: return 'WireGuard';
+    case ProfileType.HTTP: return 'HTTP';
+    case ProfileType.SOCKS: return 'Socks';
+    case ProfileType.SSH: return 'SSH';
+    case ProfileType.SHADOWTLS: return 'ShadowTLS';
+    case ProfileType.ANYTLS: return 'AnyTLS';
+    case ProfileType.SNELL: return 'Snell';
+    case ProfileType.CUSTOM: return 'Custom';
+    case ProfileType.CHAIN: return 'Chain';
+    default: return type;
+  }
+}
+
+export function needsTlsByDefault(type: string): boolean {
+  return type === ProfileType.TROJAN || type === ProfileType.HYSTERIA
+    || type === ProfileType.HYSTERIA2
+    || type === ProfileType.TUIC
+    || type === ProfileType.SHADOWTLS
+    || type === ProfileType.ANYTLS;
+}
+
+export function supportsTransport(type: string): boolean {
+  return type === ProfileType.VMESS || type === ProfileType.VLESS
+    || type === ProfileType.TROJAN;
+}

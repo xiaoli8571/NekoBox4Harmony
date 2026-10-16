@@ -1,0 +1,2560 @@
+{
+  "string": [
+    {
+      "name": "app_name",
+      "value": "NekoBox"
+    },
+    {
+      "name": "permission_read_pasteboard_reason",
+      "value": "Used to read and import subscription links or profile configurations from the clipboard"
+    },
+    {
+      "name": "permission_get_bundle_info_privileged_reason",
+      "value": "Used to enumerate installed apps for per-app proxy selection"
+    },
+    {
+      "name": "brand_name",
+      "value": "NEKOBOX"
+    },
+    {
+      "name": "subscription_management",
+      "value": "Subscription management"
+    },
+    {
+      "name": "search_nodes",
+      "value": "Search profiles"
+    },
+    {
+      "name": "module_desc",
+      "value": "sing-box VPN client"
+    },
+    {
+      "name": "cancel",
+      "value": "Cancel"
+    },
+    {
+      "name": "delete",
+      "value": "Delete"
+    },
+    {
+      "name": "save",
+      "value": "Save"
+    },
+    {
+      "name": "back",
+      "value": "Back"
+    },
+    {
+      "name": "reload",
+      "value": "Reload"
+    },
+    {
+      "name": "import_action",
+      "value": "Import"
+    },
+    {
+      "name": "read_from_clipboard",
+      "value": "Read from clipboard"
+    },
+    {
+      "name": "mode_rule",
+      "value": "Rule"
+    },
+    {
+      "name": "mode_global",
+      "value": "Global"
+    },
+    {
+      "name": "mode_direct",
+      "value": "Direct"
+    },
+    {
+      "name": "status_disconnected",
+      "value": "Disconnected"
+    },
+    {
+      "name": "settings_title",
+      "value": "Settings"
+    },
+    {
+      "name": "profile_new_title",
+      "value": "New profile"
+    },
+    {
+      "name": "profile_edit_title",
+      "value": "Edit profile"
+    },
+    {
+      "name": "subscription_detail_title",
+      "value": "Subscription details"
+    },
+    {
+      "name": "route_rules_title",
+      "value": "Custom route rules"
+    },
+    {
+      "name": "loading_settings",
+      "value": "Loading settings…"
+    },
+    {
+      "name": "settings_load_failed",
+      "value": "Failed to load settings"
+    },
+    {
+      "name": "outbound_mode",
+      "value": "Outbound mode"
+    },
+    {
+      "name": "route_rules_description",
+      "value": "Route by domain, IP, or port through proxy, direct, or reject"
+    },
+    {
+      "name": "enter",
+      "value": "Open ›"
+    },
+    {
+      "name": "subscriptions",
+      "value": "Subscriptions"
+    },
+    {
+      "name": "appearance_and_interaction",
+      "value": "Appearance and interaction"
+    },
+    {
+      "name": "follow_system",
+      "value": "Follow system"
+    },
+    {
+      "name": "light_mode",
+      "value": "Light"
+    },
+    {
+      "name": "dark_mode",
+      "value": "Dark"
+    },
+    {
+      "name": "haptic_feedback",
+      "value": "Haptic feedback"
+    },
+    {
+      "name": "liquid_glass",
+      "value": "Liquid glass effect"
+    },
+    {
+      "name": "network_change_reset_connections",
+      "value": "Reset connections on network change"
+    },
+    {
+      "name": "network_change_reset_connections_sum",
+      "value": "Reconnect automatically after Wi-Fi/mobile data switch"
+    },
+    {
+      "name": "wake_reset_connections",
+      "value": "Reset connections on app foreground"
+    },
+    {
+      "name": "wake_reset_connections_sum",
+      "value": "Reset the connection when the app returns to the foreground (matches Android wake reset; off by default)"
+    },
+    {
+      "name": "profile_traffic_statistics",
+      "value": "Per-profile traffic statistics"
+    },
+    {
+      "name": "profile_traffic_statistics_sum",
+      "value": "Add this session's traffic to the profile record on disconnect and show the cumulative total on the node card"
+    },
+    {
+      "name": "per_app_proxy",
+      "value": "Per-app proxy"
+    },
+    {
+      "name": "per_app_off",
+      "value": "Off"
+    },
+    {
+      "name": "per_app_exclude",
+      "value": "Exclude mode"
+    },
+    {
+      "name": "per_app_include",
+      "value": "Proxy selected apps only"
+    },
+    {
+      "name": "search_apps",
+      "value": "Search app name or package"
+    },
+    {
+      "name": "read_apps",
+      "value": "Load apps"
+    },
+    {
+      "name": "reading_apps",
+      "value": "Loading…"
+    },
+    {
+      "name": "invert_selections",
+      "value": "Invert"
+    },
+    {
+      "name": "clear_selections",
+      "value": "Clear selections"
+    },
+    {
+      "name": "export_selections_clipboard",
+      "value": "Export list to clipboard"
+    },
+    {
+      "name": "import_selections_clipboard",
+      "value": "Import list from clipboard"
+    },
+    {
+      "name": "action_export_msg",
+      "value": "Copied to clipboard"
+    },
+    {
+      "name": "action_export_err",
+      "value": "Copy failed"
+    },
+    {
+      "name": "action_import_msg",
+      "value": "Imported from clipboard"
+    },
+    {
+      "name": "action_import_err",
+      "value": "Clipboard is not a valid app list (package names after a newline are required)"
+    },
+    {
+      "name": "backup_restore",
+      "value": "Backup and restore"
+    },
+    {
+      "name": "processing",
+      "value": "Processing…"
+    },
+    {
+      "name": "export_backup_file",
+      "value": "Export backup file"
+    },
+    {
+      "name": "restore_from_file",
+      "value": "Restore from file"
+    },
+    {
+      "name": "backup_to_clipboard",
+      "value": "Copy backup to clipboard"
+    },
+    {
+      "name": "restore_from_clipboard",
+      "value": "Restore from clipboard"
+    },
+    {
+      "name": "clipboard_empty",
+      "value": "Clipboard is empty"
+    },
+    {
+      "name": "loading_subscription",
+      "value": "Loading subscription…"
+    },
+    {
+      "name": "subscription_load_failed",
+      "value": "Failed to load subscription"
+    },
+    {
+      "name": "subscription_not_found",
+      "value": "Subscription not found"
+    },
+    {
+      "name": "unnamed_subscription",
+      "value": "Unnamed subscription"
+    },
+    {
+      "name": "updating",
+      "value": "Updating…"
+    },
+    {
+      "name": "update_now",
+      "value": "Update now"
+    },
+    {
+      "name": "delete_subscription_profiles",
+      "value": "Delete subscription and profiles"
+    },
+    {
+      "name": "subscription_settings",
+      "value": "Subscription settings"
+    },
+    {
+      "name": "auto_update",
+      "value": "Auto update"
+    },
+    {
+      "name": "auto_update_delay",
+      "value": "Update interval (hours)"
+    },
+    {
+      "name": "update_when_connected_only",
+      "value": "Update only when VPN is connected"
+    },
+    {
+      "name": "update_when_connected_only_sum",
+      "value": "Skip auto-update while disconnected to save traffic"
+    },
+    {
+      "name": "deduplication",
+      "value": "Deduplicate on update"
+    },
+    {
+      "name": "deduplication_sum",
+      "value": "Skip duplicate nodes by type + server + port + UUID (off by default; keeps all nodes the subscription returns)"
+    },
+    {
+      "name": "force_resolve",
+      "value": "Force resolve"
+    },
+    {
+      "name": "force_resolve_sum",
+      "value": "Resolve node server hostnames to IPs on update, keeping the original domain as SNI (off by default)"
+    },
+    {
+      "name": "subscription_user_agent",
+      "value": "Custom User-Agent"
+    },
+    {
+      "name": "subscription_user_agent_hint",
+      "value": "Leave empty for the default UA"
+    },
+    {
+      "name": "subscription_setting_saved",
+      "value": "Setting saved"
+    },
+    {
+      "name": "add",
+      "value": "Add"
+    },
+    {
+      "name": "loading_route_rules",
+      "value": "Loading route rules…"
+    },
+    {
+      "name": "route_rules_load_failed",
+      "value": "Failed to load route rules"
+    },
+    {
+      "name": "no_route_rules",
+      "value": "No custom route rules"
+    },
+    {
+      "name": "route_builtin_geo_ready",
+      "value": "Built-in CN direct routing enabled"
+    },
+    {
+      "name": "route_builtin_geo_missing",
+      "value": "Geo data not downloaded, CN direct routing disabled"
+    },
+    {
+      "name": "route_builtin_geo_desc",
+      "value": "In rule mode, geosite:cn (China domains) and geoip:cn (China IPs) direct rules are injected automatically on connect; China traffic bypasses the proxy. These rules run in the core and are not shown in the custom list below"
+    },
+    {
+      "name": "route_settings_title",
+      "value": "Route settings"
+    },
+    {
+      "name": "route_settings_hint",
+      "value": "Global routing parameters and geo asset management (merged from Settings); changes save immediately and apply after reconnecting the VPN"
+    },
+    {
+      "name": "route_rule_remark",
+      "value": "Rule remark"
+    },
+    {
+      "name": "add_profile_methods_scan_qr_code",
+      "value": "Scan QR code"
+    },
+    {
+      "name": "action_import_file",
+      "value": "Import from file"
+    },
+    {
+      "name": "no_proxies_found_in_file",
+      "value": "No proxies found in the file"
+    },
+    {
+      "name": "import_file_message",
+      "value": "Parsed %1$d profiles from the file. Import them?"
+    },
+    {
+      "name": "import_file_failed",
+      "value": "File import failed: %1$s"
+    },
+    {
+      "name": "scan_no_content",
+      "value": "No importable content in the QR code"
+    },
+    {
+      "name": "scan_failed_use_paste",
+      "value": "Scan failed: %1$s. Please use paste import instead"
+    },
+    {
+      "name": "route_rule_domains",
+      "value": "Domains"
+    },
+    {
+      "name": "route_rule_domains_hint",
+      "value": "Comma separated. Prefixes: geosite:cn / full:example.com / domain:example.com / keyword:example / regexp:^example"
+    },
+    {
+      "name": "route_rule_ip",
+      "value": "Destination IP"
+    },
+    {
+      "name": "route_rule_port",
+      "value": "Destination port"
+    },
+    {
+      "name": "route_rule_source",
+      "value": "Source IP"
+    },
+    {
+      "name": "route_rule_source_port",
+      "value": "Source port"
+    },
+    {
+      "name": "route_rule_network",
+      "value": "Network"
+    },
+    {
+      "name": "route_rule_protocol",
+      "value": "Protocol"
+    },
+    {
+      "name": "route_rule_any",
+      "value": "Any"
+    },
+    {
+      "name": "route_rule_packages",
+      "value": "App packages"
+    },
+    {
+      "name": "route_rule_app_name",
+      "value": "App name"
+    },
+    {
+      "name": "route_rule_app_name_hint",
+      "value": "e.g. WeChat (note only)"
+    },
+    {
+      "name": "route_rule_packages_effective",
+      "value": "Enable"
+    },
+    {
+      "name": "route_rule_packages_note",
+      "value": "Matching by package name applies only when Enable is checked; separate multiple packages with commas"
+    },
+    {
+      "name": "route_rule_config",
+      "value": "Custom config"
+    },
+    {
+      "name": "route_rule_config_hint",
+      "value": "JSON fragment for this rule, shallow-merged with the fields above"
+    },
+    {
+      "name": "domain",
+      "value": "Exact domain"
+    },
+    {
+      "name": "domain_suffix",
+      "value": "Domain suffix"
+    },
+    {
+      "name": "domain_keyword",
+      "value": "Domain keyword"
+    },
+    {
+      "name": "port",
+      "value": "Port"
+    },
+    {
+      "name": "proxy",
+      "value": "Proxy"
+    },
+    {
+      "name": "reject",
+      "value": "Reject"
+    },
+    {
+      "name": "delete_rule",
+      "value": "Delete rule"
+    },
+    {
+      "name": "profile_name",
+      "value": "Name"
+    },
+    {
+      "name": "profile_name_placeholder",
+      "value": "Profile name"
+    },
+    {
+      "name": "server_address",
+      "value": "Server address"
+    },
+    {
+      "name": "password",
+      "value": "Password"
+    },
+    {
+      "name": "protocol_type",
+      "value": "Protocol type"
+    },
+    {
+      "name": "transport",
+      "value": "Transport"
+    },
+    {
+      "name": "enable_tls",
+      "value": "Enable TLS"
+    },
+    {
+      "name": "allow_insecure_tls",
+      "value": "Allow insecure TLS"
+    },
+    {
+      "name": "multiplex",
+      "value": "Multiplex"
+    },
+    {
+      "name": "parse_and_fill",
+      "value": "Parse and fill"
+    },
+    {
+      "name": "speed_test",
+      "value": "Speed test"
+    },
+    {
+      "name": "speed_testing",
+      "value": "Testing…"
+    },
+    {
+      "name": "connect",
+      "value": "Connect"
+    },
+    {
+      "name": "disconnect",
+      "value": "Disconnect"
+    },
+    {
+      "name": "start_vpn",
+      "value": "Start VPN"
+    },
+    {
+      "name": "logs",
+      "value": "Logs"
+    },
+    {
+      "name": "log_export",
+      "value": "Export"
+    },
+    {
+      "name": "log_clear",
+      "value": "Clear"
+    },
+    {
+      "name": "log_search_hint",
+      "value": "Search logs"
+    },
+    {
+      "name": "log_export_empty",
+      "value": "No logs to export"
+    },
+    {
+      "name": "log_exported",
+      "value": "Logs exported"
+    },
+    {
+      "name": "import_link_subscription",
+      "value": "Import subscription"
+    },
+    {
+      "name": "confirm_delete_route_rule",
+      "value": "Delete this route rule?"
+    },
+    {
+      "name": "route_reset",
+      "value": "Reset routes"
+    },
+    {
+      "name": "route_reset_confirm",
+      "value": "All custom route rules and remote rule sets will be cleared. Continue?"
+    },
+    {
+      "name": "route_reset_empty",
+      "value": "No route rules to clear"
+    },
+    {
+      "name": "route_reset_done",
+      "value": "All route rules cleared"
+    },
+    {
+      "name": "route_rule_empty_hint",
+      "value": "Tap Add in the upper-right corner to create the first rule."
+    },
+    {
+      "name": "comma_separated_values",
+      "value": "Separate multiple values with commas"
+    },
+    {
+      "name": "route_rule_order_hint",
+      "value": "Rules are matched in list order. Reconnect the VPN after changes."
+    },
+    {
+      "name": "subscription_update_complete",
+      "value": "Subscription updated"
+    },
+    {
+      "name": "added",
+      "value": "Added"
+    },
+    {
+      "name": "removed",
+      "value": "Removed"
+    },
+    {
+      "name": "update_failed",
+      "value": "Update failed"
+    },
+    {
+      "name": "confirm_delete_subscription",
+      "value": "Delete subscription and its profiles"
+    },
+    {
+      "name": "subscription_missing_hint",
+      "value": "This subscription may have been deleted. Return to the subscription list."
+    },
+    {
+      "name": "profile_count",
+      "value": "Profile count"
+    },
+    {
+      "name": "used_traffic",
+      "value": "Used traffic"
+    },
+    {
+      "name": "total_traffic",
+      "value": "Total traffic"
+    },
+    {
+      "name": "unknown",
+      "value": "Unknown"
+    },
+    {
+      "name": "consecutive_failures",
+      "value": "Consecutive failures"
+    },
+    {
+      "name": "no_recognizable_profiles",
+      "value": "No recognizable profiles found."
+    },
+    {
+      "name": "select_or_create_profile",
+      "value": "Select or create a profile first."
+    },
+    {
+      "name": "testing_profiles",
+      "value": "Testing profiles, total"
+    },
+    {
+      "name": "speed_test_complete",
+      "value": "Speed test complete. Results saved."
+    },
+    {
+      "name": "speed_test_degraded",
+      "value": "%1$s; fell back to TCPing (handshake latency only, not a real connection test)"
+    },
+    {
+      "name": "speed_test_bind_fallback",
+      "value": "All nodes failed while bound to the physical interface; retested without binding"
+    },
+    {
+      "name": "latency_stale",
+      "value": "stale"
+    },
+    {
+      "name": "settings_test_timeout",
+      "value": "Speed test timeout (ms)"
+    },
+    {
+      "name": "settings_test_retries",
+      "value": "Retries on failure"
+    },
+    {
+      "name": "settings_test_samples",
+      "value": "Samples per node (averaged)"
+    },
+    {
+      "name": "settings_test_expect_status",
+      "value": "Response acceptance"
+    },
+    {
+      "name": "test_expect_2xx",
+      "value": "Only 2xx counts as up (recommended)"
+    },
+    {
+      "name": "test_expect_any",
+      "value": "Any status code counts as up"
+    },
+    {
+      "name": "settings_test_bypass_tunnel",
+      "value": "Bypass current tunnel while testing"
+    },
+    {
+      "name": "settings_test_bypass_tunnel_hint",
+      "value": "Bind test traffic to the physical interface so latency reflects the node itself. When off, the test measures \"node through the active node\", which inflates every result while connected."
+    },
+    {
+      "name": "settings_latency_stale",
+      "value": "Latency result lifetime (hours)"
+    },
+    {
+      "name": "timeout",
+      "value": "Timeout"
+    },
+    {
+      "name": "disconnect_first",
+      "value": "Disconnect the current connection first."
+    },
+    {
+      "name": "switching_wait",
+      "value": "Switching. Please wait."
+    },
+    {
+      "name": "switching_to",
+      "value": "Switching to"
+    },
+    {
+      "name": "clipboard_empty_paste_manually",
+      "value": "Clipboard is empty. Paste into the input field manually."
+    },
+    {
+      "name": "paste_subscription_or_profile_link",
+      "value": "Paste a subscription or profile link first."
+    },
+    {
+      "name": "fetching_subscription",
+      "value": "Fetching subscription…"
+    },
+    {
+      "name": "import_confirm",
+      "value": "Confirm import"
+    },
+    {
+      "name": "subscription_import_message",
+      "value": "Confirm importing subscription \"%1$s\"? If the source is untrusted, your IP and network behavior may be leaked."
+    },
+    {
+      "name": "profile_import_message",
+      "value": "Confirm importing profile \"%1$s\"?"
+    },
+    {
+      "name": "clash_no_importable_profiles",
+      "value": "The subscription returned Clash format but no importable profiles. Unsupported profiles skipped"
+    },
+    {
+      "name": "imported_profiles",
+      "value": "Profiles imported"
+    },
+    {
+      "name": "import_failed",
+      "value": "Import failed"
+    },
+    {
+      "name": "ungrouped",
+      "value": "Ungrouped"
+    },
+    {
+      "name": "move_to_group",
+      "value": "Move to group"
+    },
+    {
+      "name": "move_to_group_title",
+      "value": "Move to group"
+    },
+    {
+      "name": "move_to_group_done",
+      "value": "Profile moved"
+    },
+    {
+      "name": "profile_group",
+      "value": "Group"
+    },
+    {
+      "name": "group_settings",
+      "value": "Group Settings"
+    },
+    {
+      "name": "group_settings_saved",
+      "value": "Group settings saved"
+    },
+    {
+      "name": "use_selector",
+      "value": "Use selector"
+    },
+    {
+      "name": "use_selector_sum",
+      "value": "Emit a kernel selector outbound for this group with all its members as candidates (matches Android groupIsSelector)"
+    },
+    {
+      "name": "use_auto_select",
+      "value": "Auto-select fastest"
+    },
+    {
+      "name": "use_auto_select_sum",
+      "value": "Emit a kernel urltest outbound that periodically runs real connection probes and stays on the lowest-latency member (equivalent to Clash url-test). Mutually exclusive with the selector toggle."
+    },
+    {
+      "name": "front_proxy",
+      "value": "Front proxy"
+    },
+    {
+      "name": "landing_proxy",
+      "value": "Landing Proxy"
+    },
+    {
+      "name": "option_none",
+      "value": "None"
+    },
+    {
+      "name": "route_outbound_profile",
+      "value": "Profile"
+    },
+    {
+      "name": "route_outbound_profile_active",
+      "value": "Profile (set)"
+    },
+    {
+      "name": "route_rule_profile_target",
+      "value": "Target profile"
+    },
+    {
+      "name": "route_rule_profile_missing",
+      "value": "Profile deleted"
+    },
+    {
+      "name": "route_no_profiles",
+      "value": "No profiles available to target"
+    },
+    {
+      "name": "local_profile",
+      "value": "Local profile"
+    },
+    {
+      "name": "subscription_profile",
+      "value": "Subscription profile"
+    },
+    {
+      "name": "protocol_export_unsupported",
+      "value": "Export is not supported for this protocol."
+    },
+    {
+      "name": "profile_link_copied",
+      "value": "Profile link copied."
+    },
+    {
+      "name": "url_test_requires_connection",
+      "value": "Connect this profile before running URL Test."
+    },
+    {
+      "name": "url_test_current_profile_only",
+      "value": "URL Test only supports the currently connected profile."
+    },
+    {
+      "name": "confirm_delete_profile",
+      "value": "Delete profile"
+    },
+    {
+      "name": "unpin",
+      "value": "Unpin"
+    },
+    {
+      "name": "pin",
+      "value": "Pin"
+    },
+    {
+      "name": "copy_share_link",
+      "value": "Copy share link"
+    },
+    {
+      "name": "view_subscription",
+      "value": "View subscription"
+    },
+    {
+      "name": "irreversible",
+      "value": "Cannot be undone"
+    },
+    {
+      "name": "total",
+      "value": "Total"
+    },
+    {
+      "name": "import_content_placeholder",
+      "value": "Paste a subscription URL, profile link, or base64 subscription content"
+    },
+    {
+      "name": "saved",
+      "value": "Saved."
+    },
+    {
+      "name": "save_failed",
+      "value": "Save failed"
+    },
+    {
+      "name": "paste_link_first",
+      "value": "Paste link content first."
+    },
+    {
+      "name": "error_server_required",
+      "value": "Server address is required."
+    },
+    {
+      "name": "error_port_range",
+      "value": "Port must be an integer from 1 to 65535."
+    },
+    {
+      "name": "error_loopback_server",
+      "value": "A remote proxy server cannot use 127.0.0.1, localhost, or ::1. Enter the actual server address."
+    },
+    {
+      "name": "error_invalid_uuid",
+      "value": "Enter a valid UUID."
+    },
+    {
+      "name": "error_ss_method_required",
+      "value": "Shadowsocks encryption method is required."
+    },
+    {
+      "name": "error_ss_password_required",
+      "value": "Shadowsocks password is required."
+    },
+    {
+      "name": "error_auth_password_required",
+      "value": "Authentication password is required."
+    },
+    {
+      "name": "error_tuic_password_required",
+      "value": "TUIC password is required."
+    },
+    {
+      "name": "error_reality_public_key",
+      "value": "The REALITY public key format is invalid."
+    },
+    {
+      "name": "error_reality_short_id",
+      "value": "REALITY short_id must contain 2 to 16 hexadecimal characters."
+    },
+    {
+      "name": "error_extra_json",
+      "value": "The extra JSON format is invalid."
+    },
+    {
+      "name": "subscription_link_use_home",
+      "value": "This is a subscription link. Use Import link on the home page."
+    },
+    {
+      "name": "subscription_container_unsupported",
+      "value": "sn://subscription is a private SagerNet container format and is not supported. Use the subscription URL or a Clash share link instead."
+    },
+    {
+      "name": "unrecognized_profile_link",
+      "value": "The profile link was not recognized. Check its contents."
+    },
+    {
+      "name": "parsed_review_save",
+      "value": "Parsed. Review the fields, then save."
+    },
+    {
+      "name": "parse_failed",
+      "value": "Parse failed"
+    },
+    {
+      "name": "clipboard_empty_paste_manually_short",
+      "value": "Clipboard is empty. Paste manually."
+    },
+    {
+      "name": "profile_link_placeholder",
+      "value": "Paste a vless://, vmess://, ss://, trojan://, or similar profile link. The first link is used."
+    },
+    {
+      "name": "password_trojan",
+      "value": "Password (Trojan)"
+    },
+    {
+      "name": "password_anytls",
+      "value": "Password (AnyTLS)"
+    },
+    {
+      "name": "password_snell",
+      "value": "Password (Snell v4)"
+    },
+    {
+      "name": "encryption_method",
+      "value": "Encryption method"
+    },
+    {
+      "name": "encryption_security",
+      "value": "Encryption (security)"
+    },
+    {
+      "name": "empty_or_xtls_vision",
+      "value": "Empty / xtls-rprx-vision"
+    },
+    {
+      "name": "auth_string",
+      "value": "Authentication string (auth_str)"
+    },
+    {
+      "name": "upload_mbps",
+      "value": "Upload Mbps"
+    },
+    {
+      "name": "download_mbps",
+      "value": "Download Mbps"
+    },
+    {
+      "name": "empty_or_password",
+      "value": "Empty / password"
+    },
+    {
+      "name": "password_hysteria2",
+      "value": "Password (Hysteria2)"
+    },
+    {
+      "name": "upload_mbps_optional",
+      "value": "Upload Mbps (optional)"
+    },
+    {
+      "name": "download_mbps_optional",
+      "value": "Download Mbps (optional)"
+    },
+    {
+      "name": "obfs_password_optional",
+      "value": "obfs password (optional)"
+    },
+    {
+      "name": "salamander_password",
+      "value": "Salamander password"
+    },
+    {
+      "name": "password_optional_placeholder",
+      "value": "password (optional)"
+    },
+    {
+      "name": "congestion_control",
+      "value": "Congestion control"
+    },
+    {
+      "name": "udp_relay_mode",
+      "value": "UDP relay mode"
+    },
+    {
+      "name": "local_address_cidr",
+      "value": "Local address (CIDR)"
+    },
+    {
+      "name": "private_key",
+      "value": "Private key (private_key)"
+    },
+    {
+      "name": "peer_public_key",
+      "value": "Peer public key"
+    },
+    {
+      "name": "pre_shared_key_optional",
+      "value": "Pre-shared key (optional)"
+    },
+    {
+      "name": "username_optional",
+      "value": "Username (optional)"
+    },
+    {
+      "name": "password_optional",
+      "value": "Password (optional)"
+    },
+    {
+      "name": "tcp_none",
+      "value": "TCP (none)"
+    },
+    {
+      "name": "domain_placeholder",
+      "value": "Domain"
+    },
+    {
+      "name": "sni_placeholder",
+      "value": "Empty uses server address"
+    },
+    {
+      "name": "alpn_comma_separated",
+      "value": "ALPN (comma-separated)"
+    },
+    {
+      "name": "alpn_placeholder",
+      "value": "h2,http/1.1 or h3"
+    },
+    {
+      "name": "utls_fingerprint",
+      "value": "uTLS fingerprint (fp, empty for default)"
+    },
+    {
+      "name": "reality_public_key_optional",
+      "value": "REALITY public key (pbk, optional)"
+    },
+    {
+      "name": "reality_short_id_optional",
+      "value": "REALITY short_id (optional)"
+    },
+    {
+      "name": "extra_json_advanced",
+      "value": "Extra JSON (advanced, merged into outbound object)"
+    },
+    {
+      "name": "profile_edit_footer_hint",
+      "value": "Long-press a home profile to delete it. Clipboard import supports profile links and base64 subscriptions."
+    },
+    {
+      "name": "geo_downloading",
+      "value": "Downloading Geo data (about 1 MB, trying multiple sources)…"
+    },
+    {
+      "name": "geo_download_complete",
+      "value": "Geo data downloaded. Reconnect to enable direct routing for cn."
+    },
+    {
+      "name": "geo_import_complete",
+      "value": "Imported custom Geo data: %1$s. Reconnect to apply"
+    },
+    {
+      "name": "geo_import_failed",
+      "value": "Import failed: %1$s"
+    },
+    {
+      "name": "download_failed",
+      "value": "Download failed"
+    },
+    {
+      "name": "saved_reconnect_vpn",
+      "value": "Saved. Reconnect the VPN to apply changes."
+    },
+    {
+      "name": "no_installed_apps_manual",
+      "value": "No installed apps were found. Use the package-name field below."
+    },
+    {
+      "name": "app_list_failed_manual",
+      "value": "Unable to read the app list. Use the package-name field below"
+    },
+    {
+      "name": "backup_file_empty",
+      "value": "The backup file is empty."
+    },
+    {
+      "name": "backup_file_too_large",
+      "value": "The backup file exceeds 20 MiB."
+    },
+    {
+      "name": "backup_file_incomplete",
+      "value": "The backup file was not read completely."
+    },
+    {
+      "name": "backup_export_cancelled",
+      "value": "Backup export cancelled."
+    },
+    {
+      "name": "backup_file_exported",
+      "value": "Backup file exported."
+    },
+    {
+      "name": "export_failed",
+      "value": "Export failed: %1$s"
+    },
+    {
+      "name": "backup_import_cancelled",
+      "value": "Backup import cancelled."
+    },
+    {
+      "name": "restore_failed",
+      "value": "Restore failed: %1$s"
+    },
+    {
+      "name": "updating_subscription",
+      "value": "Updating subscription…"
+    },
+    {
+      "name": "index_testing_count",
+      "value": "Testing %1$d profiles…"
+    },
+    {
+      "name": "switching_to_name",
+      "value": "Switching to %1$s…"
+    },
+    {
+      "name": "clash_skipped_count",
+      "value": "No importable profiles, %1$d skipped"
+    },
+    {
+      "name": "imported_from_sub",
+      "value": "Imported %1$d profiles from subscription %2$s"
+    },
+    {
+      "name": "imported_count",
+      "value": "Imported %1$d profiles"
+    },
+    {
+      "name": "import_failed_reason",
+      "value": "Import failed: %1$s"
+    },
+    {
+      "name": "confirm_delete_profile_name",
+      "value": "Delete profile “%1$s”?"
+    },
+    {
+      "name": "traffic_speed_total",
+      "value": "↑ %1$s  ↓ %2$s   ·   Total ↑ %3$s  ↓ %4$s"
+    },
+    {
+      "name": "settings_mode_switched_rule",
+      "value": "Switched to Rule mode. Takes effect after reconnect."
+    },
+    {
+      "name": "settings_mode_switched_global",
+      "value": "Switched to Global mode. Takes effect after reconnect."
+    },
+    {
+      "name": "settings_mode_switched_direct",
+      "value": "Switched to Direct mode. Takes effect after reconnect."
+    },
+    {
+      "name": "settings_mode_desc_direct",
+      "value": "All traffic goes direct (no proxy)"
+    },
+    {
+      "name": "settings_mode_desc_global",
+      "value": "All traffic goes through the proxy"
+    },
+    {
+      "name": "settings_mode_desc_rule",
+      "value": "Private network and custom list go direct; the rest goes through the proxy"
+    },
+    {
+      "name": "settings_custom_routes_title",
+      "value": "Custom route rules"
+    },
+    {
+      "name": "settings_direct_domain_suffix",
+      "value": "Direct domain suffixes (comma-separated)"
+    },
+    {
+      "name": "settings_direct_cidr",
+      "value": "Direct IP ranges (comma-separated CIDR)"
+    },
+    {
+      "name": "settings_geo_ready",
+      "value": "✓ Geo data ready (cn split-routing enabled)"
+    },
+    {
+      "name": "settings_geo_missing",
+      "value": "Geo data not downloaded (cn split-routing unavailable)"
+    },
+    {
+      "name": "settings_geo_downloading",
+      "value": "Downloading…"
+    },
+    {
+      "name": "settings_geo_redownload",
+      "value": "Redownload"
+    },
+    {
+      "name": "settings_geo_download",
+      "value": "Download data"
+    },
+    {
+      "name": "settings_geo_import",
+      "value": "Import file"
+    },
+    {
+      "name": "settings_geo_import_hint",
+      "value": "Import geoip.srs / geosite.srs from a file (overrides built-in cn rule-sets)"
+    },
+    {
+      "name": "settings_geo_site",
+      "value": "GeoSite database"
+    },
+    {
+      "name": "settings_geo_ip",
+      "value": "GeoIP database"
+    },
+    {
+      "name": "geo_asset_status",
+      "value": "%1$s · version %2$s"
+    },
+    {
+      "name": "geo_asset_absent",
+      "value": "Not downloaded"
+    },
+    {
+      "name": "settings_geo_update_one",
+      "value": "Update"
+    },
+    {
+      "name": "settings_geo_updated",
+      "value": "%1$s updated"
+    },
+    {
+      "name": "settings_geo_delete",
+      "value": "Delete"
+    },
+    {
+      "name": "settings_geo_delete_confirm",
+      "value": "Delete %1$s? cn routing in rule mode will stop working"
+    },
+    {
+      "name": "settings_geo_deleted",
+      "value": "%1$s deleted"
+    },
+    {
+      "name": "settings_geo_delete_failed",
+      "value": "Delete failed: %1$s"
+    },
+    {
+      "name": "settings_subs_empty",
+      "value": "No subscriptions yet. Paste a subscription URL via “Import link” on the home page; it will be tracked here automatically."
+    },
+    {
+      "name": "settings_sub_never_updated",
+      "value": "Never updated"
+    },
+    {
+      "name": "settings_sub_updated_at",
+      "value": "Updated at %1$s"
+    },
+    {
+      "name": "settings_sub_traffic",
+      "value": "Used %1$s of %2$s"
+    },
+    {
+      "name": "settings_sub_expire",
+      "value": "Expires: %1$s"
+    },
+    {
+      "name": "update_action",
+      "value": "Update"
+    },
+    {
+      "name": "settings_auto_update_subs",
+      "value": "Auto-update subscriptions on launch"
+    },
+    {
+      "name": "settings_tun_stack",
+      "value": "TUN stack"
+    },
+    {
+      "name": "settings_tun_mtu",
+      "value": "TUN MTU"
+    },
+    {
+      "name": "latency_test_url",
+      "value": "URL Test (real connection)"
+    },
+    {
+      "name": "latency_test_tcp",
+      "value": "TCPing (handshake only)"
+    },
+    {
+      "name": "settings_remote_dns",
+      "value": "Remote DNS (via proxy, prevents leaks)"
+    },
+    {
+      "name": "settings_remote_dns_hint",
+      "value": "The host of the remote DNS must be an IP (e.g. https://8.8.8.8/dns-query) to avoid bootstrap resolution"
+    },
+    {
+      "name": "settings_direct_dns",
+      "value": "Direct DNS (resolves proxy server domains)"
+    },
+    {
+      "name": "settings_enable_ipv6",
+      "value": "Enable IPv6"
+    },
+    {
+      "name": "appearance_follow_system",
+      "value": "Follow system"
+    },
+    {
+      "name": "appearance_light",
+      "value": "Light"
+    },
+    {
+      "name": "appearance_dark",
+      "value": "Dark"
+    },
+    {
+      "name": "settings_theme_note",
+      "value": "Theme options are saved as app preferences; due to SDK limitations, some pages refresh after re-entering."
+    },
+    {
+      "name": "settings_per_app_hint_exclude",
+      "value": "App package names excluded from VPN, comma-separated"
+    },
+    {
+      "name": "settings_per_app_hint_include",
+      "value": "App package names included in VPN, comma-separated"
+    },
+    {
+      "name": "settings_per_app_manual_note",
+      "value": "If the app list fails to load, enter package names manually, comma-separated; takes effect after reconnect."
+    },
+    {
+      "name": "settings_clipboard_backup_done",
+      "value": "Backup copied to clipboard"
+    },
+    {
+      "name": "settings_clipboard_backup_failed",
+      "value": "Backup failed: %1$s"
+    },
+    {
+      "name": "settings_clipboard_empty",
+      "value": "Clipboard is empty"
+    },
+    {
+      "name": "settings_backup_desc",
+      "value": "Backup includes nodes, groups, settings, subscriptions and custom route rules, stored on the clipboard as versioned JSON."
+    },
+    {
+      "name": "settings_insecure_tls",
+      "value": "Allow insecure TLS globally"
+    },
+    {
+      "name": "settings_insecure_tls_desc",
+      "value": "For debugging nodes with self-signed certificates"
+    },
+    {
+      "name": "settings_reconnect_note",
+      "value": "Note: settings take effect after reconnecting the VPN."
+    },
+    {
+      "name": "download_failed_reason",
+      "value": "Download failed: %1$s"
+    },
+    {
+      "name": "save_failed_reason",
+      "value": "Save failed: %1$s"
+    },
+    {
+      "name": "app_list_failed_reason",
+      "value": "Failed to list apps: %1$s"
+    },
+    {
+      "name": "sub_update_result",
+      "value": "Subscription updated: %1$d added, %2$d removed"
+    },
+    {
+      "name": "sub_update_skipped",
+      "value": "%1$d nodes skipped (unsupported by the core)"
+    },
+    {
+      "name": "sub_update_not_modified",
+      "value": "Subscription content unchanged"
+    },
+    {
+      "name": "update_failed_reason",
+      "value": "Update failed: %1$s"
+    },
+    {
+      "name": "backup_invalid_json",
+      "value": "Backup file is not valid JSON"
+    },
+    {
+      "name": "backup_bad_format",
+      "value": "Backup content format is invalid"
+    },
+    {
+      "name": "backup_unsupported_version",
+      "value": "Unsupported backup schema version: %1$d"
+    },
+    {
+      "name": "backup_restore_summary",
+      "value": "Restored %1$d nodes, %2$d groups, all settings, %3$d subscriptions, %4$d route rules and %5$d remote rule sets"
+    },
+    {
+      "name": "backup_restore_summary_stopped",
+      "value": "Stopped VPN and restored %1$d nodes, %2$d groups, all settings, %3$d subscriptions, %4$d route rules and %5$d remote rule sets"
+    },
+    {
+      "name": "backup_restore_busy",
+      "value": "A restore is already in progress. Please wait."
+    },
+    {
+      "name": "backup_vpn_disconnect_timeout",
+      "value": "Timed out waiting for VPN to stop. Restore was not started."
+    },
+    {
+      "name": "backup_restore_rolled_back",
+      "value": "Restore failed and the original data was fully rolled back"
+    },
+    {
+      "name": "backup_rollback_failed",
+      "value": "Restore failed and rollback was incomplete: %1$s"
+    },
+    {
+      "name": "backup_op_failed",
+      "value": "Operation failed: %1$s"
+    },
+    {
+      "name": "confirm_delete_sub_name",
+      "value": "Delete subscription “%1$s” (%2$d profiles)?"
+    },
+    {
+      "name": "profile_count_value",
+      "value": "Profiles: %1$d"
+    },
+    {
+      "name": "used_traffic_value",
+      "value": "Used traffic: %1$s"
+    },
+    {
+      "name": "total_traffic_value",
+      "value": "Total traffic: %1$s"
+    },
+    {
+      "name": "total_traffic_unknown",
+      "value": "Total traffic: unknown"
+    },
+    {
+      "name": "consecutive_failures_value",
+      "value": "Consecutive failures: %1$d"
+    },
+    {
+      "name": "status_connecting",
+      "value": "Establishing VPN…"
+    },
+    {
+      "name": "status_disconnecting",
+      "value": "Disconnecting…"
+    },
+    {
+      "name": "status_switching",
+      "value": "Switching node…"
+    },
+    {
+      "name": "status_start_timeout",
+      "value": "VPN setup timed out: the extension did not finish starting. Check the Logs page to see where it stopped."
+    },
+    {
+      "name": "status_awaiting_auth",
+      "value": "Waiting for VPN authorization…"
+    },
+    {
+      "name": "status_connected_node",
+      "value": "Connected: %1$s"
+    },
+    {
+      "name": "status_start_failed",
+      "value": "Failed to start VPN service: %1$s"
+    },
+    {
+      "name": "status_connect_failed",
+      "value": "Connection failed: %1$s"
+    },
+    {
+      "name": "notification_vpn_connected",
+      "value": "VPN connected"
+    },
+    {
+      "name": "notification_node_latency",
+      "value": "%1$s · %2$s"
+    },
+    {
+      "name": "notification_disconnect",
+      "value": "Disconnect"
+    },
+    {
+      "name": "profile_sort_mode",
+      "value": "Profile sorting"
+    },
+    {
+      "name": "sort_manual",
+      "value": "Manual"
+    },
+    {
+      "name": "sort_latency",
+      "value": "Latency"
+    },
+    {
+      "name": "sort_name",
+      "value": "Name"
+    },
+    {
+      "name": "move_up",
+      "value": "Move up"
+    },
+    {
+      "name": "move_down",
+      "value": "Move down"
+    },
+    {
+      "name": "test_group",
+      "value": "Test group"
+    },
+    {
+      "name": "group_latency_untested",
+      "value": "%1$d untested"
+    },
+    {
+      "name": "group_latency_minimum",
+      "value": "Min %1$dms"
+    },
+    {
+      "name": "share_profile",
+      "value": "Share profile"
+    },
+    {
+      "name": "share_subscription",
+      "value": "Share subscription link"
+    },
+    {
+      "name": "share_link_title",
+      "value": "Share profile link"
+    },
+    {
+      "name": "share_subscription_title",
+      "value": "Share subscription link"
+    },
+    {
+      "name": "share_link_copied",
+      "value": "Share link copied"
+    },
+    {
+      "name": "remote_rule_sets",
+      "value": "Remote rule sets"
+    },
+    {
+      "name": "add_remote_rule_set",
+      "value": "Add rule set"
+    },
+    {
+      "name": "remote_rule_set_name",
+      "value": "Rule set name"
+    },
+    {
+      "name": "remote_rule_set_url",
+      "value": "Rule set URL (.srs)"
+    },
+    {
+      "name": "rule_set_site",
+      "value": "Domain rules"
+    },
+    {
+      "name": "rule_set_ip",
+      "value": "IP rules"
+    },
+    {
+      "name": "remote_rule_set_updated",
+      "value": "Last updated: %1$s"
+    },
+    {
+      "name": "remote_rule_set_error",
+      "value": "Last error: %1$s"
+    },
+    {
+      "name": "clash_api_settings",
+      "value": "Connection statistics API"
+    },
+    {
+      "name": "clash_api_enabled",
+      "value": "Enable connection statistics"
+    },
+    {
+      "name": "clash_api_port",
+      "value": "Listening port"
+    },
+    {
+      "name": "clash_api_secret",
+      "value": "Access secret"
+    },
+    {
+      "name": "clash_api_reconnect_hint",
+      "value": "Reconnect the VPN for changes to take effect"
+    },
+    {
+      "name": "connections_title_count",
+      "value": "Connections (%1$d)"
+    },
+    {
+      "name": "refresh",
+      "value": "Refresh"
+    },
+    {
+      "name": "connections_api_unavailable",
+      "value": "Connection statistics API is unavailable. Showing total TUN traffic instead."
+    },
+    {
+      "name": "connection_closed",
+      "value": "Connection closed"
+    },
+    {
+      "name": "connection_close_failed",
+      "value": "Failed to close connection: %1$s"
+    },
+    {
+      "name": "connections_loading",
+      "value": "Loading connections…"
+    },
+    {
+      "name": "connections_unavailable",
+      "value": "Connection information is unavailable"
+    },
+    {
+      "name": "connections_empty",
+      "value": "No active connections"
+    },
+    {
+      "name": "connections_empty_hint",
+      "value": "Connections will appear here after you start the VPN and access the network."
+    },
+    {
+      "name": "parse_failed_reason",
+      "value": "Parse failed: %1$s"
+    },
+    {
+      "name": "upload",
+      "value": "Upload"
+    },
+    {
+      "name": "download",
+      "value": "Download"
+    },
+    {
+      "name": "traffic",
+      "value": "Traffic"
+    },
+    {
+      "name": "sub_group_edit",
+      "value": "Group"
+    },
+    {
+      "name": "sub_group_dialog_title",
+      "value": "Subscription group"
+    },
+    {
+      "name": "sub_group_hint",
+      "value": "Group name; leave empty for ungrouped"
+    },
+    {
+      "name": "sub_group_apply_hint",
+      "value": "Saving moves all profiles of this subscription into the group (created if missing; empty = Ungrouped)"
+    },
+    {
+      "name": "sub_group_applied",
+      "value": "Subscription profiles moved to group %1$s"
+    },
+    {
+      "name": "sub_group_applied_none",
+      "value": "Subscription profiles moved to Ungrouped"
+    },
+    {
+      "name": "subscription_name_optional",
+      "value": "Subscription name (optional)"
+    },
+    {
+      "name": "sub_group_none_count",
+      "value": "Ungrouped · %1$d"
+    },
+    {
+      "name": "sub_group_value",
+      "value": "Group: %1$s"
+    },
+    {
+      "name": "add_entry",
+      "value": "Add"
+    },
+    {
+      "name": "subscription_no_expiry",
+      "value": "No expiry information"
+    },
+    {
+      "name": "subscription_days_remaining",
+      "value": "%1$d days remaining"
+    },
+    {
+      "name": "home",
+      "value": "Home"
+    },
+    {
+      "name": "nodes",
+      "value": "Nodes"
+    },
+    {
+      "name": "url_test",
+      "value": "URL Test"
+    },
+    {
+      "name": "url_test_result",
+      "value": "URL Test: %1$d ms"
+    },
+    {
+      "name": "nav_layout",
+      "value": "Navigation position"
+    },
+    {
+      "name": "nav_layout_side",
+      "value": "Sidebar"
+    },
+    {
+      "name": "nav_layout_bottom",
+      "value": "Bottom menu bar"
+    },
+    {
+      "name": "settings_network",
+      "value": "Network"
+    },
+    {
+      "name": "settings_about",
+      "value": "Other"
+    },
+    {
+      "name": "settings_about_version",
+      "value": "Version"
+    },
+    {
+      "name": "notification_upload",
+      "value": "Up"
+    },
+    {
+      "name": "notification_download",
+      "value": "Down"
+    },
+    {
+      "name": "notification_total",
+      "value": "Total"
+    },
+    {
+      "name": "nav_config",
+      "value": "Configuration"
+    },
+    {
+      "name": "nav_groups",
+      "value": "Groups"
+    },
+    {
+      "name": "nav_route",
+      "value": "Route"
+    },
+    {
+      "name": "nav_dashboard",
+      "value": "Dashboard"
+    },
+    {
+      "name": "nav_tools",
+      "value": "Tools"
+    },
+    {
+      "name": "nav_about",
+      "value": "About"
+    },
+    {
+      "name": "drawer_footer",
+      "value": "NekoBox for Harmony"
+    },
+    {
+      "name": "test_current_group",
+      "value": "Test this group"
+    },
+    {
+      "name": "test_all_nodes",
+      "value": "Test all nodes"
+    },
+    {
+      "name": "update_current_subscription",
+      "value": "Update current subscription"
+    },
+    {
+      "name": "current_subscription_missing",
+      "value": "The selected profile does not belong to a subscription"
+    },
+    {
+      "name": "clear_traffic_statistics",
+      "value": "Clear traffic statistics"
+    },
+    {
+      "name": "traffic_stats_cleared",
+      "value": "Traffic statistics cleared"
+    },
+    {
+      "name": "clear_test_results",
+      "value": "Clear test results"
+    },
+    {
+      "name": "dedup_action",
+      "value": "Remove duplicates"
+    },
+    {
+      "name": "delete_unavailable",
+      "value": "Delete unavailable nodes"
+    },
+    {
+      "name": "dedup_done",
+      "value": "Removed %1$d nodes"
+    },
+    {
+      "name": "dedup_none",
+      "value": "No duplicate nodes"
+    },
+    {
+      "name": "no_unavailable_nodes",
+      "value": "No unavailable nodes"
+    },
+    {
+      "name": "confirm_delete_unavailable",
+      "value": "Delete %1$d unavailable nodes?"
+    },
+    {
+      "name": "test_results_cleared",
+      "value": "Test results cleared"
+    },
+    {
+      "name": "no_profiles_title",
+      "value": "No profiles yet"
+    },
+    {
+      "name": "no_profiles_hint",
+      "value": "Import a subscription or create a profile to get started"
+    },
+    {
+      "name": "group_empty_nodes",
+      "value": "No nodes in this group"
+    },
+    {
+      "name": "import_from_clipboard",
+      "value": "Import from clipboard"
+    },
+    {
+      "name": "export_outbound_config",
+      "value": "Export sing-box config"
+    },
+    {
+      "name": "outbound_config_copied",
+      "value": "Outbound config copied"
+    },
+    {
+      "name": "export_outbound_config_file",
+      "value": "Export config to file"
+    },
+    {
+      "name": "outbound_config_exported",
+      "value": "Outbound config exported to file"
+    },
+    {
+      "name": "export_failed_generic",
+      "value": "Export failed: %1$s"
+    },
+    {
+      "name": "dashboard_disabled_title",
+      "value": "Clash API is disabled"
+    },
+    {
+      "name": "dashboard_disabled_desc",
+      "value": "Enable it in Settings → Clash API to use the yacd dashboard"
+    },
+    {
+      "name": "dashboard_hint",
+      "value": "Served by the kernel clash_api; available while VPN is running"
+    },
+    {
+      "name": "update_all_subs",
+      "value": "Update all subscriptions"
+    },
+    {
+      "name": "new_group_hint",
+      "value": "New group name…"
+    },
+    {
+      "name": "add_group",
+      "value": "Create group"
+    },
+    {
+      "name": "group_node_count",
+      "value": "%1$d nodes"
+    },
+    {
+      "name": "clear_group",
+      "value": "Clear group"
+    },
+    {
+      "name": "confirm_clear_group",
+      "value": "Clear %1$d nodes in this group?"
+    },
+    {
+      "name": "group_name_required",
+      "value": "Group name required"
+    },
+    {
+      "name": "confirm_delete_group",
+      "value": "Delete group \"%1$s\"? Its nodes will be ungrouped"
+    },
+    {
+      "name": "groups_empty",
+      "value": "No subscriptions or groups yet"
+    },
+    {
+      "name": "group_type_label",
+      "value": "Type"
+    },
+    {
+      "name": "group_type_manual",
+      "value": "Manual group"
+    },
+    {
+      "name": "group_type_subscription",
+      "value": "Subscription group"
+    },
+    {
+      "name": "group_sub_link_hint",
+      "value": "Subscription URL (http/https)"
+    },
+    {
+      "name": "group_sub_url_required",
+      "value": "Enter a valid subscription URL"
+    },
+    {
+      "name": "group_sub_fetch_now",
+      "value": "Fetch nodes after creating"
+    },
+    {
+      "name": "group_created",
+      "value": "Group created"
+    },
+    {
+      "name": "group_subscription_created",
+      "value": "Subscription group created"
+    },
+    {
+      "name": "group_status_empty",
+      "value": "Empty"
+    },
+    {
+      "name": "group_rename_label",
+      "value": "Group name"
+    },
+    {
+      "name": "group_name_exists",
+      "value": "A group with this name already exists"
+    },
+    {
+      "name": "group_manual_note",
+      "value": "Manual group: add nodes via Move to group"
+    },
+    {
+      "name": "home_sub_empty",
+      "value": "No nodes in this subscription. Update it on the Groups page."
+    },
+    {
+      "name": "home_manual_view",
+      "value": "Manual"
+    },
+    {
+      "name": "group_sub_note",
+      "value": "Each subscription is one group. Pick it at the bottom of the home page to see the groups it provides."
+    },
+    {
+      "name": "group_sub_group_count",
+      "value": "%d groups"
+    },
+    {
+      "name": "share_sub_link",
+      "value": "Share subscription"
+    },
+    {
+      "name": "sub_link_copied",
+      "value": "Subscription link copied"
+    },
+    {
+      "name": "export_all_nodes",
+      "value": "Export node links"
+    },
+    {
+      "name": "export_all_nodes_file",
+      "value": "Export nodes to file"
+    },
+    {
+      "name": "export_all_empty",
+      "value": "Nothing to export"
+    },
+    {
+      "name": "export_all_done",
+      "value": "Exported %1$d links"
+    },
+    {
+      "name": "export_all_file_done",
+      "value": "Exported %1$d links to file"
+    },
+    {
+      "name": "sub_last_update",
+      "value": "Updated %1$s"
+    },
+    {
+      "name": "sub_not_updated",
+      "value": "Not updated"
+    },
+    {
+      "name": "sub_traffic_used_remain",
+      "value": "%1$s / %2$s left"
+    },
+    {
+      "name": "sub_traffic_used",
+      "value": "Used %1$s"
+    },
+    {
+      "name": "stun_title",
+      "value": "NAT behavior discovery (STUN)"
+    },
+    {
+      "name": "stun_desc",
+      "value": "Detect your public mapped address and NAT behavior via a STUN server"
+    },
+    {
+      "name": "stun_test",
+      "value": "Test"
+    },
+    {
+      "name": "stun_testing",
+      "value": "Testing…"
+    },
+    {
+      "name": "stun_server_required",
+      "value": "STUN server required"
+    },
+    {
+      "name": "stun_public_endpoint",
+      "value": "Public mapped address"
+    },
+    {
+      "name": "stun_latency",
+      "value": "Response time %1$d ms"
+    },
+    {
+      "name": "stun_nat_cone",
+      "value": "Mapping stable across probes (cone-like NAT)"
+    },
+    {
+      "name": "stun_nat_symmetric",
+      "value": "Mapping changed across probes (symmetric NAT)"
+    },
+    {
+      "name": "stun_failed",
+      "value": "STUN test failed: %1$s"
+    },
+    {
+      "name": "reset_title",
+      "value": "Reset all settings"
+    },
+    {
+      "name": "reset_desc",
+      "value": "Erase profiles, groups, subscriptions, rules and settings"
+    },
+    {
+      "name": "reset_action",
+      "value": "Factory reset"
+    },
+    {
+      "name": "reset_confirm",
+      "value": "Reset to factory defaults? This cannot be undone"
+    },
+    {
+      "name": "reset_confirm_final",
+      "value": "Confirm again: ALL data will be erased!"
+    },
+    {
+      "name": "reset_done",
+      "value": "Factory reset complete"
+    },
+    {
+      "name": "reset_failed",
+      "value": "Reset failed: %1$s"
+    },
+    {
+      "name": "about_core_version",
+      "value": "Core version"
+    },
+    {
+      "name": "about_github",
+      "value": "GitHub"
+    },
+    {
+      "name": "about_telegram",
+      "value": "Telegram group"
+    },
+    {
+      "name": "check_update",
+      "value": "Check for updates"
+    },
+    {
+      "name": "checking_update",
+      "value": "Checking…"
+    },
+    {
+      "name": "check_update_failed",
+      "value": "Update check failed (network unavailable?)"
+    },
+    {
+      "name": "check_update_latest",
+      "value": "Already up to date"
+    },
+    {
+      "name": "check_update_new",
+      "value": "New version %1$s available, opening GitHub"
+    },
+    {
+      "name": "about_license_title",
+      "value": "Licenses"
+    },
+    {
+      "name": "about_license_body",
+      "value": "sing-box is GPL-3.0; the app icon comes from NekoBoxForAndroid (GPL-3.0)."
+    },
+    {
+      "name": "settings_general",
+      "value": "General"
+    },
+    {
+      "name": "settings_auto_connect",
+      "value": "Auto connect on launch"
+    },
+    {
+      "name": "settings_auto_connect_desc",
+      "value": "Connect to the selected profile when the app opens"
+    },
+    {
+      "name": "latency_test_mode",
+      "value": "Latency test method"
+    },
+    {
+      "name": "latency_test_mode_desc",
+      "value": "URL Test actually visits the test URL through the proxy, so it only counts as reachable when the full path works. TCPing only checks the server port handshake, so dead nodes may still appear green."
+    },
+    {
+      "name": "settings_route",
+      "value": "Route"
+    },
+    {
+      "name": "settings_dns",
+      "value": "DNS"
+    },
+    {
+      "name": "settings_inbound",
+      "value": "Inbounds"
+    },
+    {
+      "name": "settings_log_level",
+      "value": "Log level"
+    },
+    {
+      "name": "settings_test_url",
+      "value": "Connection test URL"
+    },
+    {
+      "name": "settings_test_url_desc",
+      "value": "URL Test visits this URL through the profile. The default is gstatic; change it to another 204/HTTP endpoint if the egress cannot reach it."
+    },
+    {
+      "name": "settings_test_concurrent",
+      "value": "Test concurrency"
+    },
+    {
+      "name": "settings_always_show_address",
+      "value": "Always show server address"
+    },
+    {
+      "name": "settings_notification_group",
+      "value": "Show group name in notification"
+    },
+    {
+      "name": "settings_speed_interval",
+      "value": "Notification refresh interval (ms)"
+    },
+    {
+      "name": "settings_speed_interval_sum",
+      "value": "How often the persistent notification refreshes speed and traffic. Valid range 500-10000, default 1000"
+    },
+    {
+      "name": "settings_sub_allow_insecure",
+      "value": "Allow insecure subscription requests"
+    },
+    {
+      "name": "settings_sub_allow_insecure_desc",
+      "value": "Applies to HTTPS subscription downloads only"
+    },
+    {
+      "name": "settings_bypass_lan",
+      "value": "Bypass LAN"
+    },
+    {
+      "name": "settings_bypass_lan_desc",
+      "value": "Direct access for LAN addresses"
+    },
+    {
+      "name": "settings_sniff",
+      "value": "Traffic sniffing"
+    },
+    {
+      "name": "sniff_off",
+      "value": "Off"
+    },
+    {
+      "name": "sniff_route",
+      "value": "Routing only"
+    },
+    {
+      "name": "sniff_override",
+      "value": "Override target"
+    },
+    {
+      "name": "settings_remote_dns_strategy",
+      "value": "Remote DNS domain strategy"
+    },
+    {
+      "name": "settings_direct_dns_strategy",
+      "value": "Direct DNS domain strategy"
+    },
+    {
+      "name": "settings_server_dns_strategy",
+      "value": "Proxy server domain strategy"
+    },
+    {
+      "name": "settings_server_dns_strategy_hint",
+      "value": "IP preference used when resolving the proxy server's own domain (matches Android domain_strategy_for_server)"
+    },
+    {
+      "name": "strategy_default",
+      "value": "Default"
+    },
+    {
+      "name": "strategy_auto",
+      "value": "auto"
+    },
+    {
+      "name": "strategy_prefer_ipv4",
+      "value": "prefer_ipv4"
+    },
+    {
+      "name": "strategy_prefer_ipv6",
+      "value": "prefer_ipv6"
+    },
+    {
+      "name": "strategy_ipv4_only",
+      "value": "ipv4_only"
+    },
+    {
+      "name": "strategy_ipv6_only",
+      "value": "ipv6_only"
+    },
+    {
+      "name": "settings_dns_routing",
+      "value": "DNS routing"
+    },
+    {
+      "name": "settings_dns_routing_desc",
+      "value": "Resolve CN domains via direct DNS"
+    },
+    {
+      "name": "settings_fakedns",
+      "value": "FakeDNS"
+    },
+    {
+      "name": "settings_fakedns_desc",
+      "value": "Speed up domain routing with fake IPs (verify on device)"
+    },
+    {
+      "name": "settings_mixed_port",
+      "value": "Mixed proxy port"
+    },
+    {
+      "name": "settings_mixed_port_hint",
+      "value": "0 = disabled"
+    },
+    {
+      "name": "settings_allow_access",
+      "value": "Allow access from LAN"
+    },
+    {
+      "name": "settings_allow_access_desc",
+      "value": "Mixed inbound listens on 0.0.0.0"
+    },
+    {
+      "name": "error_custom_outbound_required",
+      "value": "Custom outbound JSON required"
+    },
+    {
+      "name": "error_custom_outbound_type",
+      "value": "Custom outbound JSON missing \"type\""
+    },
+    {
+      "name": "error_custom_type_unsupported",
+      "value": "Custom protocol type not supported by the core: %s"
+    },
+    {
+      "name": "error_chain_empty",
+      "value": "Chain requires at least one node"
+    },
+    {
+      "name": "error_circular_reference",
+      "value": "This profile would create a circular reference"
+    },
+    {
+      "name": "error_ssh_password_required",
+      "value": "SSH password required"
+    },
+    {
+      "name": "error_ssh_key_required",
+      "value": "SSH private key required"
+    },
+    {
+      "name": "error_wireguard_key_required",
+      "value": "WireGuard private key required"
+    },
+    {
+      "name": "ss_plugin",
+      "value": "SS plugin"
+    },
+    {
+      "name": "ss_plugin_opts",
+      "value": "Plugin options"
+    },
+    {
+      "name": "packet_encoding",
+      "value": "Packet encoding"
+    },
+    {
+      "name": "server_ports_optional",
+      "value": "Port hopping (optional)"
+    },
+    {
+      "name": "hop_interval_seconds",
+      "value": "Hop interval (seconds)"
+    },
+    {
+      "name": "reduce_rtt",
+      "value": "0-RTT handshake"
+    },
+    {
+      "name": "disable_sni",
+      "value": "Disable SNI"
+    },
+    {
+      "name": "wg_mtu",
+      "value": "WireGuard MTU"
+    },
+    {
+      "name": "wg_reserved",
+      "value": "Reserved"
+    },
+    {
+      "name": "ssh_auth_type",
+      "value": "Auth type"
+    },
+    {
+      "name": "private_key_passphrase_optional",
+      "value": "Key passphrase (optional)"
+    },
+    {
+      "name": "ssh_host_key_optional",
+      "value": "Host key (optional)"
+    },
+    {
+      "name": "shadowtls_version",
+      "value": "ShadowTLS version"
+    },
+    {
+      "name": "custom_outbound_json",
+      "value": "Custom outbound JSON"
+    },
+    {
+      "name": "custom_outbound_hint",
+      "value": "A full sing-box outbound object; its tag is forced to \"proxy\""
+    },
+    {
+      "name": "chain_select_hint",
+      "value": "Pick nodes to build the chain (order = traffic order: front → landing)"
+    },
+    {
+      "name": "ws_early_data",
+      "value": "WS early data (bytes)"
+    },
+    {
+      "name": "ws_early_data_header",
+      "value": "Early data header"
+    },
+    {
+      "name": "certificates_optional",
+      "value": "Certificates (optional)"
+    },
+    {
+      "name": "enable_ech",
+      "value": "Enable ECH"
+    },
+    {
+      "name": "ech_config_optional",
+      "value": "ECH config (optional)"
+    },
+    {
+      "name": "mux_protocol",
+      "value": "Mux protocol"
+    },
+    {
+      "name": "mux_max_streams",
+      "value": "Mux max streams"
+    },
+    {
+      "name": "mux_padding",
+      "value": "Mux padding"
+    },
+    {
+      "name": "settings_resolve_destination",
+      "value": "Resolve destination address"
+    },
+    {
+      "name": "settings_resolve_destination_desc",
+      "value": "Resolve domains before matching IP rules (e.g. geoip)"
+    },
+    {
+      "name": "settings_global_custom_config",
+      "value": "Global custom config JSON"
+    },
+    {
+      "name": "settings_global_custom_config_desc",
+      "value": "Shallow-merged into the generated sing-box config; invalid JSON is ignored"
+    },
+    {
+      "name": "show_bottom_bar",
+      "value": "Show bottom bar like SagerNet"
+    },
+    {
+      "name": "ipv6_modes",
+      "value": "IPv6 route"
+    },
+    {
+      "name": "ipv6_mode_disable",
+      "value": "Disable"
+    },
+    {
+      "name": "ipv6_mode_enable",
+      "value": "Enable"
+    },
+    {
+      "name": "ipv6_mode_prefer",
+      "value": "Prefer"
+    },
+    {
+      "name": "ipv6_mode_only",
+      "value": "Only"
+    }
+  ]
+}

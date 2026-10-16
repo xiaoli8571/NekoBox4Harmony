@@ -1,0 +1,3 @@
+# Obfuscation rules (release). Kept minimal on purpose: reflection-free ArkTS.
+-enable-property-obfuscation false
+-enable-toplevel-obfuscation false
