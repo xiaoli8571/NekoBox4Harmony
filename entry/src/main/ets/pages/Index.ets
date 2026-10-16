@@ -1,6 +1,7 @@
 import common from '@ohos.app.ability.common';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
+import notificationManager from '@ohos.notificationManager';
 import bundleManager from '@ohos.bundle.bundleManager';
 import picker from '@ohos.file.picker';
 import fs from '@ohos.file.fs';
@@ -128,6 +129,13 @@ struct Index {
         AppStorage.setOrCreate('vpnRunning', false);
         AppStorage.setOrCreate('vpnRunningProfileId', '');
         AppStorage.setOrCreate('vpnStatus', 'disconnected');
+        // 扩展进程被系统杀死时 onDisconnect/onDestroy 不会执行,连接通知会残留——
+        // 由 UI 进程代为取消(同应用可取消,通知 id 与 VpnExtAbility.showConnectedNotification 一致)
+        try {
+          notificationManager.cancel(1001).catch(() => {});
+        } catch (e) {
+          // ignore
+        }
       }
     } catch (e) {
       // 探测异常不改变 UI 状态
