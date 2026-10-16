@@ -31,10 +31,25 @@ export struct BigPowerButton {
             .height(30)
             .color($r('app.color.power_icon'))
         } else {
-          Text('⏻')
-            .fontSize(UiSpec.POWER_ICON_SIZE)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.power_icon'))
+          // 自绘电源符号:270° 圆弧(顶部留缺口)+ 居中圆角竖杆,替代 Unicode 字形 ⏻
+          // (字形在不同字体/字号下基线不稳、边缘发虚;矢量绘制任意尺寸下边缘锐利)
+          Stack({ alignContent: Alignment.Center }) {
+            Path()
+              .commands('M 14.5 18.5 A 12 12 0 1 1 29.5 18.5')
+              .width(44)
+              .height(44)
+              .fillOpacity(0)
+              .stroke($r('app.color.power_icon'))
+              .strokeWidth(4)
+              .strokeLineCap(LineCapStyle.Round)
+              .antialias(true)
+            Rect({ width: 4, height: 20 })
+              .radius(2)
+              .fill($r('app.color.power_icon'))
+              .translate({ y: -3 })
+          }
+          .width(44)
+          .height(44)
         }
       }
       .width(UiSpec.POWER_CORE_SIZE)
