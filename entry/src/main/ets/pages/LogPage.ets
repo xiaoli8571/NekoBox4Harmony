@@ -7,11 +7,24 @@ import util from '@ohos.util';
 import { LogStore, LOG_EVENT_ID } from '../model/Store';
 import { CoreManager } from '../core/CoreManager';
 import { setClipboardText } from '../utils/ClipboardHelper';
+import { ArrayDataSource } from '../common/components/ArrayDataSource';
+
+/** 单条日志(带自增 id 作为 LazyForEach 稳定 key,内容可能重复所以不能用内容当 key) */
+interface LogEntry {
+  id: number;
+  line: string;
+}
+
+const MAX_LOG_LINES = 2000;
 
 /** 日志面板(抽屉内嵌页签,对齐安卓 LogcatFragment;跟随全局主题保持与其他页面一致) */
 @Component
 export struct LogPanel {
-  @State lines: Array<string> = [];
+  /** LazyForEach 数据源:只持有当前展示的(过滤后)日志,增量通知,不整表重建 */
+  lines: ArrayDataSource<LogEntry> = new ArrayDataSource<LogEntry>();
+  /** 全量日志快照(过滤前的原始数据,导出与过滤用) */
+  private allEntries: Array<LogEntry> = [];
+  private seq: number = 0;
   @State searchText: string = '';
   @State levelFilter: string = 'ALL';
   onOpenDrawer: () => void = () => {};
@@ -21,7 +34,13 @@ export struct LogPanel {
   private fileTimer: number = -1;
 
   aboutToAppear(): void {
-    this.lines = LogStore.getLines().slice();
+    this.seq = 0;
+    this.allEntries = LogStore.getLines().map((line: string) => {
+      this.seq += 1;
+      const entry: LogEntry = { id: this.seq, line: line };
+      return entry;
+    });
+    this.lines.reset(this.filteredEntries());
     const event: emitter.InnerEvent = { eventId: LOG_EVENT_ID };
     emitter.on(event, (data: emitter.EventData) => {
       const payload = data.data as Record<string, Object>;
@@ -46,23 +65,34 @@ export struct LogPanel {
   }
 
   private appendLine(line: string): void {
-    const next = this.lines.slice();
-    next.push(line);
-    if (next.length > 2000) {
-      next.splice(0, next.length - 2000);
+    this.seq += 1;
+    const entry: LogEntry = { id: this.seq, line: line };
+    this.allEntries.push(entry);
+    if (this.allEntries.length > MAX_LOG_LINES) {
+      this.allEntries.splice(0, this.allEntries.length - MAX_LOG_LINES);
+      // 淘汰后过滤视图可能失配,重置一次(低频路径)
+      this.lines.reset(this.filteredEntries());
+    } else if (this.matchesFilter(line)) {
+      // 未被过滤掉的行只追加通知,LazyForEach 不重建整表
+      this.lines.push(entry);
     }
-    this.lines = next;
     this.scroller.scrollEdge(Edge.Bottom);
   }
 
-  private filteredLines(): Array<string> {
+  private matchesFilter(line: string): boolean {
     const keyword = this.searchText.trim().toLowerCase();
-    return this.lines.filter((line: string) => {
-      const upper = line.toUpperCase();
-      const levelMatches = this.levelFilter === 'ALL' || upper.includes(this.levelFilter);
-      const keywordMatches = keyword.length === 0 || line.toLowerCase().includes(keyword);
-      return levelMatches && keywordMatches;
-    });
+    const upper = line.toUpperCase();
+    const levelMatches = this.levelFilter === 'ALL' || upper.includes(this.levelFilter);
+    const keywordMatches = keyword.length === 0 || line.toLowerCase().includes(keyword);
+    return levelMatches && keywordMatches;
+  }
+
+  private filteredEntries(): Array<LogEntry> {
+    return this.allEntries.filter((entry: LogEntry) => this.matchesFilter(entry.line));
+  }
+
+  private filteredLines(): Array<string> {
+    return this.filteredEntries().map((entry: LogEntry) => entry.line);
   }
 
   private async exportLogs(): Promise<void> {
@@ -142,7 +172,9 @@ export struct LogPanel {
         Text($r('app.string.log_clear')).fontSize(14).fontColor($r('app.color.primary')).padding(8)
           .onClick(() => {
             LogStore.clear();
-            this.lines = [];
+            this.allEntries = [];
+            this.seq = 0;
+            this.lines.clear();
             this.fileOffset = 0;
           })
       }
@@ -153,7 +185,10 @@ export struct LogPanel {
         .placeholderColor($r('app.color.text_secondary'))
         .backgroundColor($r('app.color.surface'))
         .margin({ left: 12, right: 12, bottom: 8 })
-        .onChange((value: string) => { this.searchText = value; })
+        .onChange((value: string) => {
+          this.searchText = value;
+          this.lines.reset(this.filteredEntries());
+        })
 
       Row({ space: 8 }) {
         ForEach(['ALL', 'ERROR', 'WARN', 'INFO', 'DEBUG'], (level: string) => {
@@ -161,27 +196,31 @@ export struct LogPanel {
             .fontSize(12)
             .backgroundColor(this.levelFilter === level ? $r('app.color.primary') : $r('app.color.surface'))
             .fontColor(this.levelFilter === level ? $r('app.color.surface') : $r('app.color.text_primary'))
-            .onClick(() => { this.levelFilter = level; })
+            .onClick(() => {
+              this.levelFilter = level;
+              this.lines.reset(this.filteredEntries());
+            })
         })
       }
       .width('100%')
       .padding({ left: 12, right: 12, bottom: 8 })
 
       List({ scroller: this.scroller, space: 2 }) {
-        ForEach(this.filteredLines(), (line: string, idx: number) => {
+        LazyForEach(this.lines, (entry: LogEntry) => {
           ListItem() {
-            Text(line)
+            Text(entry.line)
               .fontSize(11)
               .fontFamily('monospace')
-              .fontColor(line.includes('ERROR') ? $r('app.color.error')
-                : line.includes('WARN') ? $r('app.color.warning')
-                  : line.includes('DEBUG') ? $r('app.color.text_secondary') : $r('app.color.text_primary'))
+              .fontColor(entry.line.includes('ERROR') ? $r('app.color.error')
+                : entry.line.includes('WARN') ? $r('app.color.warning')
+                  : entry.line.includes('DEBUG') ? $r('app.color.text_secondary') : $r('app.color.text_primary'))
               .width('100%')
               .padding({ left: 8, right: 8, top: 1, bottom: 1 })
           }
-        }, (line: string, idx: number) => `${idx}_${line}`)
+        }, (entry: LogEntry) => `${entry.id}`)
       }
         .edgeEffect(EdgeEffect.Spring)
+        .cachedCount(20)
       .layoutWeight(1)
       .width('100%')
       .backgroundColor($r('app.color.app_background'))

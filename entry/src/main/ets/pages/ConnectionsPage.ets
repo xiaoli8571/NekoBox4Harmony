@@ -7,6 +7,7 @@ import { formatBytes, formatSpeed } from '../utils/TrafficStats';
 import { clashApiHeaders, clashApiErrorMessage } from '../utils/ClashAuth';
 import { AppSettings } from '../model/Profile';
 import { initStore, loadSettings } from '../model/Store';
+import { ArrayDataSource } from '../common/components/ArrayDataSource';
 
 interface ConnItem {
   id: string;
@@ -73,7 +74,8 @@ function parseConnections(raw: string): Array<ConnItem> {
 @Entry
 @Component
 struct ConnectionsPage {
-  @State conns: Array<ConnItem> = [];
+  /** LazyForEach 数据源:每秒全量刷新只重建可视区节点(cachedCount),不重建整表 */
+  conns: ArrayDataSource<ConnItem> = new ArrayDataSource<ConnItem>();
   @State lastError: ResourceStr = '';
   @State loading: boolean = true;
   @State uploadTotal: number = 0;
@@ -108,7 +110,7 @@ struct ConnectionsPage {
     this.stopPolling();
     if (!this.isRunning || !this.settings.clashApiEnabled) {
       this.loading = false;
-      this.conns = [];
+      this.conns.clear();
       return;
     }
     this.loading = true;
@@ -138,7 +140,7 @@ struct ConnectionsPage {
       this.lastDownload = download;
       this.uploadTotal = upload;
       this.downloadTotal = download;
-      this.conns = parseConnections(raw);
+      this.conns.reset(parseConnections(raw));
       this.lastError = '';
     } catch (e) {
       this.lastError = $r('app.string.connections_api_unavailable');
@@ -166,7 +168,7 @@ struct ConnectionsPage {
     Column() {
       Row() {
         Text('←').fontSize(22).onClick(() => router.back()).padding(8)
-        Text($r('app.string.connections_title_count', this.conns.length)).fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
+        Text($r('app.string.connections_title_count', this.conns.totalCount())).fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
         Text($r('app.string.refresh')).fontSize(14).fontColor($r('app.color.primary')).padding(8)
           .onClick(() => this.refresh())
       }
@@ -211,7 +213,7 @@ struct ConnectionsPage {
         }
         .width('100%')
         .padding({ top: 28, bottom: 20 })
-      } else if (this.conns.length === 0) {
+      } else if (this.conns.isEmpty()) {
         Column({ space: 8 }) {
           Text($r('app.string.connections_empty'))
             .fontSize(16)
@@ -226,7 +228,7 @@ struct ConnectionsPage {
       }
 
       List({ space: 6 }) {
-        ForEach(this.conns, (c: ConnItem) => {
+        LazyForEach(this.conns, (c: ConnItem) => {
           ListItem() {
             Column({ space: 2 }) {
               Row() {
@@ -263,6 +265,7 @@ struct ConnectionsPage {
         }, (c: ConnItem) => c.id)
       }
         .edgeEffect(EdgeEffect.Spring)
+        .cachedCount(10)
       .layoutWeight(1)
       .width('100%')
       .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
