@@ -1599,10 +1599,6 @@ struct Index {
       } else {
         Text($r('app.string.brand_name'))
           .fontSize(16).fontWeight(800).fontColor($r('app.color.text_1')).layoutWeight(1)
-        Text('⇅')
-          .fontSize(17).fontColor($r('app.color.text_2'))
-          .width(36).height(36).textAlign(TextAlign.Center)
-          .onClick(() => router.pushUrl({ url: 'pages/ConnectionsPage' }))
         Text('⌕')
           .fontSize(19).fontColor($r('app.color.text_2'))
           .width(36).height(36).textAlign(TextAlign.Center)
@@ -1641,11 +1637,8 @@ struct Index {
       {
         value: $r('app.string.test_all_nodes') as ResourceStr,
         action: () => {
-          if (scope === '__all__') {
-            this.runSpeedTest();
-          } else {
-            this.runGroupSpeedTest(scope);
-          }
+          // 只测当前选中分组的节点;无分组时回退全部(对齐安卓组作用域)
+          this.runGroupSpeedTest(scope);
         }
       },
       {

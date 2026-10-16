@@ -1870,7 +1870,7 @@
     },
     {
       "name": "test_all_nodes",
-      "value": "测速全部节点"
+      "value": "测试节点"
     },
     {
       "name": "update_current_subscription",
