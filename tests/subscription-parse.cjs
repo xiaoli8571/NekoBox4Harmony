@@ -527,6 +527,30 @@ const PROVIDER_YAML = `proxies:
   });
 
 
+  await test('clash yaml type socks5 imports as socks (clash convention)', () => {
+    const y = 'proxies:\n  - name: S5\n    type: socks5\n    server: s.example.com\n    port: 1080\n    username: u\n    password: p\n';
+    const r = sub.parseClashProxies(y);
+    assert.equal(r.profiles.length, 1, 'got ' + r.profiles.length + ' note=' + r.note);
+    assert.equal(r.profiles[0].type, 'socks', 'got ' + r.profiles[0].type);
+    assert.equal(r.profiles[0].username, 'u');
+    assert.equal(r.profiles[0].password, 'p');
+  });
+
+  await test('clash yaml type socks (legacy spelling) still imports', () => {
+    const y = 'proxies:\n  - name: S4\n    type: socks\n    server: s.example.com\n    port: 1080\n';
+    const r = sub.parseClashProxies(y);
+    assert.equal(r.profiles.length, 1, 'got ' + r.profiles.length + ' note=' + r.note);
+    assert.equal(r.profiles[0].type, 'socks');
+  });
+
+  await test('socks5 share link imports with credentials', () => {
+    const r = link.parseShareText('socks5://u5:p5@s.example.com:1180#S5Link');
+    assert.equal(r.length, 1);
+    assert.equal(r[0].type, 'socks', 'got ' + r[0].type);
+    assert.equal(r[0].username, 'u5');
+    assert.equal(r[0].password, 'p5');
+  });
+
   if (server) server.close();
   console.log(`\n${count} subscription checks passed`);
 })();

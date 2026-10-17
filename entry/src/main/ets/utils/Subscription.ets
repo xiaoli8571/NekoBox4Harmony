@@ -628,7 +628,9 @@ function profileFromClash(m: YamlNode | null): Profile | null {
       p.password = yStr(m, 'password');
       p.tls = yBool(m, 'tls');
       break;
+    // Clash 的 SOCKS 代理 type 惯例写法是 socks5(不是 socks),两种写法都收
     case 'socks':
+    case 'socks5':
       p.type = ProfileType.SOCKS;
       p.username = yStr(m, 'username');
       p.password = yStr(m, 'password');

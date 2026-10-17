@@ -1363,3 +1363,13 @@ Existing notification files reviewed:
 - 改动文件: `entry/src/main/ets/utils/LatencyTester.ets`、`entry/src/main/ets/pages/Index.ets`、`entry/src/main/ets/pages/SettingsPage.ets`、`entry/src/main/ets/model/{Profile,Store}.ets`、`entry/src/main/resources/{base,en_US}/element/string.json`。
 - 测试: 全 15 套件 12 绿,3 个失败为 2.1.6 路由页合并遗留(与本次无关,前轮已用 stash 验证)。构建 BUILD SUCCESSFUL,`dist/NekoBox-2.1.8-{signed,unsigned}.hap` 已更新,debug 证书覆盖安装真机成功。版本维持 2.1.8(2100008)。
 - 未验证项: 提速/降级提示需真机批量测速实测(死节点比例、总耗时对比);10 并发在低端机上的测量稳定性未回归。
+
+## 2026-10-17(续5) SOCKS5 支持核查与 Clash 订阅 socks5 修复(2.1.8 追加)
+
+用户要求核查是否支持 socks5,不支持则补齐后重新发布 2.1.8。
+
+- 核查结论: 协议框架**已支持** socks5 —— 分享链接解析(`socks://`/`socks5://`/`socks4://`,utils/LinkParser)、手动新建(编辑页类型选择器 + 用户名/密码字段)、sing-box 出站生成(ConfigBuilder case SOCKS,内核默认 version=5,protocol/socks/outbound.go:44)、导出(LinkExporter)、sing-box JSON 订阅导入(type: socks)全链路可用。
+- 唯一缺口: **Clash YAML 订阅**。Clash 的 SOCKS 代理 type 惯例写法是 `socks5`(不是 `socks`),parseClashProxies 的 switch 只匹配 'socks' ⇒ 这类订阅里的 socks5 节点落到 default 被静默丢弃(能力倒挂:分享链接解析器本来就支持)。修复: case 增加 'socks5' 标签,两种写法都收。
+- 测试: tests/subscription-parse.cjs 新增 3 项(Clash socks5 导入为 socks 且带凭据 / 旧写法 socks 仍可导入 / socks5:// 分享链接带凭据导入),41 项全过;全 15 套件 12 绿 + 3 个 2.1.6 路由页遗留失败(与本次无关)。
+- 重新发布: assembleHap + assembleApp release → AGC 通用证书双层签名(verify-app 通过),`dist/NekoBox-2.1.8-{signed.hap,signed.app}` 已更新(hap SHA256 `ED378AF1...C388D6`、app `778D666E...AA15F50`);GitHub v2.1.8 Release 附件已替换为新未签名 HAP(下载哈希核对一致,modules.abc 含 socks5 分支),发布说明补充 socks5 条目。debug 证书版已装真机;**正式签名包与设备上的 debug 签名包互不覆盖**(签名不同,换装需先卸载)。
+- 改动文件: `entry/src/main/ets/utils/Subscription.ets`、`tests/subscription-parse.cjs`。
