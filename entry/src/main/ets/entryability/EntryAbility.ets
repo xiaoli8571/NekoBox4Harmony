@@ -179,8 +179,13 @@ export default class EntryAbility extends UIAbility {
          （后台卡片没有系统状态栏覆盖，所以顶部那一行完整可见）。
          ⇒ 透明（#00000000）之后，状态栏区域由页面自己绘制：HDS 标题栏的渐变模糊/沉浸光感铺进去，
             列表条目也能从时钟后面滚过。文字/图标颜色仍由 `statusBarContentColor` 按深浅色切换。 */
+      /* 深色下状态栏用主题底色**实色**（真机 2026-10-17：透明 '#00000000' 在深色主题下
+         状态栏仍渲染成白色 —— 要么系统把全透明当无效值回退白底，要么 HDS 沉浸光感材质
+         在深色下渲染成浅色玻璃透出来），浅色保持透明（浅色下白条与页面底色同色不可见，
+         且保留"内容从时钟后面滚过"的沉浸效果）。
+         代价：深色下状态栏区域由系统实色绘制，内容不再钻入 —— 但深浅色跟随主题。 */
       target.setWindowSystemBarProperties({
-        statusBarColor: '#00000000',
+        statusBarColor: dark ? background : '#00000000',
         navigationBarColor: '#00000000',
         statusBarContentColor: contentColor,
         navigationBarContentColor: contentColor

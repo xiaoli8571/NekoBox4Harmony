@@ -153,6 +153,9 @@ export class ProfileGroup {
   // Empty means no wrapper. IDs refer to profiles, not outbound tags.
   frontProxy: string = '';
   landingProxy: string = '';
+  // true = 订阅导入创建/占用的分组(一订阅一分组 + Clash 自带 proxy-group 子分组)。
+  // 分组管理页只显示手动分组;订阅产生的分组只在首页分组条显示(GroupPage.manualGroups 过滤)。
+  fromSubscription: boolean = false;
   createdAt: number = 0;
   updatedAt: number = 0;
 }

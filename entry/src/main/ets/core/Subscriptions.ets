@@ -449,6 +449,7 @@ export async function updateSubscription(url: string): Promise<SubUpdateResult> 
     }
   }
   const subGroupId = await ensureGroupByName(groupName);
+  await markGroupFromSubscription(subGroupId);
   const runningId = AppStorage.get<string>('vpnRunningProfileId') ?? '';
   const selectedId = await readPrefString('selected_profile_id', '');
   const selectedProfile = profiles.find((item: Profile) => item.id === selectedId);
@@ -528,6 +529,23 @@ export async function updateSubscription(url: string): Promise<SubUpdateResult> 
  * 成员名匹配不到节点的组(引用了别的订阅或 provider 内部名)直接跳过,
  * 宁可少建组,也不要造出空组或把节点错误地搬走。
  */
+/**
+ * 给订阅导入创建/占用的分组打 fromSubscription 标记。
+ * 已存在的组(老版本导入、没打过标记)在下次订阅更新走到这里时也会补上 —— 分组页的旧子分组随之消失。
+ */
+async function markGroupFromSubscription(groupId: string): Promise<void> {
+  if (groupId.length === 0) {
+    return;
+  }
+  const groups = await loadGroups();
+  const target = groups.find(g => g.id === groupId);
+  if (target !== undefined && !target.fromSubscription) {
+    target.fromSubscription = true;
+    target.updatedAt = Date.now();
+    await saveGroups(groups);
+  }
+}
+
 async function applyClashGroups(groups: Array<ClashGroupDef>, allProfiles: Array<Profile>): Promise<void> {
   for (const def of groups) {
     const memberNames = def.members;
@@ -546,6 +564,7 @@ async function applyClashGroups(groups: Array<ClashGroupDef>, allProfiles: Array
     if (groupId.length === 0) {
       continue;
     }
+    await markGroupFromSubscription(groupId);
     // 组类型落到 ProfileGroup 的两个互斥开关上
     const isUrlTest = def.type === 'url-test' || def.type === 'urltest';
     const groups1 = await loadGroups();

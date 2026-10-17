@@ -60,6 +60,11 @@ export struct GroupPage {
     return this.profiles.filter((p: Profile) => p.groupId === groupId).length;
   }
 
+  /** 分组页只显示手动分组:订阅导入产生的分组(一订阅一分组 + Clash 自带子分组)只在首页分组条显示 */
+  private manualGroups(): Array<ProfileGroup> {
+    return this.groups.filter((g: ProfileGroup) => !g.fromSubscription);
+  }
+
   private subscriptionTrafficText(sub: SubInfo): ResourceStr {
     if (sub.total <= 0) {
       return '';
@@ -478,8 +483,8 @@ export struct GroupPage {
           }
         }, (sub: SubInfo) => sub.url)
 
-        // 手动分组
-        ForEach(this.groups, (group: ProfileGroup) => {
+        // 手动分组(订阅导入产生的分组已在首页分组条显示,这里不再重复列出)
+        ForEach(this.manualGroups(), (group: ProfileGroup) => {
           ListItem() {
             Column({ space: 4 }) {
               Row({ space: 8 }) {
@@ -575,7 +580,7 @@ export struct GroupPage {
           }
         }, (group: ProfileGroup) => group.id)
 
-        if (this.subscriptions.length === 0 && this.groups.length === 0) {
+        if (this.subscriptions.length === 0 && this.manualGroups().length === 0) {
           ListItem() {
             Text($r('app.string.groups_empty'))
               .fontSize(13).fontColor($r('app.color.text_3'))

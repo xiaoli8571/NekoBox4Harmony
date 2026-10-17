@@ -47,15 +47,15 @@ import { publishVpnLatency } from '../core/VpnIpc';
 const OUTBOUND_MODES: Array<string> = ['rule', 'global', 'direct'];
 const OUTBOUND_MODE_LABELS: Array<Resource> = [$r('app.string.mode_rule'), $r('app.string.mode_global'), $r('app.string.mode_direct')];
 
-/** 抽屉项(顺序固定;activeTab→抽屉下标的映射见 TAB_TO_DRAWER_INDEX):[标识, 文案, 系统符号] */
-const DRAWER_ITEM_IDS: Array<string> = ['config', 'groups', 'route', 'settings', 'logs', 'docs', 'tools', 'about'];
+/** 抽屉项(顺序固定;activeTab→抽屉下标的映射见 TAB_TO_DRAWER_INDEX):[标识, 文案, 系统符号]
+ *  「使用文档」入口已移除(用户 2026-10-17):不进列表,DocPage 路由保留但不可达 */
+const DRAWER_ITEM_IDS: Array<string> = ['config', 'groups', 'route', 'settings', 'logs', 'tools', 'about'];
 const DRAWER_ITEM_LABELS: Array<Resource> = [
   $r('app.string.nav_config'),
   $r('app.string.nav_groups'),
   $r('app.string.nav_route'),
   $r('app.string.settings_title'),
   $r('app.string.logs'),
-  $r('app.string.nav_docs'),
   $r('app.string.nav_tools'),
   $r('app.string.nav_about')
 ];
@@ -65,12 +65,11 @@ const DRAWER_ITEM_SYMBOLS: Array<Resource> = [
   $r('sys.symbol.arrow_up_left_and_arrow_down_right'),
   $r('sys.symbol.gearshape'),
   $r('sys.symbol.doc_text'),
-  $r('sys.symbol.book'),
   $r('sys.symbol.wand_and_stars'),
   $r('sys.symbol.info_circle')
 ];
-/** activeTab(0..6 = 配置/分组/路由/设置/日志/工具/关于) → 抽屉下标(docs 在 5,不是页签) */
-const TAB_TO_DRAWER_INDEX: Array<number> = [0, 1, 2, 3, 4, 6, 7];
+/** activeTab(0..6 = 配置/分组/路由/设置/日志/工具/关于) → 抽屉下标 */
+const TAB_TO_DRAWER_INDEX: Array<number> = [0, 1, 2, 3, 4, 5, 6];
 /** 顶栏 ⋮ 的菜单锚点 id(沉浸光感菜单靠它定位,必须在某个真实组件上用 .id() 挂上) */
 const OVERFLOW_MENU_ANCHOR: string = 'nbOverflowAnchor';
 
@@ -1408,9 +1407,6 @@ struct Index {
       this.activeTab = 5;
     } else if (id === 'about') {
       this.activeTab = 6;
-    } else if (id === 'docs') {
-      // 对齐安卓 nav_faq:打开项目文档(应用内 Web 视图)
-      router.pushUrl({ url: 'pages/DocPage' });
     }
   }
 
@@ -2196,12 +2192,16 @@ struct Index {
 
   @Builder
   private titleBottomBuilder() {
-    Column({ space: 2 }) {
-      this.modeSwitchRow()
-      this.groupTabBar()
+    /* 模式行 + 分组条只在首页显示(用户 2026-10-17):其它分区页顶部不再带订阅分组条。
+       nbBarBottomProbe 也没了 ⇒ calibrateTopInset 回退到 nbTitleProbe(标题栏底边),让位照常。 */
+    if (this.activeTab === 0) {
+      Column({ space: 2 }) {
+        this.modeSwitchRow()
+        this.groupTabBar()
+      }
+      .width('100%')
+      .id('nbBarBottomProbe')
     }
-    .width('100%')
-    .id('nbBarBottomProbe')
   }
 
   /**
@@ -2253,7 +2253,8 @@ struct Index {
           builder: (): void => {
             this.titleBottomBuilder();
           },
-          height: 66
+          /* 非首页不再有分组条:高度也要归零,否则留一条 66vp 空带 */
+          height: this.activeTab === 0 ? 66 : 0
         }
       }
     };

@@ -200,24 +200,13 @@ export struct SettingsPage {
           ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
           : ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
       this.context.setColorMode(colorMode);
-
-      const mainWindow = await window.getLastWindow(this.context);
-      const background = this.context.resourceManager.getColorSync($r('app.color.app_background'));
-      const red = (background >> 16) & 0xFF;
-      const green = (background >> 8) & 0xFF;
-      const blue = background & 0xFF;
-      const darkBackground = (red * 299 + green * 587 + blue * 114) / 1000 < 128;
-      const backgroundColor = this.colorToString(background);
-      const contentColor = darkBackground
-        ? UiSpec.STATUS_BAR_CONTENT_DARK_BG
-        : UiSpec.STATUS_BAR_CONTENT_LIGHT_BG;
-      mainWindow.setWindowBackgroundColor(backgroundColor);
-      mainWindow.setWindowSystemBarProperties({
-        statusBarColor: backgroundColor,
-        navigationBarColor: backgroundColor,
-        statusBarContentColor: contentColor,
-        navigationBarContentColor: contentColor
-      });
+      /* 窗口底色与系统栏颜色**不要在这里写**（真机 2026-10-17：切换深浅色时状态栏不实时变深）。
+         原来这里 setColorMode 后立刻 getColorSync 读资源 —— 色彩模式是异步生效的，那一刻读到的
+         还是旧模式的颜色，把过时的浅色写回状态栏，且落在 EntryAbility.onConfigurationUpdate →
+         syncWindowAppearance 的正确写入**之后**（竞态，过时写入赢）⇒ 状态栏保持白色，直到切走
+         应用再回来（onForeground 重跑一次）才变深。
+         现在只下发 setColorMode，窗口/系统栏统一由 onConfigurationUpdate → syncWindowAppearance
+         实时收敛（深色下状态栏直接用主题底色实色，见 EntryAbility 的注释）。 */
       this.onSettingsChanged(this.s);
     } catch (e) {
       const message = e instanceof Error ? e.message : `${e}`;
