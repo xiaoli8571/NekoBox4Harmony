@@ -1,20 +1,9 @@
 import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
-import { Profile, AppSettings } from '../model/Profile';
-import { initStore, loadProfiles, loadSettings, saveSettings, LogStore } from '../model/Store';
-import { DrawerButton } from '../common/components/DrawerButton';
+import { Profile } from '../model/Profile';
+import { loadProfiles } from '../model/Store';
+import { illuminatedEffect, pressLightEffect } from '../common/Effects';
 import { RouteRule, RemoteRuleSet, loadRouteRules, saveRouteRules, loadRemoteRuleSets, saveRemoteRuleSets } from '../model/RouteRule';
-import { geoReady, downloadGeoAssets, importGeoAssetFromFile, geoAssetInfos, downloadGeoAsset, deleteGeoAsset, GeoAssetInfo, GEO_SITE_FILE, GEO_IP_FILE } from '../utils/GeoAssets';
-import { formatBytes } from '../utils/TrafficStats';
-import { common } from '@kit.AbilityKit';
-
-// 从设置页「路由」区块搬过来的可选项(2.1.7 起路由相关只在本页出现)
-const STACKS: Array<string> = ['system'];
-const SNIFF_MODES: Array<string> = ['off', 'route', 'override'];
-const SNIFF_LABELS: Array<Resource> = [$r('app.string.sniff_off'), $r('app.string.sniff_route'), $r('app.string.sniff_override')];
-// Android IPv6Mode 四档(values/arrays.xml ipv6_mode)
-const IPV6_MODES: Array<string> = ['disable', 'enable', 'prefer', 'only'];
-const IPV6_MODE_LABELS: Array<Resource> = [$r('app.string.ipv6_mode_disable'), $r('app.string.ipv6_mode_enable'), $r('app.string.ipv6_mode_prefer'), $r('app.string.ipv6_mode_only')];
 
 /** 路由规则面板(抽屉内嵌页签,对齐安卓 RouteFragment;不再是独立路由页) */
 @Component
@@ -24,14 +13,9 @@ export struct RouteRulesPanel {
   @State remoteRuleSets: Array<RemoteRuleSet> = [];
   @State loading: boolean = true;
   @State loadError: string = '';
-  @State s: AppSettings = new AppSettings();
-  @State settingsExpanded: boolean = false;
-  @State geoOk: boolean = false;
-  @State geoLoading: boolean = false;
-  @State geoInfos: Array<GeoAssetInfo> = [];
-  private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+  /** 当前被按下的元素 key(上移/下移箭头、各类按钮):"按下才亮"靠它逐颗判断 */
+  @State litKey: string = '';
   onOpenDrawer: () => void = () => {};
-  onSettingsChanged: (settings: AppSettings) => void = (_settings: AppSettings) => {};
 
   aboutToAppear(): void {
     this.load();
@@ -41,13 +25,9 @@ export struct RouteRulesPanel {
     this.loading = true;
     this.loadError = '';
     try {
-      await initStore(this.context);
       this.profiles = await loadProfiles();
       this.rules = await loadRouteRules();
       this.remoteRuleSets = await loadRemoteRuleSets();
-      this.s = await loadSettings();
-      this.geoOk = geoReady(this.context);
-      this.refreshGeoInfos();
     } catch (e) {
       this.loadError = e instanceof Error ? e.message : `${e}`;
     } finally {
@@ -88,127 +68,6 @@ export struct RouteRulesPanel {
       clearTimeout(this.persistRemoteTimer);
       this.persistRemoteTimer = -1;
       saveRemoteRuleSets(this.remoteRuleSets);
-    }
-    if (this.settingsTimer >= 0) {
-      clearTimeout(this.settingsTimer);
-      this.settingsTimer = -1;
-      void this.saveSettingsNow();
-    }
-  }
-
-  // ------------------------------------------------- 路由设置(自设置页搬入)
-
-  private settingsTimer: number = -1;
-
-  /** 防抖落盘:与规则列表同为「改完即存」,重连 VPN 后生效 */
-  persistSettings(): void {
-    if (this.settingsTimer >= 0) {
-      clearTimeout(this.settingsTimer);
-    }
-    this.settingsTimer = setTimeout(() => {
-      this.settingsTimer = -1;
-      void this.saveSettingsNow();
-    }, 600);
-  }
-
-  private async saveSettingsNow(): Promise<void> {
-    try {
-      await saveSettings(this.s);
-      this.onSettingsChanged(this.s);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : `${e}`;
-      LogStore.addLog(`[ui] 路由设置保存失败: ${message}`);
-      promptAction.showToast({ message: $r('app.string.save_failed_reason', message) });
-    }
-  }
-
-  private refreshGeoInfos(): void {
-    this.geoInfos = geoAssetInfos(this.context);
-  }
-
-  async downloadGeo(): Promise<void> {
-    if (this.geoLoading) {
-      return;
-    }
-    this.geoLoading = true;
-    promptAction.showToast({ message: $r('app.string.geo_downloading') });
-    try {
-      await downloadGeoAssets(this.context);
-      this.geoOk = geoReady(this.context);
-      this.refreshGeoInfos();
-      promptAction.showToast({ message: $r('app.string.geo_download_complete') });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : `${e}`;
-      promptAction.showToast({ message: $r('app.string.download_failed_reason', msg) });
-    } finally {
-      this.geoLoading = false;
-    }
-  }
-
-  /** 单库更新(对齐安卓资产列表点击单库更新) */
-  async downloadSingleGeo(kind: string): Promise<void> {
-    if (this.geoLoading) {
-      return;
-    }
-    this.geoLoading = true;
-    try {
-      await downloadGeoAsset(this.context, kind);
-      this.geoOk = geoReady(this.context);
-      this.refreshGeoInfos();
-      promptAction.showToast({
-        message: $r('app.string.settings_geo_updated', kind === 'site' ? GEO_SITE_FILE : GEO_IP_FILE)
-      });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : `${e}`;
-      promptAction.showToast({ message: $r('app.string.download_failed_reason', msg) });
-    } finally {
-      this.geoLoading = false;
-    }
-  }
-
-  /** 删除单库(对齐安卓资产左滑删除;二次确认) */
-  confirmDeleteGeo(info: GeoAssetInfo): void {
-    AlertDialog.show({
-      message: $r('app.string.settings_geo_delete_confirm', info.fileName),
-      primaryButton: { value: $r('app.string.cancel'), action: () => {} },
-      secondaryButton: {
-        value: $r('app.string.delete'),
-        fontColor: $r('app.color.error'),
-        action: () => {
-          try {
-            deleteGeoAsset(this.context, info.kind);
-            this.geoOk = geoReady(this.context);
-            this.refreshGeoInfos();
-            promptAction.showToast({ message: $r('app.string.settings_geo_deleted', info.fileName) });
-          } catch (e) {
-            const msg = e instanceof Error ? e.message : `${e}`;
-            promptAction.showToast({ message: $r('app.string.settings_geo_delete_failed', msg) });
-          }
-        }
-      }
-    });
-  }
-
-  /** 导入用户自选的 geo .db(对齐安卓 AssetsActivity 的 action_import_file) */
-  async importGeo(): Promise<void> {
-    if (this.geoLoading) {
-      return;
-    }
-    this.geoLoading = true;
-    try {
-      const path = await importGeoAssetFromFile(this.context);
-      if (path === null) {
-        // 用户取消选择,不报错
-        return;
-      }
-      this.geoOk = geoReady(this.context);
-      this.refreshGeoInfos();
-      promptAction.showToast({ message: $r('app.string.geo_import_complete', path) });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : `${e}`;
-      promptAction.showToast({ message: $r('app.string.geo_import_failed', msg) });
-    } finally {
-      this.geoLoading = false;
     }
   }
 
@@ -353,10 +212,6 @@ export struct RouteRulesPanel {
       rule.protocol = value as string;
     } else if (field === 'packages') {
       rule.packages = value as string;
-    } else if (field === 'appLabel') {
-      rule.appLabel = value as string;
-    } else if (field === 'packagesEnabled') {
-      rule.packagesEnabled = value as boolean;
     } else if (field === 'config') {
       rule.config = value as string;
     }
@@ -432,27 +287,12 @@ export struct RouteRulesPanel {
         }.alignItems(HorizontalAlign.Start).layoutWeight(1)
       }.width('100%')
 
-      // 应用名(仅备注) + 包名(勾选「生效」才参与匹配)
-      Row({ space: 6 }) {
-        Column() {
-          Text($r('app.string.route_rule_app_name')).fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-          TextInput({ text: rule.appLabel, placeholder: $r('app.string.route_rule_app_name_hint') })
-            .fontSize(12).height(38)
-            .onChange((value: string) => this.updateRule(index, 'appLabel', value))
-        }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-        Column() {
-          Text($r('app.string.route_rule_packages')).fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-          Row({ space: 6 }) {
-            TextInput({ text: rule.packages, placeholder: 'com.example.app' })
-              .fontSize(12).height(38).layoutWeight(1)
-              .onChange((value: string) => this.updateRule(index, 'packages', value))
-            Toggle({ type: ToggleType.Checkbox, isOn: rule.packagesEnabled })
-              .onChange((value: boolean) => this.updateRule(index, 'packagesEnabled', value))
-            Text($r('app.string.route_rule_packages_effective')).fontSize(11).fontColor($r('app.color.text_secondary'))
-          }.width('100%').alignItems(VerticalAlign.Center)
-        }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-      }.width('100%')
-      Text($r('app.string.route_rule_packages_note')).fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+      Column() {
+        Text($r('app.string.route_rule_packages')).fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+        TextInput({ text: rule.packages, placeholder: 'com.example.app' })
+          .fontSize(12).height(38)
+          .onChange((value: string) => this.updateRule(index, 'packages', value))
+      }.alignItems(HorizontalAlign.Start).width('100%')
 
       Column() {
         Text($r('app.string.route_rule_config')).fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
@@ -467,6 +307,15 @@ export struct RouteRulesPanel {
             .layoutWeight(1)
             .backgroundColor(rule.outbound === outbound ? $r('app.color.primary') : $r('app.color.divider'))
             .fontColor(rule.outbound === outbound ? $r('app.color.surface') : $r('app.color.text_primary'))
+            /* 规则卡在 List 里(会跟滚动跑位)⇒ 只"按下才亮",不挂常亮光源、不加 scale */
+            .visualEffect(pressLightEffect(this.litKey === `rule:ob:${index}:${outbound}`, true))
+            .onTouch((event: TouchEvent) => {
+              if (event.type === TouchType.Down) {
+                this.litKey = `rule:ob:${index}:${outbound}`;
+              } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                this.litKey = '';
+              }
+            })
             .onClick(() => this.updateRule(index, 'outbound', outbound))
         })
         // 指定节点出站(对齐安卓 OutboundPreference 选任意 profile;内核生成引用出站)
@@ -474,6 +323,14 @@ export struct RouteRulesPanel {
           .layoutWeight(1)
           .backgroundColor(rule.outbound.startsWith('profile:') ? $r('app.color.primary') : $r('app.color.divider'))
           .fontColor(rule.outbound.startsWith('profile:') ? $r('app.color.surface') : $r('app.color.text_primary'))
+          .visualEffect(pressLightEffect(this.litKey === `rule:ob:profile:${index}`, true))
+          .onTouch((event: TouchEvent) => {
+            if (event.type === TouchType.Down) {
+              this.litKey = `rule:ob:profile:${index}`;
+            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+              this.litKey = '';
+            }
+          })
           .onClick(() => {
             if (rule.outbound.startsWith('profile:')) {
               this.updateRule(index, 'outbound', 'proxy');
@@ -525,198 +382,39 @@ export struct RouteRulesPanel {
     return `${p.name} (${p.server})`;
   }
 
-  /**
-   * 路由设置卡(2.1.7:自设置页「路由」区块整体搬入本页,路由相关只此一处)。
-   * 直连域名/IP 段是内置直连规则,geo 资产是内置 cn 分流所依赖的 rule_set 资源,
-   * 其余为嗅探/解析/IPv6/TUN 等分流全局参数;改动即存,重连 VPN 后生效。
-   */
-  @Builder
-  routeSettingsCard() {
-    Column({ space: 8 }) {
-      Row({ space: 6 }) {
-        Text(this.geoOk ? '✓' : '⚠').fontSize(14)
-          .fontColor(this.geoOk ? $r('app.color.success') : $r('app.color.text_secondary'))
-        Text($r('app.string.route_settings_title')).fontSize(16).fontWeight(FontWeight.Medium).layoutWeight(1)
-        Text(this.settingsExpanded ? '⌃' : '⌄').fontSize(14).fontColor($r('app.color.text_secondary'))
-      }
-      .width('100%')
-      .onClick(() => {
-        this.settingsExpanded = !this.settingsExpanded;
-      })
-
-      if (this.settingsExpanded) {
-        Text($r('app.string.route_settings_hint'))
-          .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-
-        if (this.s.mode === 'rule') {
-          Column() {
-            Text($r('app.string.settings_direct_domain_suffix')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            TextInput({ text: this.s.directDomains, placeholder: 'baidu.com,qq.com,163.com' })
-              .width('100%').height(40)
-              .onChange((v: string) => {
-                this.s.directDomains = v;
-                this.persistSettings();
-              })
-            Text($r('app.string.settings_direct_cidr')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              .margin({ top: 6 })
-            TextInput({ text: this.s.directIpCidrs, placeholder: '114.114.114.114/32' })
-              .width('100%').height(40)
-              .onChange((v: string) => {
-                this.s.directIpCidrs = v;
-                this.persistSettings();
-              })
-            Row({ space: 8 }) {
-              Text(this.geoOk ? $r('app.string.settings_geo_ready')
-                : $r('app.string.settings_geo_missing'))
-                .fontSize(12).fontColor(this.geoOk ? $r('app.color.success') : $r('app.color.text_secondary')).layoutWeight(1)
-              Button(this.geoLoading ? $r('app.string.settings_geo_downloading') : (this.geoOk ? $r('app.string.settings_geo_redownload') : $r('app.string.settings_geo_download')))
-                .height(30)
-                .backgroundColor(this.geoLoading ? $r('app.color.control_disabled') : $r('app.color.primary'))
-                .onClick(() => { void this.downloadGeo(); })
-            }.width('100%').margin({ top: 6 })
-            Row({ space: 8 }) {
-              Text($r('app.string.settings_geo_import_hint'))
-                .fontSize(11).fontColor($r('app.color.text_secondary')).layoutWeight(1)
-              Button($r('app.string.settings_geo_import'))
-                .height(30)
-                .backgroundColor($r('app.color.surface'))
-                .fontColor($r('app.color.text_primary'))
-                .enabled(!this.geoLoading)
-                .onClick(() => { void this.importGeo(); })
-            }.width('100%').margin({ top: 4 })
-
-            // 资产列表(对齐安卓 AssetsActivity:每库名称/大小/版本 + 单库更新/删除)
-            ForEach(this.geoInfos, (info: GeoAssetInfo) => {
-              Row({ space: 8 }) {
-                Text(info.kind === 'site' ? $r('app.string.settings_geo_site') : $r('app.string.settings_geo_ip'))
-                  .fontSize(12).fontColor($r('app.color.text_primary'))
-                Text(info.size > 0
-                  ? $r('app.string.geo_asset_status', formatBytes(info.size), info.version)
-                  : $r('app.string.geo_asset_absent'))
-                  .fontSize(11).fontColor($r('app.color.text_secondary')).layoutWeight(1)
-                Button(this.geoLoading ? $r('app.string.settings_geo_downloading') : $r('app.string.settings_geo_update_one'))
-                  .height(28)
-                  .fontSize(12)
-                  .backgroundColor(this.geoLoading ? $r('app.color.control_disabled') : $r('app.color.primary'))
-                  .enabled(!this.geoLoading)
-                  .onClick(() => { void this.downloadSingleGeo(info.kind); })
-                if (info.size > 0) {
-                  Button($r('app.string.settings_geo_delete'))
-                    .height(28)
-                    .fontSize(12)
-                    .backgroundColor($r('app.color.surface'))
-                    .fontColor($r('app.color.error'))
-                    .enabled(!this.geoLoading)
-                    .onClick(() => this.confirmDeleteGeo(info))
-                }
-              }.width('100%').margin({ top: 4 })
-            }, (info: GeoAssetInfo) => `${info.kind}_${info.size}_${info.version}`)
-          }.alignItems(HorizontalAlign.Start).width('100%')
-        }
-
-        Column() {
-          Text($r('app.string.settings_tun_mtu')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-          TextInput({ text: `${this.s.mtu}`, placeholder: '1400' })
-            .type(InputType.Number).width('100%').height(40)
-            .onChange((v: string) => {
-              const n = parseInt(v);
-              this.s.mtu = isNaN(n) ? 1400 : n;
-              this.persistSettings();
-            })
-        }.alignItems(HorizontalAlign.Start).width('100%')
-
-        Column() {
-          Text($r('app.string.settings_tun_stack')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-          Select(STACKS.map((t: string) => ({ value: t } as SelectOption)))
-            .selected(STACKS.indexOf(this.s.stack) < 0 ? 0 : STACKS.indexOf(this.s.stack))
-            .value(this.s.stack)
-            .onSelect((index: number) => {
-              this.s.stack = STACKS[index];
-              this.persistSettings();
-            })
-        }.alignItems(HorizontalAlign.Start).width('100%')
-
-        Column() {
-          Text($r('app.string.settings_enable_ipv6')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-          Select(IPV6_MODES.map((t: string, i: number) => ({ value: IPV6_MODE_LABELS[i] } as SelectOption)))
-            .selected(IPV6_MODES.indexOf(this.s.ipv6Mode) < 0 ? (this.s.ipv6 ? 1 : 0) : IPV6_MODES.indexOf(this.s.ipv6Mode))
-            .value(IPV6_MODE_LABELS[(IPV6_MODES.indexOf(this.s.ipv6Mode) < 0 ? (this.s.ipv6 ? 1 : 0) : IPV6_MODES.indexOf(this.s.ipv6Mode))])
-            .onSelect((index: number) => {
-              this.s.ipv6Mode = IPV6_MODES[index];
-              this.persistSettings();
-            })
-        }.alignItems(HorizontalAlign.Start).width('100%')
-
-        Row() {
-          Column() {
-            Text($r('app.string.settings_bypass_lan')).fontSize(14)
-            Text($r('app.string.settings_bypass_lan_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
-          }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-          Toggle({ type: ToggleType.Switch, isOn: this.s.bypassLan })
-            .onChange((v: boolean) => {
-              this.s.bypassLan = v;
-              this.persistSettings();
-            })
-        }.width('100%')
-
-        Column() {
-          Text($r('app.string.settings_sniff')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-          Row({ space: 8 }) {
-            ForEach(SNIFF_MODES, (m: string, idx: number) => {
-              Button(SNIFF_LABELS[idx])
-                .layoutWeight(1)
-                .height(34)
-                .backgroundColor(this.s.sniffMode === m ? $r('app.color.primary') : $r('app.color.surface'))
-                .fontColor(this.s.sniffMode === m ? $r('app.color.surface') : $r('app.color.text_primary'))
-                .onClick(() => {
-                  this.s.sniffMode = m;
-                  this.persistSettings();
-                })
-            }, (m: string) => m)
-          }.width('100%')
-        }.alignItems(HorizontalAlign.Start).width('100%')
-
-        Row() {
-          Column() {
-            Text($r('app.string.settings_resolve_destination')).fontSize(14)
-            Text($r('app.string.settings_resolve_destination_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
-          }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-          Toggle({ type: ToggleType.Switch, isOn: this.s.resolveDestination })
-            .onChange((v: boolean) => {
-              this.s.resolveDestination = v;
-              this.persistSettings();
-            })
-        }.width('100%')
-      }
-
-      if (!this.settingsExpanded) {
-        Text(this.geoOk ? $r('app.string.route_builtin_geo_ready') : $r('app.string.route_builtin_geo_missing'))
-          .fontSize(12).fontColor($r('app.color.text_primary')).width('100%')
-        Text($r('app.string.route_builtin_geo_desc'))
-          .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-      }
-    }
-    .alignItems(HorizontalAlign.Start)
-    .width('100%')
-    .padding(UiSpec.GAP_MD)
-    .backgroundColor($r('app.color.surface'))
-    .borderRadius(UiSpec.CARD_RADIUS)
-  }
-
   build() {
     Column() {
     Column() {
       Row() {
-        DrawerButton({ onOpen: () => this.onOpenDrawer() })
-        Text($r('app.string.route_rules_title')).fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
-        Button($r('app.string.add')).height(34).onClick(() => this.addRule())
+        /* 标题与抽屉入口都在壳层的 HDS 顶栏里;这里只保留本页自己的动作(新增/重置) */
+        Blank()
+          .layoutWeight(1)
+        /* 页头按钮固定不跟滚动跑位 ⇒ 点光源 + 按下轻微缩放兜底 */
+        Button($r('app.string.add')).height(34)
+          .visualEffect(pressLightEffect(this.litKey === 'rules:add', true))
+          .scale({ x: this.litKey === 'rules:add' ? 0.96 : 1.0, y: this.litKey === 'rules:add' ? 0.96 : 1.0 })
+          .onTouch((event: TouchEvent) => {
+            if (event.type === TouchType.Down) {
+        this.litKey = 'rules:add';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+          })
+          .onClick(() => this.addRule())
         Button($r('app.string.route_reset')).height(34)
           .fontColor($r('app.color.error'))
+          .visualEffect(pressLightEffect(this.litKey === 'rules:reset', true))
+          .scale({ x: this.litKey === 'rules:reset' ? 0.96 : 1.0, y: this.litKey === 'rules:reset' ? 0.96 : 1.0 })
+          .onTouch((event: TouchEvent) => {
+            if (event.type === TouchType.Down) {
+        this.litKey = 'rules:reset';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+          })
           .onClick(() => this.resetRules())
-      }.width('100%').padding(12)
-
-      // 路由设置(2.1.7 合并:内置 cn 分流、直连域名/IP、geo 资产、嗅探/解析/IPv6/TUN 全在此)
-      this.routeSettingsCard()
+      }.width('100%').padding({ left: 12, right: 12, top: 6, bottom: 6 })
+      .visualEffect(illuminatedEffect())
 
       if (this.loading) {
         Column({ space: 10 }) {
@@ -742,6 +440,14 @@ export struct RouteRulesPanel {
           Button($r('app.string.reload'))
             .height(36)
             .backgroundColor($r('app.color.primary'))
+            .visualEffect(pressLightEffect(this.litKey === 'rules:reload', true))
+            .onTouch((event: TouchEvent) => {
+              if (event.type === TouchType.Down) {
+        this.litKey = 'rules:reload';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+            })
             .onClick(() => this.load())
         }
         .width('100%')
@@ -768,6 +474,14 @@ export struct RouteRulesPanel {
             .layoutWeight(1)
           Button($r('app.string.add_remote_rule_set'))
             .height(34)
+            .visualEffect(pressLightEffect(this.litKey === 'rules:addremote', true))
+            .onTouch((event: TouchEvent) => {
+              if (event.type === TouchType.Down) {
+        this.litKey = 'rules:addremote';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+            })
             .onClick(() => this.addRemoteRuleSet())
         }
         .width('100%')
@@ -778,12 +492,49 @@ export struct RouteRulesPanel {
               TextInput({ text: item.name, placeholder: $r('app.string.remote_rule_set_name') })
                 .layoutWeight(1)
                 .onChange((value: string) => this.updateRemoteRuleSet(index, 'name', value))
-              Text('↑').fontSize(14).padding({ left: 8, right: 4 })
-                .fontColor(index === 0 ? $r('app.color.text_disabled') : $r('app.color.text_primary'))
-                .onClick(() => this.moveRemoteRuleSet(index, -1))
-              Text('↓').fontSize(14).padding({ left: 4, right: 8 })
-                .fontColor(index === this.remoteRuleSets.length - 1 ? $r('app.color.text_disabled') : $r('app.color.text_primary'))
-                .onClick(() => this.moveRemoteRuleSet(index, 1))
+              /* 规则集上移/下移:原来是 Text('↑'/'↓') 字符图标 —— 点光源宿主白名单里没有 Text,
+                 所以宿主换成 Row(白名单内),图标换成系统符号;显式给 30×30 固定热区,
+                 免得换成 Row 之后热区尺寸不确定(原 Text 约 26 宽、行高约 20)。 */
+              Row() {
+                SymbolGlyph($r('sys.symbol.chevron_up'))
+                  .fontSize(15)
+                  .fontColor([index === 0 ? $r('app.color.text_disabled') : $r('app.color.text_primary')])
+              }
+              .width(30)
+              .height(30)
+              .justifyContent(FlexAlign.Center)
+              .alignItems(VerticalAlign.Center)
+              .visualEffect(pressLightEffect(this.litKey === `ruleset:up:${item.id}`, false))
+              .onTouch((event: TouchEvent) => {
+                if (event.type === TouchType.Down) {
+                  this.litKey = `ruleset:up:${item.id}`;
+                } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                  this.litKey = '';
+                }
+              })
+              .onClick(() => {
+                this.moveRemoteRuleSet(index, -1);
+              })
+              Row() {
+                SymbolGlyph($r('sys.symbol.chevron_down'))
+                  .fontSize(15)
+                  .fontColor([index === this.remoteRuleSets.length - 1 ? $r('app.color.text_disabled') : $r('app.color.text_primary')])
+              }
+              .width(30)
+              .height(30)
+              .justifyContent(FlexAlign.Center)
+              .alignItems(VerticalAlign.Center)
+              .visualEffect(pressLightEffect(this.litKey === `ruleset:down:${item.id}`, false))
+              .onTouch((event: TouchEvent) => {
+                if (event.type === TouchType.Down) {
+                  this.litKey = `ruleset:down:${item.id}`;
+                } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                  this.litKey = '';
+                }
+              })
+              .onClick(() => {
+                this.moveRemoteRuleSet(index, 1);
+              })
               Toggle({ type: ToggleType.Switch, isOn: item.enabled })
                 .onChange((value: boolean) => this.updateRemoteRuleSet(index, 'enabled', value))
             }
@@ -798,11 +549,27 @@ export struct RouteRulesPanel {
                 .layoutWeight(1)
                 .backgroundColor(item.type === 'site' ? $r('app.color.primary') : $r('app.color.divider'))
                 .fontColor(item.type === 'site' ? $r('app.color.surface') : $r('app.color.text_primary'))
+                .visualEffect(pressLightEffect(this.litKey === `ruleset:site:${item.id}`, true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+                    this.litKey = `ruleset:site:${item.id}`;
+                  } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                    this.litKey = '';
+                  }
+                })
                 .onClick(() => this.updateRemoteRuleSet(index, 'type', 'site'))
               Button($r('app.string.rule_set_ip'))
                 .layoutWeight(1)
                 .backgroundColor(item.type === 'ip' ? $r('app.color.primary') : $r('app.color.divider'))
                 .fontColor(item.type === 'ip' ? $r('app.color.surface') : $r('app.color.text_primary'))
+                .visualEffect(pressLightEffect(this.litKey === `ruleset:ip:${item.id}`, true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+                    this.litKey = `ruleset:ip:${item.id}`;
+                  } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                    this.litKey = '';
+                  }
+                })
                 .onClick(() => this.updateRemoteRuleSet(index, 'type', 'ip'))
             }
             .width('100%')
@@ -812,11 +579,27 @@ export struct RouteRulesPanel {
                 .layoutWeight(1)
                 .backgroundColor(item.outbound === 'direct' ? $r('app.color.primary') : $r('app.color.divider'))
                 .fontColor(item.outbound === 'direct' ? $r('app.color.surface') : $r('app.color.text_primary'))
+                .visualEffect(pressLightEffect(this.litKey === `ruleset:direct:${item.id}`, true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+                    this.litKey = `ruleset:direct:${item.id}`;
+                  } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                    this.litKey = '';
+                  }
+                })
                 .onClick(() => this.updateRemoteRuleSet(index, 'outbound', 'direct'))
               Button($r('app.string.proxy'))
                 .layoutWeight(1)
                 .backgroundColor(item.outbound === 'proxy' ? $r('app.color.primary') : $r('app.color.divider'))
                 .fontColor(item.outbound === 'proxy' ? $r('app.color.surface') : $r('app.color.text_primary'))
+                .visualEffect(pressLightEffect(this.litKey === `ruleset:proxy:${item.id}`, true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+                    this.litKey = `ruleset:proxy:${item.id}`;
+                  } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                    this.litKey = '';
+                  }
+                })
                 .onClick(() => this.updateRemoteRuleSet(index, 'outbound', 'proxy'))
             }
             .width('100%')
@@ -843,14 +626,7 @@ export struct RouteRulesPanel {
           .padding(UiSpec.GAP_MD)
           .backgroundColor($r('app.color.surface'))
           .borderRadius(UiSpec.CARD_RADIUS)
-        // key 必须覆盖所有会被就地修改、且影响本卡片绘制的字段:ForEach 依据 key 判断子项是否
-        // 变化,旧 key 只有 id,updateRemoteRuleSet 就地改 item 后 key 不变,子组件不重建,
-        // 「域名规则/IP 规则」与「直连/代理」的高亮卡在初始值上(同下方 rules 列表的同类问题)。
-        // index 进 key:↑↓ 换序后保证卡片位置索引与 onClick 闭包捕获的 index 一致。
-        // name/url/updatedAt 故意不进 key:三者每次按键都会变,进 key 会把整张卡(含输入框)
-        // 反复重建,导致打字丢焦点/光标跳动;卡片只在这些按钮、开关操作时重建时顺带刷新。
-        }, (item: RemoteRuleSet, index: number) =>
-          `${index}_${item.id}_${item.type}_${item.outbound}_${item.enabled}_${item.lastError}`)
+        }, (item: RemoteRuleSet) => item.id)
       }
       .width('100%')
       .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, bottom: 12 })
@@ -863,12 +639,48 @@ export struct RouteRulesPanel {
                 TextInput({ text: rule.remark, placeholder: $r('app.string.route_rule_remark') })
                   .layoutWeight(1)
                   .onChange((value: string) => this.updateRule(index, 'remark', value))
-                Text('↑').fontSize(14).padding({ left: 8, right: 4 })
-                  .fontColor(index === 0 ? $r('app.color.text_disabled') : $r('app.color.text_primary'))
-                  .onClick(() => this.moveRule(index, -1))
-                Text('↓').fontSize(14).padding({ left: 4, right: 8 })
-                  .fontColor(index === this.rules.length - 1 ? $r('app.color.text_disabled') : $r('app.color.text_primary'))
-                  .onClick(() => this.moveRule(index, 1))
+                /* 规则上移/下移:同规则集,字符图标 Text('↑'/'↓') 换成 Row + 系统符号
+                   (点光源宿主白名单不含 Text);30×30 显式热区,避免换宿主后尺寸漂移。 */
+                Row() {
+                  SymbolGlyph($r('sys.symbol.chevron_up'))
+                    .fontSize(15)
+                    .fontColor([index === 0 ? $r('app.color.text_disabled') : $r('app.color.text_primary')])
+                }
+                .width(30)
+                .height(30)
+                .justifyContent(FlexAlign.Center)
+                .alignItems(VerticalAlign.Center)
+                .visualEffect(pressLightEffect(this.litKey === `rule:up:${index}`, false))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+                    this.litKey = `rule:up:${index}`;
+                  } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                    this.litKey = '';
+                  }
+                })
+                .onClick(() => {
+                  this.moveRule(index, -1);
+                })
+                Row() {
+                  SymbolGlyph($r('sys.symbol.chevron_down'))
+                    .fontSize(15)
+                    .fontColor([index === this.rules.length - 1 ? $r('app.color.text_disabled') : $r('app.color.text_primary')])
+                }
+                .width(30)
+                .height(30)
+                .justifyContent(FlexAlign.Center)
+                .alignItems(VerticalAlign.Center)
+                .visualEffect(pressLightEffect(this.litKey === `rule:down:${index}`, false))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+                    this.litKey = `rule:down:${index}`;
+                  } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                    this.litKey = '';
+                  }
+                })
+                .onClick(() => {
+                  this.moveRule(index, 1);
+                })
                 Toggle({ type: ToggleType.Switch, isOn: rule.enabled })
                   .onChange((value: boolean) => this.updateRule(index, 'enabled', value))
               }.width('100%')
@@ -884,9 +696,7 @@ export struct RouteRulesPanel {
             .backgroundColor($r('app.color.surface'))
             .borderRadius(UiSpec.CARD_RADIUS)
           }
-        // key 必须覆盖所有会被就地修改的字段:ForEach 依据 key 判断子项是否变化,
-        // 旧 key 缺少 outbound,导致「代理/直连/拒绝/指定节点」按钮点击后不重绘、高亮卡住。
-        }, (rule: RouteRule, index: number) => `${index}_${rule.remark}_${rule.type}_${rule.outbound}_${rule.enabled}_${rule.network}_${rule.packagesEnabled}_${rule.packages}_${rule.appLabel}`)
+        }, (rule: RouteRule, index: number) => `${index}_${rule.remark}_${rule.type}`)
       }
         .edgeEffect(EdgeEffect.Spring)
       .layoutWeight(1)

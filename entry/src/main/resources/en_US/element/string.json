@@ -9,10 +9,6 @@
       "value": "Used to read and import subscription links or profile configurations from the clipboard"
     },
     {
-      "name": "permission_get_bundle_info_privileged_reason",
-      "value": "Used to enumerate installed apps for per-app proxy selection"
-    },
-    {
       "name": "brand_name",
       "value": "NEKOBOX"
     },
@@ -345,26 +341,6 @@
       "value": "No custom route rules"
     },
     {
-      "name": "route_builtin_geo_ready",
-      "value": "Built-in CN direct routing enabled"
-    },
-    {
-      "name": "route_builtin_geo_missing",
-      "value": "Geo data not downloaded, CN direct routing disabled"
-    },
-    {
-      "name": "route_builtin_geo_desc",
-      "value": "In rule mode, geosite:cn (China domains) and geoip:cn (China IPs) direct rules are injected automatically on connect; China traffic bypasses the proxy. These rules run in the core and are not shown in the custom list below"
-    },
-    {
-      "name": "route_settings_title",
-      "value": "Route settings"
-    },
-    {
-      "name": "route_settings_hint",
-      "value": "Global routing parameters and geo asset management (merged from Settings); changes save immediately and apply after reconnecting the VPN"
-    },
-    {
       "name": "route_rule_remark",
       "value": "Rule remark"
     },
@@ -435,22 +411,6 @@
     {
       "name": "route_rule_packages",
       "value": "App packages"
-    },
-    {
-      "name": "route_rule_app_name",
-      "value": "App name"
-    },
-    {
-      "name": "route_rule_app_name_hint",
-      "value": "e.g. WeChat (note only)"
-    },
-    {
-      "name": "route_rule_packages_effective",
-      "value": "Enable"
-    },
-    {
-      "name": "route_rule_packages_note",
-      "value": "Matching by package name applies only when Enable is checked; separate multiple packages with commas"
     },
     {
       "name": "route_rule_config",
@@ -669,54 +629,6 @@
       "value": "Speed test complete. Results saved."
     },
     {
-      "name": "speed_test_degraded",
-      "value": "%1$s; fell back to TCPing (handshake latency only, not a real connection test)"
-    },
-    {
-      "name": "speed_test_bind_fallback",
-      "value": "All nodes failed while bound to the physical interface; retested without binding"
-    },
-    {
-      "name": "latency_stale",
-      "value": "stale"
-    },
-    {
-      "name": "settings_test_timeout",
-      "value": "Speed test timeout (ms)"
-    },
-    {
-      "name": "settings_test_retries",
-      "value": "Retries on failure"
-    },
-    {
-      "name": "settings_test_samples",
-      "value": "Samples per node (averaged)"
-    },
-    {
-      "name": "settings_test_expect_status",
-      "value": "Response acceptance"
-    },
-    {
-      "name": "test_expect_2xx",
-      "value": "Only 2xx counts as up (recommended)"
-    },
-    {
-      "name": "test_expect_any",
-      "value": "Any status code counts as up"
-    },
-    {
-      "name": "settings_test_bypass_tunnel",
-      "value": "Bypass current tunnel while testing"
-    },
-    {
-      "name": "settings_test_bypass_tunnel_hint",
-      "value": "Bind test traffic to the physical interface so latency reflects the node itself. When off, the test measures \"node through the active node\", which inflates every result while connected."
-    },
-    {
-      "name": "settings_latency_stale",
-      "value": "Latency result lifetime (hours)"
-    },
-    {
       "name": "timeout",
       "value": "Timeout"
     },
@@ -803,14 +715,6 @@
     {
       "name": "use_selector_sum",
       "value": "Emit a kernel selector outbound for this group with all its members as candidates (matches Android groupIsSelector)"
-    },
-    {
-      "name": "use_auto_select",
-      "value": "Auto-select fastest"
-    },
-    {
-      "name": "use_auto_select_sum",
-      "value": "Emit a kernel urltest outbound that periodically runs real connection probes and stays on the lowest-latency member (equivalent to Clash url-test). Mutually exclusive with the selector toggle."
     },
     {
       "name": "front_proxy",
@@ -1282,7 +1186,7 @@
     },
     {
       "name": "settings_geo_import_hint",
-      "value": "Import geoip.srs / geosite.srs from a file (overrides built-in cn rule-sets)"
+      "value": "Import geoip.db / geosite.db from a file (overrides built-in cn databases)"
     },
     {
       "name": "settings_geo_site",
@@ -1455,14 +1359,6 @@
     {
       "name": "sub_update_result",
       "value": "Subscription updated: %1$d added, %2$d removed"
-    },
-    {
-      "name": "sub_update_skipped",
-      "value": "%1$d nodes skipped (unsupported by the core)"
-    },
-    {
-      "name": "sub_update_not_modified",
-      "value": "Subscription content unchanged"
     },
     {
       "name": "update_failed_reason",
@@ -1857,6 +1753,10 @@
       "value": "Tools"
     },
     {
+      "name": "nav_docs",
+      "value": "Documentation"
+    },
+    {
       "name": "nav_about",
       "value": "About"
     },
@@ -2003,70 +1903,6 @@
     {
       "name": "groups_empty",
       "value": "No subscriptions or groups yet"
-    },
-    {
-      "name": "group_type_label",
-      "value": "Type"
-    },
-    {
-      "name": "group_type_manual",
-      "value": "Manual group"
-    },
-    {
-      "name": "group_type_subscription",
-      "value": "Subscription group"
-    },
-    {
-      "name": "group_sub_link_hint",
-      "value": "Subscription URL (http/https)"
-    },
-    {
-      "name": "group_sub_url_required",
-      "value": "Enter a valid subscription URL"
-    },
-    {
-      "name": "group_sub_fetch_now",
-      "value": "Fetch nodes after creating"
-    },
-    {
-      "name": "group_created",
-      "value": "Group created"
-    },
-    {
-      "name": "group_subscription_created",
-      "value": "Subscription group created"
-    },
-    {
-      "name": "group_status_empty",
-      "value": "Empty"
-    },
-    {
-      "name": "group_rename_label",
-      "value": "Group name"
-    },
-    {
-      "name": "group_name_exists",
-      "value": "A group with this name already exists"
-    },
-    {
-      "name": "group_manual_note",
-      "value": "Manual group: add nodes via Move to group"
-    },
-    {
-      "name": "home_sub_empty",
-      "value": "No nodes in this subscription. Update it on the Groups page."
-    },
-    {
-      "name": "home_manual_view",
-      "value": "Manual"
-    },
-    {
-      "name": "group_sub_note",
-      "value": "Each subscription is one group. Pick it at the bottom of the home page to see the groups it provides."
-    },
-    {
-      "name": "group_sub_group_count",
-      "value": "%d groups"
     },
     {
       "name": "share_sub_link",
@@ -2555,6 +2391,10 @@
     {
       "name": "ipv6_mode_only",
       "value": "Only"
+    },
+    {
+      "name": "more_actions",
+      "value": "More actions"
     }
   ]
 }

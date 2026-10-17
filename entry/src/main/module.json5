@@ -45,10 +45,8 @@
       { "name": "ohos.permission.GET_NETWORK_INFO" },
       { "name": "ohos.permission.KEEP_BACKGROUND_RUNNING" },
       { "name": "ohos.permission.GET_BUNDLE_INFO" },
-      // 分应用代理枚举全部已安装应用(对齐安卓 QUERY_ALL_PACKAGES)需
-      // GET_BUNDLE_INFO_PRIVILEGED(system_basic 受限 ACL)。普通 Profile 安装时
-      // 直接拒绝(9568289 grant request permissions failed),故不声明;运行时
-      // 降级为按包名手动查询(bundle.getBundleInfo 普通权限即可)+ AGC ACL 申请。
+      // 智感握姿(交互手/握持手):system_grant + normal,API 20 起,装上即用、无运行时弹窗
+      { "name": "ohos.permission.DETECT_GESTURE" },
       {
         "name": "ohos.permission.READ_PASTEBOARD",
         "reason": "$string:permission_read_pasteboard_reason",

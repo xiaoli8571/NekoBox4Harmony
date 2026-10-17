@@ -1,6 +1,7 @@
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
+import { pressLightEffect } from '../common/Effects';
 import common from '@ohos.app.ability.common';
 import { Profile, ProfileGroup, ProfileType, profileTypeLabel, supportsTransport, needsTlsByDefault } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, loadGroups, readPrefString } from '../model/Store';
@@ -36,6 +37,8 @@ struct ProfileEdit {
   @State pasteText: string = '';
   @State allProfiles: Array<Profile> = [];
   @State groups: Array<ProfileGroup> = [];
+  /** HDS 点按光效:记录"当前被按下的那一个"的 key,松手/取消即清空(按下那一刻才亮) */
+  @State litKey: string = '';
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear(): void {
@@ -343,10 +346,31 @@ struct ProfileEdit {
     Column() {
     Column() {
       Row() {
-        Text('←').fontSize(22).onClick(() => router.back()).padding(8)
+        /* 返回:字符图标 → 系统符号(chevron_left);宿主从 Text 换成 Row
+           —— 官方点光源宿主白名单里没有 Text,字符图标配了也不会亮(见 common/Effects.ets) */
+        Row() {
+          SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(22).fontColor([$r('app.color.text_1')])
+        }
+        .width(44).height(44).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
+        .visualEffect(pressLightEffect(this.litKey === 'back', false))
+        .onTouch((event: TouchEvent) => { if (event.type === TouchType.Down) {
+        this.litKey = 'back';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      } })
+        .onClick(() => { router.back(); })
         Text(this.isNew ? $r('app.string.profile_new_title') : $r('app.string.profile_edit_title'))
           .fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
-        Button($r('app.string.save')).height(34).onClick(() => this.save())
+        /* 固定在页头的保存键:点按光效 + 轻微缩放兜底(页头不跟内容滚动,缩放不会让光源跑位) */
+        Button($r('app.string.save')).height(34)
+          .visualEffect(pressLightEffect(this.litKey === 'save', true))
+          .scale({ x: this.litKey === 'save' ? 0.94 : 1.0, y: this.litKey === 'save' ? 0.94 : 1.0 })
+          .onTouch((event: TouchEvent) => { if (event.type === TouchType.Down) {
+        this.litKey = 'save';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      } })
+          .onClick(() => this.save())
       }
       .width('100%').padding(12)
 
@@ -368,12 +392,28 @@ struct ProfileEdit {
                 .height(UiSpec.BTN_HEIGHT)
                 .backgroundColor($r('app.color.surface'))
                 .fontColor($r('app.color.text_primary'))
+                .visualEffect(pressLightEffect(this.litKey === 'paste:clipboard', true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+        this.litKey = 'paste:clipboard';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+                })
                 .onClick(() => this.readClipboardIntoBox())
               Button($r('app.string.parse_and_fill'))
                 .layoutWeight(1)
                 .height(UiSpec.BTN_HEIGHT)
                 .backgroundColor($r('app.color.primary'))
                 .fontColor($r('app.color.surface'))
+                .visualEffect(pressLightEffect(this.litKey === 'paste:parse', true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+        this.litKey = 'paste:parse';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+                })
                 .onClick(() => this.applyPasted())
             }
             .width('100%')
@@ -465,6 +505,8 @@ struct ProfileEdit {
     .width('100%')
     .height('100%')
     .alignItems(HorizontalAlign.Center)
+    /* 窗口为 layout-full-screen(内容要钻进状态栏)⇒ 本页自己让出状态栏高度 */
+    .padding({ top: 44 })
     .backgroundColor($r('app.color.app_background'))
     .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
   }
@@ -728,8 +770,33 @@ struct ProfileEdit {
                 .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
                 .fontColor(this.chainSelectionAllowed(cand) ? $r('app.color.text_1') : $r('app.color.text_3'))
               if (this.chainSelected(cand.id)) {
-                Text('↑').fontSize(13).padding({ left: 6, right: 6 }).onClick(() => this.moveChain(cand.id, -1))
-                Text('↓').fontSize(13).padding({ left: 6, right: 6 }).onClick(() => this.moveChain(cand.id, 1))
+                /* 上移/下移:字符图标 → 系统符号;宿主从 Text 换成 Row(点光源白名单不含 Text) */
+                Row() {
+                  SymbolGlyph($r('sys.symbol.chevron_up')).fontSize(15).fontColor([$r('app.color.text_1')])
+                }
+                .width(30).height(30).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
+                .visualEffect(pressLightEffect(this.litKey === `chain:up:${cand.id}`, false))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+                    this.litKey = `chain:up:${cand.id}`;
+                  } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                    this.litKey = '';
+                  }
+                })
+                .onClick(() => this.moveChain(cand.id, -1))
+                Row() {
+                  SymbolGlyph($r('sys.symbol.chevron_down')).fontSize(15).fontColor([$r('app.color.text_1')])
+                }
+                .width(30).height(30).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
+                .visualEffect(pressLightEffect(this.litKey === `chain:down:${cand.id}`, false))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+                    this.litKey = `chain:down:${cand.id}`;
+                  } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                    this.litKey = '';
+                  }
+                })
+                .onClick(() => this.moveChain(cand.id, 1))
               }
               Toggle({ type: ToggleType.Checkbox, isOn: this.chainSelected(cand.id) })
                 .enabled(this.chainSelectionAllowed(cand))

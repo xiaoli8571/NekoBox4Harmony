@@ -3,7 +3,7 @@ import bundleManager from '@ohos.bundle.bundleManager';
 import promptAction from '@ohos.promptAction';
 import http from '@ohos.net.http';
 import { UiSpec } from '../common/UiSpec';
-import { DrawerButton } from '../common/components/DrawerButton';
+import { pressLightEffect } from '../common/Effects';
 
 const CORE_VERSION = 'sing-box 1.14.0 (OHOS c-shared)';
 const GITHUB_URL = 'https://github.com/xiaoli8571/NekoBox4Harmony';
@@ -18,6 +18,8 @@ const RELEASES_API = 'https://api.github.com/repos/xiaoli8571/NekoBox4Harmony/re
 export struct AboutPage {
   @State appVersion: string = '';
   @State checking: boolean = false;
+  /** 当前被按下的元素 key(检查更新 / 项目主页 / Telegram):"按下才亮"靠它逐颗判断 */
+  @State litKey: string = '';
   onOpenDrawer: () => void = () => {};
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
@@ -89,13 +91,7 @@ export struct AboutPage {
 
   build() {
     Column() {
-      Row() {
-        DrawerButton({ onOpen: () => this.onOpenDrawer() })
-        Text($r('app.string.nav_about'))
-          .fontSize(16).fontWeight(800).fontColor($r('app.color.text_1')).layoutWeight(1)
-      }
-      .width('100%')
-      .padding({ left: UiSpec.PAGE_PADDING - 10, right: UiSpec.PAGE_PADDING, top: 26, bottom: 8 })
+      /* 标题与抽屉入口都在壳层的 HDS 顶栏里(Index.shellTitleBar),这里不再自带页头 */
 
       Scroll() {
         Column({ space: 14 }) {
@@ -110,18 +106,43 @@ export struct AboutPage {
                 .height(UiSpec.BTN_HEIGHT)
                 .backgroundColor($r('app.color.primary'))
                 .fontColor($r('app.color.surface'))
+                /* 卡片在 Scroll 里(会跟滚动跑位)⇒ 只"按下才亮",不挂常亮光源、不加 scale */
+                .visualEffect(pressLightEffect(this.litKey === 'about:check', true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+        this.litKey = 'about:check';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+                })
                 .onClick(() => this.checkUpdate())
               Button($r('app.string.about_github'))
                 .layoutWeight(1)
                 .height(UiSpec.BTN_HEIGHT)
                 .backgroundColor($r('app.color.surface'))
                 .fontColor($r('app.color.text_primary'))
+                .visualEffect(pressLightEffect(this.litKey === 'about:github', true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+        this.litKey = 'about:github';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+                })
                 .onClick(() => this.openGitHub())
               Button($r('app.string.about_telegram'))
                 .layoutWeight(1)
                 .height(UiSpec.BTN_HEIGHT)
                 .backgroundColor($r('app.color.surface'))
                 .fontColor($r('app.color.text_primary'))
+                .visualEffect(pressLightEffect(this.litKey === 'about:telegram', true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+        this.litKey = 'about:telegram';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+                })
                 .onClick(() => this.openTelegram())
             }.width('100%')
           }
@@ -144,7 +165,7 @@ export struct AboutPage {
           .backgroundColor($r('app.color.surface'))
         }
         .width('100%')
-        .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, bottom: 20 })
+        .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 8, bottom: 20 })
       }
         .edgeEffect(EdgeEffect.Spring)
       .layoutWeight(1)

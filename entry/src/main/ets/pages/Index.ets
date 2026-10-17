@@ -1,7 +1,6 @@
 import common from '@ohos.app.ability.common';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
-import notificationManager from '@ohos.notificationManager';
 import bundleManager from '@ohos.bundle.bundleManager';
 import picker from '@ohos.file.picker';
 import fs from '@ohos.file.fs';
@@ -9,7 +8,21 @@ import BusinessError from '@ohos.base';
 import zlib from '@ohos.zlib';
 import image from '@ohos.multimedia.image';
 import { scanBarcode, scanCore, generateBarcode } from '@kit.ScanKit';
+import window from '@ohos.window';
+/* HDS 标题栏：自带"渐变模糊"(IMMERSIVE_GRADIENT_BLUR) 与沉浸光感材质 —— 不要自己画渐变) */
+import {
+  BlurStrategy,
+  HdsNavigation,
+  HdsNavigationTitleBarOptions,
+  HdsNavigationTitleMode,
+  ScrollEffectType,
+  hdsMaterial
+} from '@kit.UIDesignKit';
 import { UiSpec } from '../common/UiSpec';
+import { illuminatedEffect, pressLightEffect } from '../common/Effects';
+import { GlowIconButton } from '../common/components/GlowIconButton';
+import { HdsMenu, MenuItemData } from '../common/components/FlowMenu';
+import { HAND_SIDE_KEY, handedness } from '../common/Handedness';
 import { SettingsPage } from './SettingsPage';
 import { GroupPage } from './GroupPage';
 import { ToolsPage } from './ToolsPage';
@@ -18,23 +31,48 @@ import { RouteRulesPanel } from './RouteRulesPage';
 import { LogPanel } from './LogPage';
 
 import { Profile, ProfileGroup, AppSettings, profileTypeLabel } from '../model/Profile';
-import { parseCollapsedIds, serializeCollapsedIds, toggleCollapsed, resolveSelectedSub, inSubView } from '../model/HomeView';
 import { initStore, loadProfiles, saveProfiles, loadGroups, loadSettings, saveSettings, readPrefString, writePrefString, ensureGroupByName, LogStore } from '../model/Store';
 import { VpnService } from '../core/VpnService';
-import { parseShareText, ShareSkipReport } from '../utils/LinkParser';
+import { parseShareText } from '../utils/LinkParser';
 import { getClipboardText, setClipboardText } from '../utils/ClipboardHelper';
-import { fetchSubscriptionWithInfo, looksLikeClashYaml, looksLikeSingBoxJson, parseSingBoxConfig, ClashParseResult, subErrorText, subFailureText, unwrapSubscriptionLink, isSagerNetSubscriptionContainer } from '../utils/Subscription';
-import { parseClashProxiesWithProviders } from '../utils/ClashProviders';
+import { fetchSubscriptionWithInfo, looksLikeClashYaml, parseClashProxies, looksLikeSingBoxJson, parseSingBoxConfig, ClashParseResult, subErrorText, unwrapSubscriptionLink, isSagerNetSubscriptionContainer } from '../utils/Subscription';
 import { testProfiles, urlTestProfiles } from '../utils/LatencyTester';
-import { SubInfo, SubUpdateResult, listSubs, upsertSub, needAutoUpdate, updateSubscription, setAppContext, subNameOf, markSubSuccess, markSubFailure } from '../core/Subscriptions';
+import { SubInfo, listSubs, upsertSub, needAutoUpdate, updateSubscription, setAppContext, subNameOf, markSubSuccess, markSubFailure } from '../core/Subscriptions';
 import { fetchTrafficTotals, formatSpeed, formatBytes } from '../utils/TrafficStats';
-import { fetchCurrentProxyDelay, selectProxy } from '../utils/ClashApi';
+import { fetchCurrentProxyDelay } from '../utils/ClashApi';
 import { exportProfileLink } from '../utils/LinkExporter';
 import { buildOutboundJson } from '../core/ConfigBuilder';
 import { publishVpnLatency } from '../core/VpnIpc';
 
 const OUTBOUND_MODES: Array<string> = ['rule', 'global', 'direct'];
 const OUTBOUND_MODE_LABELS: Array<Resource> = [$r('app.string.mode_rule'), $r('app.string.mode_global'), $r('app.string.mode_direct')];
+
+/** 抽屉项(顺序固定;activeTab→抽屉下标的映射见 TAB_TO_DRAWER_INDEX):[标识, 文案, 系统符号] */
+const DRAWER_ITEM_IDS: Array<string> = ['config', 'groups', 'route', 'settings', 'logs', 'docs', 'tools', 'about'];
+const DRAWER_ITEM_LABELS: Array<Resource> = [
+  $r('app.string.nav_config'),
+  $r('app.string.nav_groups'),
+  $r('app.string.nav_route'),
+  $r('app.string.settings_title'),
+  $r('app.string.logs'),
+  $r('app.string.nav_docs'),
+  $r('app.string.nav_tools'),
+  $r('app.string.nav_about')
+];
+const DRAWER_ITEM_SYMBOLS: Array<Resource> = [
+  $r('sys.symbol.list_square'),
+  $r('sys.symbol.folder'),
+  $r('sys.symbol.arrow_up_left_and_arrow_down_right'),
+  $r('sys.symbol.gearshape'),
+  $r('sys.symbol.doc_text'),
+  $r('sys.symbol.book'),
+  $r('sys.symbol.wand_and_stars'),
+  $r('sys.symbol.info_circle')
+];
+/** activeTab(0..6 = 配置/分组/路由/设置/日志/工具/关于) → 抽屉下标(docs 在 5,不是页签) */
+const TAB_TO_DRAWER_INDEX: Array<number> = [0, 1, 2, 3, 4, 6, 7];
+/** 顶栏 ⋮ 的菜单锚点 id(沉浸光感菜单靠它定位,必须在某个真实组件上用 .id() 挂上) */
+const OVERFLOW_MENU_ANCHOR: string = 'nbOverflowAnchor';
 
 @Entry
 @Component
@@ -52,8 +90,29 @@ struct Index {
   @State nodeSearch: string = '';
   @State searchVisible: boolean = false;
   @State drawerOpen: boolean = false;
-  @State collapsedGroupIds: Array<string> = [];   // 首页分组折叠状态(持久化 JSON;每次 refresh 与存储重新同步)
-  @State selectedSubUrl: string = '';    // 首页底部选中的订阅(空串=手动节点视图)
+  /** 抽屉当前(最近一次)滑入的一侧:面板位置由 translate 决定,换手就是改它(带补间动画) */
+  @State drawerEdge: string = 'right';
+  /** 窗口宽度(vp):抽屉面板宽 + 左右位移都按它算(量不到时各函数里有兜底) */
+  @State pageW: number = 0;
+  /** 窗口高度(vp)：内容层铺满整窗时用 matchParent，这里留作尺度参考 */
+  /** 智感握姿:当前交互手所在的一侧('right' | 'left',由 EntryAbility 里的 handedness 追踪器写入)。
+   *  拿不到识别结果时恒为 'right' ⇒ 布局与改造前逐字一致。 */
+  @StorageLink(HAND_SIDE_KEY) @Watch('onHandSideChanged') handSide: string = 'right';
+  /** 当前被按下的元素 key(抽屉项 / 节点卡 / 模式按钮 / FAB):"按下才亮"靠它逐颗判断 */
+  @State litKey: string = '';
+  /** 配置页列表的滚动器(列表滚动位置复位 / 分组切换后回到顶部都靠它) */
+  private configScroller: Scroller = new Scroller();
+  /** 顶栏 ⋮ 的沉浸光感菜单(照 RzdSchool HdsMenu:openMenu + 自绘面板 + 模糊背板 + 自适应取色) */
+  private overflowMenu: HdsMenu = new HdsMenu();
+  /** HdsNavigation 的宿主栈（本工程二级页走 router，这里只当标题栏宿主用） */
+  private pathStack: NavPathStack = new NavPathStack();
+  @State safeTopVp: number = 38;
+  /** 底部导航条/手势条高度(vp,运行时实测) —— 列表与 FAB 的底部让位用 */
+  @State navBottomVp: number = 24;
+  /** 内容区顶部让位(vp):运行时用探针量「顶栏底边 − 内容区原点」得到,不再靠猜常数 */
+  @State contentTopInset: number = 96;
+  /** 当前选中的分组(配置页顶部分类条;空串 = 未分组) */
+  @State selectedGroupId: string = '';
   @State appVersion: string = '';
   @StorageLink('uiBreakpoint') uiBreakpoint: string = 'compact';
   @StorageLink('vpnRunning') @Watch('onRunningChange') isRunning: boolean = false;
@@ -73,6 +132,11 @@ struct Index {
 
   aboutToAppear(): void {
     setAppContext(this.context);
+    /* 智感握姿:全进程只订阅一次(交互手/握持手),结果写 AppStorage 供各页面镜像布局。
+       ⚠️ 放在这里而不是 EntryAbility.onCreate:motion 要走系统服务,放启动关键路径上
+       一旦服务未就绪会卡死在开屏页(真机踩过)。Handler 内部还会再 defer 一次(setTimeout 0)。 */
+    handedness.start();
+    this.computeInsets();
     this.refresh();
     this.autoUpdateSubs();
     this.autoConnect();
@@ -82,6 +146,37 @@ struct Index {
     }
   }
 
+  /** 运行时实测**底部**导航条/手势条高度(照 RzdVideo HomePage.computeSafeTop 的做法):
+   *  列表与 FAB 的底部让位都用它,不写死 —— 写死就会在别的机型上留出死空白或被手势条压住。 */
+  private computeInsets(): void {
+    try {
+      const ctx = this.getUIContext().getHostContext();
+      if (ctx === undefined) {
+        return;
+      }
+      window.getLastWindow(ctx).then((win: window.Window) => {
+        const ui = this.getUIContext();
+        const nav = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
+        const bottomVp = ui.px2vp(nav.bottomRect.height);
+        const sys = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+        const topVp = ui.px2vp(sys.topRect.height);
+        if (topVp > 0) {
+          this.safeTopVp = topVp;
+        }
+        if (bottomVp > 0) {
+          this.navBottomVp = bottomVp;
+        }
+        /* 窗口宽(vp):抽屉面板宽/位移按它算 —— 抽屉换边是 translate 平移,位移量必须是真实像素宽 */
+        const prop = win.getWindowProperties();
+        const wVp = ui.px2vp(prop.windowRect.width);
+        if (wVp > 0) {
+          this.pageW = wVp;
+        }
+      }).catch(() => {
+      });
+    } catch (e) {
+    }
+  }
   /**
    * 系统返回键(对齐安卓 onBackPressedDispatcher):
    * 抽屉打开 → 收抽屉;非配置页 → 回配置页;配置页 → 退到桌面(VPN 继续运行)。
@@ -129,13 +224,6 @@ struct Index {
         AppStorage.setOrCreate('vpnRunning', false);
         AppStorage.setOrCreate('vpnRunningProfileId', '');
         AppStorage.setOrCreate('vpnStatus', 'disconnected');
-        // 扩展进程被系统杀死时 onDisconnect/onDestroy 不会执行,连接通知会残留——
-        // 由 UI 进程代为取消(同应用可取消,通知 id 与 VpnExtAbility.showConnectedNotification 一致)
-        try {
-          notificationManager.cancel(1001).catch(() => {});
-        } catch (e) {
-          // ignore
-        }
       }
     } catch (e) {
       // 探测异常不改变 UI 状态
@@ -171,19 +259,8 @@ struct Index {
       } else if (this.selectedId.length === 0 && this.profiles.length > 0) {
         this.selectedId = this.profiles[0].id;
       }
-      // 首页底部选中的订阅:恢复持久化值,失效则回退到当前激活订阅/第一个订阅(空串=手动节点视图)
-      const subUrls = this.subscriptions.map((sub: SubInfo) => sub.url);
-      this.selectedSubUrl = resolveSelectedSub(await readPrefString('home_selected_sub', ''), this.activeConfigUrl, subUrls);
-      // 折叠态每次刷新都与存储重新同步(修复 m02331:切页后子树上重建丢失内存态,列表又变回展开)
-      const rawCollapse = await readPrefString('home_collapsed_groups', '\u0000');
-      if (rawCollapse === '\u0000') {
-        // 首次使用:当前视图全部分组折叠,当前选中节点所在分组默认展开
-        const sel = this.profiles.find((profile: Profile) => profile.id === this.selectedId);
-        const selGroup = sel === undefined ? '' : sel.groupId;
-        this.collapsedGroupIds = this.currentViewGroupIds().filter((g: string) => g !== selGroup);
-      } else {
-        this.collapsedGroupIds = parseCollapsedIds(rawCollapse);
-      }
+      /* 分组分类条:分组/节点变化后校正选中项(被删/被合并时回落到第一个) */
+      this.ensureSelectedGroup();
     } catch (e) {
       LogStore.addLog(`[ui] 加载节点失败: ${e}`);
     }
@@ -201,14 +278,7 @@ struct Index {
         try {
           const r = await updateSubscription(sub.url);
           await markSubSuccess(sub.url);
-          if (r.notModified) {
-            LogStore.addLog(`[app] 订阅 ${sub.name} 未变更(服务端 304)`);
-          } else {
-            LogStore.addLog(`[app] 订阅 ${sub.name} 自动更新:新增 ${r.added},移除 ${r.removed}`);
-          }
-          if (r.skipped > 0) {
-            LogStore.addLog(`[app] 订阅 ${sub.name} 跳过 ${r.skipped} 个节点: ${r.skippedNames.join(', ')}`);
-          }
+          LogStore.addLog(`[app] 订阅 ${sub.name} 自动更新:新增 ${r.added},移除 ${r.removed}`);
           this.refresh();
         } catch (e) {
           await markSubFailure(sub.url);
@@ -395,8 +465,6 @@ struct Index {
   /** 点击节点:未运行则选中;运行中点其他节点 = 热切换 */
   async onNodeTap(p: Profile): Promise<void> {
     this.selectedId = p.id;
-    // 点击节点即把「当前分组」切到该节点所在组(顶栏组作用域操作/统计跟随)
-    this.writeSelectedGroup(p.groupId);
     await writePrefString('selected_profile_id', p.id);
     if (!this.isRunning) {
       return;
@@ -412,22 +480,6 @@ struct Index {
     this.switching = true;
     try {
       promptAction.showToast({ message: $r('app.string.switching_to_name', p.name) });
-      // 对齐安卓 selector 免重载热切换:目标节点所在组为 selector 模式且运行中
-      // 属于同组时,经 clash API PUT /proxies/proxy 直接切换激活出站,零断流;
-      // 失败回退串行重启
-      const runningProfile = this.profiles.find((x: Profile) => x.id === runningId);
-      const group = this.groups.find((x: ProfileGroup) => x.id === p.groupId);
-      const selectorMode = group !== undefined && group.isSelector && !group.autoSelect;
-      if (runningProfile !== undefined && runningProfile.groupId === p.groupId
-        && selectorMode && this.settings.clashApiEnabled) {
-        const ok = await selectProxy('proxy', p.name,
-          this.settings.clashApiPort, this.settings.clashApiSecret);
-        if (ok) {
-          AppStorage.setOrCreate('vpnRunningProfileId', p.id);
-          AppStorage.setOrCreate('vpnStatus', `connected:${p.name}`);
-          return;
-        }
-      }
       await VpnService.switchTo(this.context, p.id);
     } finally {
       this.switching = false;
@@ -464,7 +516,7 @@ struct Index {
       await this.runSpeedTest();
       return;
     }
-    const profiles = this.scopeProfiles(groupId);
+    const profiles = this.profiles.filter((item: Profile) => item.groupId === groupId);
     if (this.testing || profiles.length === 0) {
       return;
     }
@@ -493,49 +545,33 @@ struct Index {
           }
         }
       };
-      // 收尾提示延后统一发出:降级/回退提示不能被"测速完成"立刻盖掉
-      let finalToast: ResourceStr = $r('app.string.speed_test_complete');
       if (this.settings.latencyTestMode === 'tcp') {
-        await testProfiles(snapshot, onOne, this.settings.testConcurrent,
-          this.settings.testTimeoutMs, this.settings.testRetries, this.settings.testSamples);
+        await testProfiles(snapshot, onOne, this.settings.testConcurrent);
       } else {
-        const report = await urlTestProfiles(snapshot, this.profiles, this.settings, this.context,
+        /* 上游签名：urlTestProfiles(targets, allProfiles, settings, context, onResult, concurrency, groups)
+           —— 超时由 settings.testTimeoutMs 决定（不再传 5000），返回 LatencyRunReport（此处忽略）。 */
+        await urlTestProfiles(snapshot, this.profiles, this.settings, this.context,
           onOne, this.settings.testConcurrent, this.groups);
-        // 测速内核起不来时会静默降级成 TCPing,必须告诉用户,否则会以为
-        // 拿到的是真连接延迟,实际只是握手耗时
-        if (report.degraded) {
-          finalToast = $r('app.string.speed_test_degraded', report.degradeReason);
-        } else if (report.bindFallback) {
-          finalToast = $r('app.string.speed_test_bind_fallback');
-        }
       }
       await saveProfiles(this.profiles);
       this.profiles = this.profiles.slice();
-      promptAction.showToast({ message: finalToast });
+      promptAction.showToast({ message: $r('app.string.speed_test_complete') });
     } finally {
       this.testing = false;
     }
   }
 
-  /** 清除当前分组测试结果(仅当前作用域;保留其它分组的测速结果) */
+  /** 清除当前分组测试结果 */
   async clearTestResults(groupId: string): Promise<void> {
-    const scope = this.scopeProfiles(groupId);
     let changed = false;
-    for (const p of scope) {
-      if (p.latencyMs !== 0) {
+    for (const p of this.profiles) {
+      if ((groupId === '__all__' || p.groupId === groupId) && p.latencyMs !== 0) {
         p.latencyMs = 0;
         p.latencyTestedAt = 0;
         changed = true;
       }
     }
-    const scopeIds = new Set<string>(scope.map((p: Profile) => p.id));
     const next: Record<string, number> = {};
-    const keys = Object.keys(this.latencies);
-    for (const key of keys) {
-      if (!scopeIds.has(key)) {
-        next[key] = this.latencies[key];
-      }
-    }
     this.latencies = next;
     if (changed) {
       await saveProfiles(this.profiles);
@@ -544,38 +580,36 @@ struct Index {
     }
   }
 
-  /** 去重(当前作用域:组内当前视图节点;按 名称+类型+服务器+端口+凭据) */
+  /** 去重(当前分组,按 名称+类型+服务器+端口+凭据) */
   async dedupGroup(groupId: string): Promise<void> {
-    const scope = this.scopeProfiles(groupId);
-    if (scope.length === 0) {
-      promptAction.showToast({ message: $r('app.string.dedup_none') });
-      return;
-    }
     const seen = new Set<string>();
-    const keepIds = new Set<string>();
+    const kept: Array<Profile> = [];
     let removed = 0;
-    for (const p of scope) {
+    for (const p of this.profiles) {
+      if (groupId !== '__all__' && p.groupId !== groupId) {
+        kept.push(p);
+        continue;
+      }
       const key = `${p.name}\u001f${p.type}\u001f${p.server}\u001f${p.serverPort}\u001f${p.uuid}\u001f${p.password}`;
       if (seen.has(key)) {
         removed++;
         continue;
       }
       seen.add(key);
-      keepIds.add(p.id);
+      kept.push(p);
     }
     if (removed > 0) {
-      const scopeIds = new Set<string>(scope.map((p: Profile) => p.id));
-      this.profiles = this.profiles.filter((p: Profile) => !scopeIds.has(p.id) || keepIds.has(p.id));
-      await saveProfiles(this.profiles);
+      this.profiles = kept;
+      await saveProfiles(kept);
       promptAction.showToast({ message: $r('app.string.dedup_done', removed) });
     } else {
       promptAction.showToast({ message: $r('app.string.dedup_none') });
     }
   }
 
-  /** 删除当前分组不可用节点(最近测速失败;仅当前作用域) */
+  /** 删除当前分组不可用节点(最近测速失败) */
   deleteUnavailable(groupId: string): void {
-    const dead = this.scopeProfiles(groupId).filter((p: Profile) => p.latencyMs === -1);
+    const dead = this.profiles.filter((p: Profile) => (groupId === '__all__' || p.groupId === groupId) && p.latencyMs === -1);
     if (dead.length === 0) {
       promptAction.showToast({ message: $r('app.string.no_unavailable_nodes') });
       return;
@@ -614,24 +648,9 @@ struct Index {
     try {
       const r = await updateSubscription(url);
       await this.refresh();
-      this.toastSubResult(r);
+      promptAction.showToast({ message: $r('app.string.sub_update_result', r.added, r.removed) });
     } catch (e) {
       promptAction.showToast({ message: $r('app.string.update_failed_reason', subErrorText(e as Object)) });
-    }
-  }
-
-  /** 订阅更新结果提示:304 未变更 / 有跳过节点都要说清楚,不能只报增删 */
-  toastSubResult(r: SubUpdateResult): void {
-    if (r.notModified) {
-      promptAction.showToast({ message: $r('app.string.sub_update_not_modified') });
-      return;
-    }
-    promptAction.showToast({ message: $r('app.string.sub_update_result', r.added, r.removed) });
-    if (r.skipped > 0) {
-      LogStore.addLog(`[sub] 跳过 ${r.skipped} 个节点(内核不支持): ${r.skippedNames.join(', ')}`);
-      setTimeout(() => {
-        promptAction.showToast({ message: $r('app.string.sub_update_skipped', r.skipped) });
-      }, 1600);
     }
   }
 
@@ -682,25 +701,18 @@ struct Index {
   }
 
   profilesInGroup(groupId: string): Array<Profile> {
-    return this.sortedProfiles().filter((p: Profile) => p.groupId === groupId && this.inCurrentView(p));
+    return this.sortedProfiles().filter((p: Profile) => p.groupId === groupId);
   }
 
-  /** 当前首页视图的节点过滤:选中订阅→只显示该订阅导入的节点;手动视图('')→只显示非订阅节点 */
-  private inCurrentView(p: Profile): boolean {
-    return inSubView(p.subUrl, this.selectedSubUrl);
-  }
-
-  /** 当前视图下的分组(组内存在符合视图的节点才显示;未分组仅手动视图显示且排末位) */
-  currentViewGroupIds(): Array<string> {
+  sortedGroupIds(): Array<string> {
     const ids: Array<string> = [];
     const sortedGroups = this.groups.slice().sort((a: ProfileGroup, b: ProfileGroup) => a.sortOrder - b.sortOrder);
     for (const group of sortedGroups) {
-      if (this.profiles.some((profile: Profile) => profile.groupId === group.id && this.inCurrentView(profile))) {
+      if (this.profiles.some((profile: Profile) => profile.groupId === group.id)) {
         ids.push(group.id);
       }
     }
-    if (this.selectedSubUrl.length === 0
-      && this.profiles.some((profile: Profile) => profile.groupId.length === 0 && this.inCurrentView(profile))) {
+    if (this.profiles.some((profile: Profile) => profile.groupId.length === 0)) {
       ids.push('');
     }
     return ids;
@@ -719,33 +731,12 @@ struct Index {
 
   // ---------------------------------------------------------------- 分组折叠列表(对齐安卓分组展示)
 
-  private isGroupCollapsed(groupId: string): boolean {
-    if (this.nodeSearch.trim().length > 0) {
-      return false; // 搜索时自动展开,直接呈现匹配结果
-    }
-    return this.collapsedGroupIds.indexOf(groupId) >= 0;
-  }
-
-  async toggleGroupCollapse(groupId: string): Promise<void> {
-    const next = toggleCollapsed(this.collapsedGroupIds, groupId);
-    this.collapsedGroupIds = next;
-    await writePrefString('home_collapsed_groups', serializeCollapsedIds(next));
-  }
-
   displayGroupIds(): Array<string> {
-    const ids = this.currentViewGroupIds();
+    const ids = this.sortedGroupIds();
     if (this.nodeSearch.trim().length === 0) {
       return ids;
     }
     return ids.filter((groupId: string) => this.visibleProfiles(groupId).length > 0);
-  }
-
-  /** 组作用域操作(测速/清除结果/去重/删不可用)的目标节点集:'__all__'=全部节点,否则=该组内当前视图可见节点 */
-  private scopeProfiles(groupId: string): Array<Profile> {
-    if (groupId === '__all__') {
-      return this.profiles.slice();
-    }
-    return this.profilesInGroup(groupId);
   }
 
   /** 组内最优延迟(仅计成功值;无有效值返回 -1) */
@@ -764,12 +755,16 @@ struct Index {
   }
 
   private latencyColorOfMs(ms: number): ResourceColor {
-    // 对齐安卓 ConfigurationFragment 状态着色:status 1→绿,2/3→红,-1/0→次级色。
-    // 无 150/400 中间阈值——单值测速只分"可用绿 / 失败红"。
     if (ms < 0) {
       return $r('app.color.error');
     }
-    return $r('app.color.success');
+    if (ms < 150) {
+      return $r('app.color.success');
+    }
+    if (ms < 400) {
+      return $r('app.color.warning');
+    }
+    return $r('app.color.error');
   }
 
   groupName(groupId: string): ResourceStr {
@@ -778,28 +773,6 @@ struct Index {
     }
     const group = this.groups.find((item: ProfileGroup) => item.id === groupId);
     return group === undefined ? $r('app.string.ungrouped') : group.name;
-  }
-
-  /** 当前选中分组(对齐安卓 DataStore.selectedGroup;空串=未分组);点击节点即写回,供顶栏组作用域操作使用 */
-  @State selectedGroupId: string = '';
-
-  /** 选择分组(对齐安卓 updateSelectedCallback) */
-  writeSelectedGroup(groupId: string | undefined): void {
-    if (groupId === undefined) {
-      return;
-    }
-    this.selectedGroupId = groupId;
-  }
-
-  /** 切换首页底部选中的订阅:主页只显示该订阅下的分组(m02296);切订阅后组作用域同步到新视图第一组 */
-  async selectSub(url: string): Promise<void> {
-    if (url === this.selectedSubUrl) {
-      return;
-    }
-    this.selectedSubUrl = url;
-    await writePrefString('home_selected_sub', url);
-    const first = this.currentViewGroupIds();
-    this.writeSelectedGroup(first.length > 0 ? first[0] : '');
   }
 
   async moveProfile(p: Profile, delta: number): Promise<void> {
@@ -853,18 +826,6 @@ struct Index {
     this.moveDialog.open();
   }
 
-  /**
-   * 延迟结果是否已过期。latencyTestedAt 此前只写不读,三天前测出来的 86ms
-   * 仍以绿色显示,用户会据此选节点。过期后统一按"未测"的中性色显示。
-   */
-  private isLatencyStale(p: Profile): boolean {
-    if (p.latencyTestedAt <= 0) {
-      return true;
-    }
-    const limit = this.settings.latencyStaleMs > 0 ? this.settings.latencyStaleMs : 6 * 3600 * 1000;
-    return Date.now() - p.latencyTestedAt > limit;
-  }
-
   latencyText(p: Profile): ResourceStr {
     let ms = this.latencies[p.id];
     if (ms === undefined && p.latencyMs !== 0) {
@@ -875,10 +836,6 @@ struct Index {
     }
     if (ms === undefined) {
       return '';
-    }
-    // 本次测速刚出的结果一律新鲜,不受过期判定影响
-    if (this.latencies[p.id] === undefined && this.isLatencyStale(p)) {
-      return $r('app.string.latency_stale');
     }
     return ms < 0 ? $r('app.string.timeout') : `${ms}ms`;
   }
@@ -891,16 +848,16 @@ struct Index {
     if (ms === undefined) {
       return $r('app.color.text_3');
     }
-    // 过期结果按中性色显示,避免旧数字看起来和刚测出来的一样可信
-    if (this.latencies[p.id] === undefined && this.isLatencyStale(p)) {
-      return $r('app.color.text_3');
-    }
-    // 对齐安卓 ConfigurationFragment 状态着色:1→绿,2/3→红,-1/0→次级色。
-    // 无 150/400 中间阈值——单值测速只分"可用绿 / 失败红"。
     if (ms < 0) {
       return $r('app.color.error');
     }
-    return $r('app.color.success');
+    if (ms < 150) {
+      return $r('app.color.success');
+    }
+    if (ms < 400) {
+      return $r('app.color.warning');
+    }
+    return $r('app.color.error');
   }
 
   async runUrlTest(p: Profile): Promise<void> {
@@ -914,8 +871,7 @@ struct Index {
       return;
     }
     try {
-      const delay = await fetchCurrentProxyDelay(5000, this.settings.clashApiPort, this.settings.testUrl,
-        this.settings.clashApiSecret);
+      const delay = await fetchCurrentProxyDelay(5000, this.settings.clashApiPort, this.settings.testUrl);
       const next: Record<string, number> = {};
       for (const key of Object.keys(this.latencies)) {
         next[key] = this.latencies[key];
@@ -1340,41 +1296,25 @@ struct Index {
         const content = fetched.content;
         subUserinfo = fetched.userinfo;
         if (looksLikeClashYaml(content)) {
-          // 手动导入同样要跟进 proxy-providers:否则 provider-only 的 Clash 订阅
-          // 在「导入订阅」入口是 0 节点(自动更新入口已修,两条路径必须一致)。
-          const r: ClashParseResult = await parseClashProxiesWithProviders(content,
-            this.settings.subAllowInsecure, '');
+          const r: ClashParseResult = parseClashProxies(content);
           parsed = r.profiles;
           if (parsed.length === 0) {
-            // 走共享的诊断文案:区分「格式没认出来」与「全是内核不支持的协议」,
-            // 并点名跳过了哪几条 —— 而不是笼统的「跳过 0 条」。
-            const reason = subFailureText(r.note, content, r.skipped, r.skippedNames);
-            LogStore.addLog(`[ui] Clash 手动导入无节点: ${reason}`);
-            promptAction.showToast({ message: $r('app.string.import_failed_reason', reason) });
+            promptAction.showToast({
+              message: $r('app.string.clash_skipped_count', r.skipped)
+            });
             return;
-          }
-          if (r.skipped > 0) {
-            promptAction.showToast({ message: $r('app.string.clash_skipped_count', r.skipped) });
           }
         } else if (looksLikeSingBoxJson(content)) {
           const r: ClashParseResult = parseSingBoxConfig(content);
           parsed = r.profiles;
           if (parsed.length === 0) {
-            const reason = subFailureText(r.note, content, r.skipped, r.skippedNames);
-            LogStore.addLog(`[ui] sing-box 手动导入无节点: ${reason}`);
-            promptAction.showToast({ message: $r('app.string.import_failed_reason', reason) });
+            promptAction.showToast({
+              message: $r('app.string.clash_skipped_count', r.skipped)
+            });
             return;
           }
         } else {
-          // 分享链接:上报跳过项,否则整份 ssr:// 订阅只会显示「没有可用节点」
-          const shareReport: ShareSkipReport = { skipped: 0, names: [] };
-          parsed = parseShareText(content, shareReport);
-          if (parsed.length === 0) {
-            const reason = subFailureText('', content, shareReport.skipped, shareReport.names);
-            LogStore.addLog(`[ui] 分享链接手动导入无节点: ${reason}`);
-            promptAction.showToast({ message: $r('app.string.import_failed_reason', reason) });
-            return;
-          }
+          parsed = parseShareText(content);
         }
       } else {
         // 分享链接:解析后弹确认(对齐安卓 profile_import_message)
@@ -1433,46 +1373,23 @@ struct Index {
     return `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
   }
 
-  // ---------------------------------------------------------------- 抽屉导航(对齐安卓 Drawer)
+  // ---------------------------------------------------------------- 抽屉导航(对齐安卓 Drawer;手搓列表,不用 HdsSideMenu)
 
-  private drawerItems(): Array<[ResourceStr, string, string]> {
-    // [文案, 项标识, 图标字形];对齐安卓 main_drawer_menu 顺序(按用户要求移除 traffic 与 docs 两项):
-    // configuration / group / route / settings / misc(分隔) / logcat / tools / about
-    const items: Array<[ResourceStr, string, string]> = [
-      [$r('app.string.nav_config'), 'config', '▤'],
-      [$r('app.string.nav_groups'), 'groups', '⧉'],
-      [$r('app.string.nav_route'), 'route', '⇄'],
-      [$r('app.string.settings_title'), 'settings', '⚙'],
-      [$r('app.string.logs'), 'logs', '≣'],
-      [$r('app.string.nav_tools'), 'tools', '✦'],
-      [$r('app.string.nav_about'), 'about', 'ⓘ']
-    ];
+  /** 抽屉列表项:[文案, 标识, 系统符号](顺序由模块级常量定义) */
+  private drawerItems(): Array<[ResourceStr, string, Resource]> {
+    const items: Array<[ResourceStr, string, Resource]> = [];
+    for (let i = 0; i < DRAWER_ITEM_IDS.length; i++) {
+      items.push([DRAWER_ITEM_LABELS[i], DRAWER_ITEM_IDS[i], DRAWER_ITEM_SYMBOLS[i]]);
+    }
     return items;
   }
 
+  /** 当前分区是否就是这一项(抽屉选中态) */
   private drawerItemActive(id: string): boolean {
-    if (id === 'config') {
-      return this.activeTab === 0;
+    if (this.activeTab >= 0 && this.activeTab < TAB_TO_DRAWER_INDEX.length) {
+      return DRAWER_ITEM_IDS[TAB_TO_DRAWER_INDEX[this.activeTab]] === id;
     }
-    if (id === 'groups') {
-      return this.activeTab === 1;
-    }
-    if (id === 'route') {
-      return this.activeTab === 2;
-    }
-    if (id === 'settings') {
-      return this.activeTab === 3;
-    }
-    if (id === 'logs') {
-      return this.activeTab === 4;
-    }
-    if (id === 'tools') {
-      return this.activeTab === 5;
-    }
-    if (id === 'about') {
-      return this.activeTab === 6;
-    }
-    return false;
+    return id === 'config';
   }
 
   private onDrawerSelect(id: string): void {
@@ -1491,6 +1408,9 @@ struct Index {
       this.activeTab = 5;
     } else if (id === 'about') {
       this.activeTab = 6;
+    } else if (id === 'docs') {
+      // 对齐安卓 nav_faq:打开项目文档(应用内 Web 视图)
+      router.pushUrl({ url: 'pages/DocPage' });
     }
   }
 
@@ -1515,42 +1435,56 @@ struct Index {
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
-      .padding({ left: 20, right: 16, top: 30, bottom: 16 })
+      /* 面板从 y=0 铺到屏底(遮罩要盖住状态栏),但**里面的内容必须躲开状态栏**:
+         原来写死 30 ⇒ 图标/版本被状态栏压住(2.0.18 真机)。改成实测状态栏高度 + 12 呼吸位。 */
+      .padding({ left: 20, right: 16, top: this.safeTopVp + 12, bottom: 16 })
 
       Divider().color($r('app.color.hairline')).strokeWidth(UiSpec.HAIRLINE_WIDTH)
 
+      /* 抽屉列表:**手搓 Row 列表**(不用 HdsSideMenu —— 它要 SystemCapability.UIDesign.HDSPattern.Standard,
+         本机设备上渲染不出来 ⇒ 抽屉"打不开"的根因,见项目记忆第六段)。图标是系统符号,按下带 HDS 点光。 */
       Column() {
-        ForEach(this.drawerItems(), (item: [ResourceStr, string, string]) => {
+        ForEach(this.drawerItems(), (item: [ResourceStr, string, Resource]) => {
           Row({ space: 14 }) {
-            Text(item[2])
-              .fontSize(15)
-              .fontColor(this.drawerItemActive(item[1]) ? $r('app.color.primary') : $r('app.color.text_3'))
+            SymbolGlyph(item[2])
+              .fontSize(19)
+              .fontColor([this.drawerItemActive(item[1]) ? $r('app.color.primary') : $r('app.color.text_3')])
               .width(24)
-              .textAlign(TextAlign.Center)
             Text(item[0])
               .fontSize(14.5)
               .fontWeight(this.drawerItemActive(item[1]) ? 700 : 400)
               .fontColor(this.drawerItemActive(item[1]) ? $r('app.color.primary') : $r('app.color.text_2'))
+              .layoutWeight(1)
           }
           .width('100%')
-          .height(46)
-          .borderRadius(10)
-          .backgroundColor(this.drawerItemActive(item[1]) ? $r('app.color.surface_selected') : Color.Transparent)
-          .onClick(() => this.onDrawerSelect(item[1]))
-        }, (item: [ResourceStr, string, string]) => item[1])
+          .height(48)
+          .padding({ left: 20, right: 14 })
+          .borderRadius(12)
+          .visualEffect(pressLightEffect(this.litKey === `drawer:${item[1]}`, false))
+          .onTouch((event: TouchEvent) => {
+            if (event.type === TouchType.Down) {
+              this.litKey = `drawer:${item[1]}`;
+            } else if (event.type === TouchType.Up) {
+              this.litKey = '';
+              this.onDrawerSelect(item[1]);
+            } else if (event.type === TouchType.Cancel) {
+              this.litKey = '';
+            }
+          })
+        }, (item: [ResourceStr, string, Resource]) => item[1])
       }
       .width('100%')
-      .padding({ left: 10, right: 10, top: 8 })
-
-      Blank()
+      .padding({ left: 8, right: 8, top: 4 })
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
 
       Text($r('app.string.drawer_footer'))
         .fontSize(10.5).fontColor($r('app.color.text_3'))
         .width('100%')
-        .padding({ left: 20, bottom: 16 })
+        .padding({ left: 20, bottom: this.navBottomVp + 12 })
     }
-    .width('78%')
-    .constraintSize({ maxWidth: 320 })
+    /* 宽度显式给(不再写 '78%'):抽屉换边靠 **translate 平移**,位移量要按真实面板宽算 */
+    .width(this.drawerPanelW())
     .height('100%')
     .backgroundColor($r('app.color.app_background'))
     .alignItems(HorizontalAlign.Start)
@@ -1558,128 +1492,76 @@ struct Index {
       // 吞掉点击事件,防止点面板空白处触发遮罩关闭
     })
     .shadow({ radius: 24, color: 'rgba(0,0,0,0.25)', offsetY: 0 })
+    /* 面板本体也伸进上下系统栏区,否则日间模式底部会露出一条底色(用户实测) */
+    .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.CUTOUT], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    /* 开/关的进出动画:从**当前所在的边**滑入滑出(方向锁定在 drawerEdge,见 drawOverlay 的注释) */
+    .transition(TransitionEffect.move(this.drawerEdge === 'left' ? TransitionEdge.START : TransitionEdge.END)
+      .animation({ duration: 250, curve: Curve.Friction }))
+  }
+
+  /** 抽屉面板宽:窗口宽的 78%,上限 320vp(pageW 量不到时退回 300) */
+  private drawerPanelW(): number {
+    const w = this.pageW > 0 ? this.pageW : 384;
+    return Math.min(w * 0.78, 320);
+  }
+
+  /** 抽屉的水平位移:左手 = 贴左(x=0),右手 = 推到右侧(窗口宽 − 面板宽) */
+  private drawerOffsetX(): number {
+    if (this.drawerEdge === 'left') {
+      return 0;
+    }
+    const w = this.pageW > 0 ? this.pageW : 384;
+    return Math.max(0, w - this.drawerPanelW());
+  }
+
+  /** 开抽屉:先定滑入方向(交互手那一侧),再挂载面板 ⇒ 从正确的一侧滑进来 */
+  private openDrawer(): void {
+    this.drawerEdge = this.handSide;
+    this.drawerOpen = true;
+  }
+
+  /**
+   * 智感握姿换手:抽屉**直接左右平移**过去(用户点名:不要"先收起再出现")。
+   * 机制:遮罩 Row 恒为 `FlexAlign.Start` 对齐,面板位置全由 `translate(x)` 决定;
+   *      `drawerEdge` 一变 ⇒ `translate` 变 ⇒ 外层那句 `.animation()` 自动补间 ⇒ 面板横着滑过去。
+   * (原来用 justifyContent 换边,那是布局枚举、不可动画,才不得不"收起再滑入"。)
+   */
+  private onHandSideChanged(): void {
+    if (!this.drawerOpen) {
+      return;
+    }
+    this.drawerEdge = this.handSide;
   }
 
   @Builder
   private drawerOverlay() {
     if (this.drawerOpen) {
       Row() {
-        this.drawerPanel()
+        /* 位移层:只负责左右平移(换手时动画)。里面那层面板自己负责开关的进出动画,两者不在同一节点上 ⇒ 不会互相覆盖 */
+        Column() {
+          this.drawerPanel()
+        }
+        .width(this.drawerPanelW())
+        .height('100%')
+        .translate({ x: this.drawerOffsetX() })
+        .animation({ duration: 260, curve: Curve.EaseInOut })
       }
       .width('100%')
       .height('100%')
+      /* ⚠️ 恒为 Start:换边是 translate 的事,这里不能跟着 handSide 变(布局枚举不可动画 ⇒ 会瞬移) */
+      .justifyContent(FlexAlign.Start)
       .backgroundColor('rgba(0,0,0,0.35)')
+      /* 抽屉在最外层 ⇒ 连同状态栏/手势条一起盖住 */
+      .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.CUTOUT], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       .onClick(() => {
         this.drawerOpen = false;
       })
     }
   }
 
+
   // ---------------------------------------------------------------- 配置页(对齐安卓 ConfigurationFragment)
 
-  @Builder
-  private configToolbar() {
-    Row({ space: 10 }) {
-      Text('≡')
-        .fontSize(20).fontColor($r('app.color.text_1'))
-        .width(36).height(36).textAlign(TextAlign.Center)
-        .onClick(() => { this.drawerOpen = true; })
-      if (this.searchVisible) {
-        TextInput({ text: this.nodeSearch, placeholder: $r('app.string.search_nodes') })
-          .layoutWeight(1).height(36)
-          .backgroundColor(Color.Transparent)
-          .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
-          .onChange((v: string) => { this.nodeSearch = v; })
-        Text($r('app.string.cancel'))
-          .fontSize(13).fontColor($r('app.color.text_2')).padding(6)
-          .onClick(() => {
-            this.nodeSearch = '';
-            this.searchVisible = false;
-          })
-      } else {
-        Text($r('app.string.brand_name'))
-          .fontSize(16).fontWeight(800).fontColor($r('app.color.text_1')).layoutWeight(1)
-        Text('⌕')
-          .fontSize(19).fontColor($r('app.color.text_2'))
-          .width(36).height(36).textAlign(TextAlign.Center)
-          .onClick(() => { this.searchVisible = true; })
-        Text('＋')
-          .fontSize(19).fontColor($r('app.color.text_1'))
-          .width(36).height(36).textAlign(TextAlign.Center)
-          .onClick(() => this.addEntryDialog.open())
-        Text('⋮')
-          .fontSize(19).fontColor($r('app.color.text_1'))
-          .width(36).height(36).textAlign(TextAlign.Center)
-          .bindMenu(this.configOverflowMenu())
-      }
-    }
-    .width('100%')
-    .padding({ left: UiSpec.PAGE_PADDING - 10, right: UiSpec.PAGE_PADDING - 10, top: 20 })
-  }
-
-  private configOverflowMenu(): Array<MenuElement> {
-    // 对齐安卓 add_profile_menu:测速/清结果/去重/删不可用均为组作用域
-    // (安卓对当前组 adapter 操作;鸿蒙映射到当前选中分组页,无组时回退全部)
-    const scope: string = this.selectedGroupId.length > 0 ? this.selectedGroupId : '__all__';
-    const items: Array<MenuElement> = [
-      {
-        value: $r('app.string.update_current_subscription') as ResourceStr,
-        action: () => {
-          this.updateCurrentSubscription();
-        }
-      },
-      {
-        value: $r('app.string.clear_traffic_statistics') as ResourceStr,
-        action: () => {
-          this.clearTrafficStatistics();
-        }
-      },
-      {
-        value: $r('app.string.test_all_nodes') as ResourceStr,
-        action: () => {
-          // 只测当前选中分组的节点;无分组时回退全部(对齐安卓组作用域)
-          this.runGroupSpeedTest(scope);
-        }
-      },
-      {
-        value: $r('app.string.clear_test_results') as ResourceStr,
-        action: () => {
-          this.clearTestResults(scope);
-        }
-      },
-      {
-        value: $r('app.string.dedup_action') as ResourceStr,
-        action: () => {
-          this.dedupGroup(scope);
-        }
-      },
-      {
-        value: $r('app.string.delete_unavailable') as ResourceStr,
-        action: () => {
-          this.deleteUnavailable(scope);
-        }
-      },
-      {
-        value: $r('app.string.sort_manual') as ResourceStr,
-        action: () => {
-          this.setSortMode('manual');
-        }
-      },
-      {
-        value: $r('app.string.sort_latency') as ResourceStr,
-        action: () => {
-          this.setSortMode('latency');
-        }
-      },
-      {
-        value: $r('app.string.sort_name') as ResourceStr,
-        action: () => {
-          this.setSortMode('name');
-        }
-      }
-    ];
-    return items;
-  }
 
   @Builder
   private modeSwitchRow() {
@@ -1687,51 +1569,28 @@ struct Index {
       ForEach(OUTBOUND_MODES, (mode: string, index: number) => {
         Button(OUTBOUND_MODE_LABELS[index])
           .layoutWeight(1)
-          .height(32)
+          .height(28)
           .fontSize(12.5)
-          // 选中态实底高亮(用户反馈:仅字色+底边线区分不明显)
+          /* 选中 = 品牌色实心胶囊 + 表面色文字(原来只有下缘一条细线,用户看不出选中) */
           .backgroundColor(this.settings.mode === mode ? $r('app.color.primary') : Color.Transparent)
           .fontColor(this.settings.mode === mode ? $r('app.color.surface') : $r('app.color.text_3'))
           .fontWeight(this.settings.mode === mode ? 700 : 400)
-          .borderRadius(16)
+          .borderRadius(14)
+          .visualEffect(pressLightEffect(this.litKey === `mode:${mode}`, true))
+          .onTouch((event: TouchEvent) => {
+            if (event.type === TouchType.Down) {
+              this.litKey = `mode:${mode}`;
+            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+              this.litKey = '';
+            }
+          })
           .onClick(() => { void this.switchOutboundMode(mode); })
       }, (mode: string) => mode)
     }
     .width('100%')
-    .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 6 })
-  }
-
-  @Builder
-  private groupHeader(groupId: string) {
-    // 分组头:组名 + 节点数 + 组内最优延迟徽标 + 展开箭头;点击折叠/展开,长按出组操作菜单
-    Row({ space: 8 }) {
-      Text(this.groupName(groupId))
-        .fontSize(14)
-        .fontWeight(700)
-        .fontColor($r('app.color.text_1'))
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-      Text($r('app.string.group_node_count', this.visibleProfiles(groupId).length))
-        .fontSize(11.5)
-        .fontColor($r('app.color.text_3'))
-      Blank()
-      if (this.groupMinLatency(groupId) >= 0) {
-        Text($r('app.string.group_latency_minimum', this.groupMinLatency(groupId)))
-          .fontSize(11.5)
-          .fontColor(this.latencyColorOfMs(this.groupMinLatency(groupId)))
-      }
-      Text(this.isGroupCollapsed(groupId) ? '⌄' : '⌃')
-        .fontSize(14)
-        .fontColor($r('app.color.text_3'))
-        .width(18)
-        .textAlign(TextAlign.Center)
-    }
-    .width('100%')
-    .padding({ left: 4, right: 4, top: 10, bottom: 4 })
-    .onClick(() => {
-      void this.toggleGroupCollapse(groupId);
-    })
-    .bindContextMenu(this.groupContextMenu(groupId), ResponseType.LongPress)
+    .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 0 })
+    /* ⚠️ 这里**不要**挂 illuminatedEffect():点光的受光边框是**矩形**(不吃 borderRadius),
+       整条模式行会被画成一个无圆角的方框(用户实测嫌难看) */
   }
 
   @Builder
@@ -1754,7 +1613,10 @@ struct Index {
     Column({ space: 5 }) {
       Row({ space: 6 }) {
         if (p.pinned) {
-          Text('📌').fontSize(10)
+          /* 原来是 emoji 📌:emoji 的字形/配色由系统字体决定,深浅色与多设备下观感不可控 ⇒ 换系统符号 */
+          SymbolGlyph($r('sys.symbol.star_fill'))
+            .fontSize(11)
+            .fontColor([$r('app.color.warning')])
         }
         Text(p.name)
           .fontSize(14.5)
@@ -1805,15 +1667,52 @@ struct Index {
     .borderRadius(14)
     .border({ width: 1.5, color: this.selectedId === p.id ? $r('app.color.primary') : Color.Transparent })
     .shadow({ radius: 6, color: $r('app.color.shadow_color'), offsetY: 1 })
+    /* 点按光效:节点卡在 List 里(会跟滚动跑位),按官方"不要在滚动组件里用常亮光源"的口径,
+       只让它在**按下那一刻**成为光源(此刻内容是静止的),不挂常亮光源、也不挂受光(卡片自身有 border,
+       受光会被 border 覆盖掉,配了也看不见)。 */
+    .visualEffect(pressLightEffect(this.litKey === `node:${p.id}`, false))
+    .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down) {
+        this.litKey = `node:${p.id}`;
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+    })
     .onClick(() => this.onNodeTap(p))
-    .bindContextMenu(this.profileContextMenu(p), ResponseType.LongPress)
+    .bindContextMenu(this.profileContextMenu(p), ResponseType.LongPress, {
+          /* 光感背板：系统菜单窗口自己那层底太素(纯色板)，给它换成 HDS 同族的毛玻璃 */
+          backgroundBlurStyle: BlurStyle.COMPONENT_THICK,
+          backgroundBlurStyleOptions: {
+            colorMode: ThemeColorMode.SYSTEM,
+            adaptiveColor: AdaptiveColor.AVERAGE
+          }
+        })
   }
 
   @Builder
   private configFragment() {
     Column() {
-      this.configToolbar()
-      this.modeSwitchRow()
+      /* 原 configToolbar(连接/搜索/添加/更多)整排提进了 HDS 顶栏(stackBuilder 自绘 + ⋮ bindMenu),
+         这里只剩"搜索态"的输入行 —— TextInput 塞不进顶栏,只能留在内容区 */
+      if (this.searchVisible) {
+        Row({ space: 2 }) {
+          TextInput({ text: this.nodeSearch, placeholder: $r('app.string.search_nodes') })
+            .layoutWeight(1).height(36)
+            .backgroundColor(Color.Transparent)
+            .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
+            .onChange((v: string) => { this.nodeSearch = v; })
+          Text($r('app.string.cancel'))
+            .fontSize(13).fontColor($r('app.color.text_2')).padding(6)
+            .onClick(() => {
+              this.nodeSearch = '';
+              this.searchVisible = false;
+            })
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+        .padding({ left: UiSpec.PAGE_PADDING - 10, right: UiSpec.PAGE_PADDING - 10, top: 2, bottom: 2 })
+      }
+      /* 分组分类条(用户点名):单独一行、横向左右切换;点选后列表只显示该组节点 */
 
       if (this.profiles.length === 0) {
         Column({ space: 10 }) {
@@ -1830,112 +1729,130 @@ struct Index {
         .width('100%')
         .layoutWeight(1)
         .justifyContent(FlexAlign.Center)
-      } else if (this.displayGroupIds().length === 0) {
-        // 当前选中的订阅下暂无节点(对齐安卓:分组页无节点时的空态)
-        Column({ space: 10 }) {
-          Text($r('app.string.home_sub_empty'))
-            .fontSize(14).fontColor($r('app.color.text_3'))
-        }
-        .width('100%')
-        .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
-        this.subSwitchBar()
       } else {
-        // 分组折叠列表(2.0.x 版式,用户 m01976 要求去掉底部订阅分组页签)
-        // 组头=组名+节点数+组内最优延迟,点击折叠/展开(状态持久化 home_collapsed_groups),
-        // 长按弹组操作菜单(测速本组/清除结果/去重/删除不可用)
-        // 只显示底部选中的订阅下的分组(用户 m02296:一个订阅就是一个分组集合,不再混着显示所有分组)
-        List({ space: 8 }) {
-          ForEach(this.displayGroupIds(), (groupId: string) => {
-            ListItem() {
-              Column({ space: 6 }) {
-                this.groupHeader(groupId)
-                if (!this.isGroupCollapsed(groupId)) {
-                  ForEach(this.visibleProfiles(groupId), (profile: Profile) => {
-                    this.nodeCard(profile)
-                  }, (profile: Profile) => profile.id)
-                  if (this.visibleProfiles(groupId).length === 0) {
-                    Text($r('app.string.no_profiles_title'))
-                      .fontSize(13)
-                      .fontColor($r('app.color.text_3'))
-                      .width('100%')
-                      .textAlign(TextAlign.Center)
-                      .padding({ top: 10, bottom: 10 })
-                  }
-                }
-              }
+        List({ space: 8, scroller: this.configScroller }) {
+          /* ★ 顶部占位项 = 顶栏高度(自校准值):列表的**框**铺满整屏(含状态栏),
+             内容最前面垫一块占位 ⇒ 滚动时条目能**穿到顶栏后面**去(RzdMusic 那种沉浸感)。
+             ⚠️ 不要用 List.contentStartOffset / 容器 padding:那两样会把内容**裁在**顶栏下方,永远滚不上去 */
+          ListItem() {
+            Row()
               .width('100%')
+              /* space:8 已经贡献 8vp,这里减掉,避免首卡与顶栏之间多一条缝 */
+              .height(this.searchVisible ? 0 : Math.max(0, this.contentTopInset - 8))
+          }
+          .selectable(false)
+          ForEach(this.visibleProfiles(this.selectedGroupId), (profile: Profile) => {
+            ListItem() {
+              this.nodeCard(profile)
             }
-          }, (groupId: string) => groupId)
+          }, (profile: Profile) => profile.id)
         }
         .edgeEffect(EdgeEffect.Spring)
         .layoutWeight(1)
         .width('100%')
-        .padding({ left: 14, right: 14, top: 6, bottom: 12 })
-        this.subSwitchBar()
+        .padding({ left: 14, right: 14, top: 0, bottom: 0 })
+        /* 列表不裁剪自己的内容 ⇒ 条目能画到盒子顶边以外(状态栏那一段)。
+           RzdVideo 首页的 `Scroll` / RzdMusic 首页的 `Scroll` 都是 `.clip(false)`(它们的内容才能顶到 y=0)。 */
+        .clip(false)
+        /* 探针（仅诊断用，无逻辑依赖）：hdc hilog 里可核对列表视口是否真的在窗口顶 */
+        .id('nbListProbe')
       }
     }
     .width('100%')
     .height('100%')
   }
 
-  /** 首页底部订阅选择器(用户 m02296):选中哪个订阅,主页就只显示该订阅下的分组 */
-  @Builder
-  private subSwitchBar() {
-    Scroll() {
-      Row({ space: 8 }) {
-        ForEach(this.subscriptions, (sub: SubInfo) => {
-          Text(sub.name.length > 0 ? sub.name : sub.url)
-            .fontSize(13)
-            .fontWeight(this.selectedSubUrl === sub.url ? 700 : 500)
-            .fontColor(this.selectedSubUrl === sub.url ? $r('app.color.surface') : $r('app.color.text_2'))
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .constraintSize({ maxWidth: 160 })
-            .padding({ left: 14, right: 14, top: 7, bottom: 7 })
-            .borderRadius(16)
-            .backgroundColor(this.selectedSubUrl === sub.url ? $r('app.color.primary') : $r('app.color.surface'))
-            .border({
-              width: 1,
-              color: this.selectedSubUrl === sub.url ? Color.Transparent : $r('app.color.hairline')
-            })
-            .onClick(() => {
-              void this.selectSub(sub.url);
-            })
-        }, (sub: SubInfo) => sub.url)
-        if (this.profiles.some((profile: Profile) => profile.subUrl.length === 0)) {
-          Text($r('app.string.home_manual_view'))
-            .fontSize(13)
-            .fontWeight(this.selectedSubUrl.length === 0 ? 700 : 500)
-            .fontColor(this.selectedSubUrl.length === 0 ? $r('app.color.surface') : $r('app.color.text_2'))
-            .maxLines(1)
-            .padding({ left: 14, right: 14, top: 7, bottom: 7 })
-            .borderRadius(16)
-            .backgroundColor(this.selectedSubUrl.length === 0 ? $r('app.color.primary') : $r('app.color.surface'))
-            .border({
-              width: 1,
-              color: this.selectedSubUrl.length === 0 ? Color.Transparent : $r('app.color.hairline')
-            })
-            .onClick(() => {
-              void this.selectSub('');
-            })
-        }
-      }
-      .padding({ left: 14 })
+  /** 分组分类条的显示顺序(订阅分组在前、未分组殿后),与原列表口径一致 */
+  private groupTabIds(): Array<string> {
+    return this.displayGroupIds();
+  }
+
+  /** 选中分组失效(被删/被合并/搜索无匹配)时回落到第一个 */
+  private ensureSelectedGroup(): void {
+    const ids = this.groupTabIds();
+    if (ids.length === 0) {
+      this.selectedGroupId = '';
+      return;
     }
-    .scrollable(ScrollDirection.Horizontal)
-    .scrollBar(BarState.Off)
-    .width('100%')
-    // 右侧留出 FAB 宽度,避免订阅胶囊被悬浮按钮压住
-    .padding({ right: 88, top: 2, bottom: 8 })
+    if (!ids.includes(this.selectedGroupId)) {
+      this.selectedGroupId = ids[0];
+    }
+  }
+
+  /** 分组分类条:单独一行、横向左右切换;长按弹原分组的动作菜单(测速/清空/去重/删除失效) */
+  @Builder
+  private groupTabBar() {
+    if (this.groupTabIds().length > 0) {
+      Scroll() {
+        Row({ space: 8 }) {
+          ForEach(this.groupTabIds(), (groupId: string) => {
+            /* 宿主用 Row(不是 Button):Button + .border() 会把 borderRadius 覆盖成 0(真机踩到,chip 变方框);
+               Row 加 borderRadius 才真的圆角,而且**不加 border** —— 受光(点光 BORDER_CONTENT)才不被 border 覆盖 */
+            Row({ space: 6 }) {
+              Text(this.groupName(groupId))
+                .fontSize(14)
+                .fontWeight(this.selectedGroupId === groupId ? 700 : 400)
+                .fontColor(this.selectedGroupId === groupId ? $r('app.color.primary') : $r('app.color.text_2'))
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .constraintSize({ maxWidth: 140 })
+              Text($r('app.string.group_node_count', this.visibleProfiles(groupId).length))
+                .fontSize(11.5)
+                .fontColor($r('app.color.text_3'))
+              if (this.groupMinLatency(groupId) >= 0) {
+                Text($r('app.string.group_latency_minimum', this.groupMinLatency(groupId)))
+                  .fontSize(11)
+                  .fontColor(this.latencyColorOfMs(this.groupMinLatency(groupId)))
+              }
+            }
+            .alignItems(VerticalAlign.Center)
+            .height(32)
+            .padding({ left: 14, right: 14 })
+            .borderRadius(18)
+            .backgroundColor(this.selectedGroupId === groupId
+              ? $r('app.color.surface_selected')
+              : $r('app.color.surface'))
+            /* 按下发光 + 常挂受光(周围被点亮时它也会亮),无 border ⇒ 光效不被覆盖 */
+            .visualEffect(pressLightEffect(this.litKey === `tab:${groupId}`, false))
+            .onTouch((event: TouchEvent) => {
+              if (event.type === TouchType.Down) {
+                this.litKey = `tab:${groupId}`;
+              } else if (event.type === TouchType.Up) {
+                this.litKey = '';
+                this.selectedGroupId = groupId;
+              } else if (event.type === TouchType.Cancel) {
+                this.litKey = '';
+              }
+            })
+            .bindContextMenu(this.groupContextMenu(groupId), ResponseType.LongPress, {
+          backgroundBlurStyle: BlurStyle.COMPONENT_THICK,
+          backgroundBlurStyleOptions: {
+            colorMode: ThemeColorMode.SYSTEM,
+            adaptiveColor: AdaptiveColor.AVERAGE
+          }
+        })
+          }, (groupId: string) => groupId)
+        }
+        .padding({ left: UiSpec.PAGE_PADDING - 10, right: UiSpec.PAGE_PADDING - 10, top: 0, bottom: 0 })
+      }
+      .scrollable(ScrollDirection.Horizontal)
+      .scrollBar(BarState.Off)
+      .width('100%')
+      .align(Alignment.Start)
+    }
   }
 
   // ---------------------------------------------------------------- 底部 StatsBar + FAB(对齐安卓)
 
   @Builder
   private statsBar() {
-    // 对齐安卓 StatsBar:状态行 / 上下行速率+累计流量行
-    Column({ space: 2 }) {
+    Row({ space: 12 }) {
+      Text(`↑ ${formatSpeed(this.upSpeed)}`)
+        .fontSize(12).fontColor($r('app.color.text_2'))
+        .fontFamily('monospace')
+      Text(`↓ ${formatSpeed(this.downSpeed)}`)
+        .fontSize(12).fontColor($r('app.color.text_2'))
+        .fontFamily('monospace')
       Row({ space: 6 }) {
         Circle()
           .width(7).height(7)
@@ -1945,24 +1862,21 @@ struct Index {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
-      .width('100%')
-      Row({ space: 12 }) {
-        Text(`↑ ${formatSpeed(this.upSpeed)}`)
-          .fontSize(12).fontColor($r('app.color.text_2'))
-          .fontFamily('monospace')
-        Text(`↓ ${formatSpeed(this.downSpeed)}`)
-          .fontSize(12).fontColor($r('app.color.text_2'))
-          .fontFamily('monospace')
-        Blank()
-        Text(`↑${formatBytes(this.totalUp)} ↓${formatBytes(this.totalDown)}`)
-          .fontSize(11).fontColor($r('app.color.text_3'))
-          .fontFamily('monospace')
-      }
-      .width('100%')
+      .layoutWeight(1)
+      .justifyContent(FlexAlign.End)
     }
     .width('100%')
-    .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 6, bottom: 6 })
+    .height(44)
+    .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
     .border({ width: { top: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
+    .visualEffect(pressLightEffect(this.litKey === 'statsbar', false))
+    .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down) {
+        this.litKey = 'statsbar';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+    })
     .onClick(() => {
       const target = this.selectedProfile();
       if (target !== undefined && this.isRunning) {
@@ -1971,28 +1885,264 @@ struct Index {
     })
   }
 
+  /**
+   * 连接/断开大按钮(对齐安卓 FAB)。
+   * 图标从字符 `■`/`▶` 换成系统符号;宿主换成 `Button`(点光源宿主白名单要 Button/Row/Column…,
+   * 且 `pressShadow` 只在 Button 上生效),`stateEffect: false` 关掉自带按压态免得盖住 HDS 光效。
+   */
   @Builder
-  private fabButton() {
-    Stack() {
-      if (this.statusText === 'connecting' || this.statusText === 'switching') {
-        LoadingProgress()
-          .width(26).height(26).color($r('app.color.surface'))
-      } else {
-        Text(this.isRunning ? '■' : '▶')
-          .fontSize(this.isRunning ? 22 : 20)
-          .fontColor($r('app.color.surface'))
+  private fabButton(edge: TransitionEdge) {
+    Button({ type: ButtonType.Circle, stateEffect: false }) {
+      Stack() {
+        if (this.statusText === 'connecting' || this.statusText === 'switching') {
+          LoadingProgress()
+            .width(26).height(26).color($r('app.color.surface'))
+        } else {
+          SymbolGlyph(this.isRunning ? $r('sys.symbol.pause_fill') : $r('sys.symbol.play_fill'))
+            .fontSize(this.isRunning ? 26 : 24)
+            .fontColor([$r('app.color.surface')])
+        }
       }
     }
     .width(64)
     .height(64)
-    .borderRadius(32)
     .backgroundColor(this.isRunning ? $r('app.color.fab_running') : $r('app.color.fab_bg'))
-    .clip(true)
     .shadow({ radius: 14, color: 'rgba(0,0,0,0.25)', offsetY: 4 })
-    .margin({ right: 20, bottom: 54 })
+    .visualEffect(pressLightEffect(this.litKey === 'fab', true))
+    .scale({ x: this.litKey === 'fab' ? 0.93 : 1.0, y: this.litKey === 'fab' ? 0.93 : 1.0 })
+    /* 换侧时按官方建议的 TransitionEffect.move 从那一侧滑入(与 RzdSchool 的握姿悬浮球同一手法) */
+    .transition(TransitionEffect.move(edge).animation({ duration: 250, curve: Curve.Friction }))
+    .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down) {
+        this.litKey = 'fab';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+    })
     .onClick(() => this.toggleVpn())
   }
 
+  /** 智感握姿:连接键跟着**交互手**走(识别不出时恒在右手侧,与改造前一致) */
+  @Builder
+  private fabLayer() {
+    Row() {
+      if (this.handSide === 'left') {
+        this.fabButton(TransitionEdge.START)
+      } else {
+        this.fabButton(TransitionEdge.END)
+      }
+    }
+    /* 与内容层同一套：matchParent + ignoreLayoutSafeArea ⇒ 盒子铺满整窗（真机已验证生效） */
+    .width(LayoutPolicy.matchParent)
+    .height(LayoutPolicy.matchParent)
+    .justifyContent(this.handSide === 'left' ? FlexAlign.Start : FlexAlign.End)
+    .alignItems(VerticalAlign.Bottom)
+    .padding({ left: 20, right: 20, bottom: this.navBottomVp + 20 })
+    .hitTestBehavior(HitTestMode.Transparent)
+  }
+
+  // ---------------------------------------------------------------- HDS 顶栏(对齐 HDS 设计系统)
+
+  /** 顶栏主标题:跟随当前分区(与抽屉项同一批字符串资源) */
+  private sectionTitle(): ResourceStr {
+    if (this.activeTab === 1) {
+      return $r('app.string.nav_groups');
+    }
+    if (this.activeTab === 2) {
+      return $r('app.string.nav_route');
+    }
+    if (this.activeTab === 3) {
+      return $r('app.string.settings_title');
+    }
+    if (this.activeTab === 4) {
+      return $r('app.string.logs');
+    }
+    if (this.activeTab === 5) {
+      return $r('app.string.nav_tools');
+    }
+    if (this.activeTab === 6) {
+      return $r('app.string.nav_about');
+    }
+    return $r('app.string.nav_config');
+  }
+
+
+  /**
+   * 顶栏内容（自绘）：抽屉入口(☰) + 分区标题 + 搜索/添加/连接/溢出 四个动作；**整行跟交互手镜像**。
+   *
+   * ★ 镜像方向的唯一判据：**☰ 必须待在手的那一侧**——和抽屉滑出侧、FAB 贴边侧保持一致。
+   *   handSide==='left'  → 抽屉从左出(drawerOverlay FlexAlign.Start)、FAB 贴左 ⇒ ☰ 也在左；
+   *   handSide==='right' → 全部镜像到右边。
+   *   (2.0.19 真机:这里跟抽屉反了 —— 抽屉在左、☰ 却在右，用户指出"左右手搞反了"。)
+   */
+  @Builder
+  private titleStackBuilder() {
+    if (this.handSide === 'left') {
+      /* 左手：☰ 贴左拇指，标题左对齐，动作按钮挪到右端 */
+      Row({ space: 4 }) {
+        this.titleDrawerButton()
+        Text(this.sectionTitle())
+          .fontSize(21)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_1'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
+        this.titleActionCluster()
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+      .transition(TransitionEffect.move(TransitionEdge.START).animation({ duration: 220, curve: Curve.Friction }))
+    } else {
+      /* 右手：动作按钮贴右拇指，标题右对齐，☰ 挪到左端 */
+      Row({ space: 4 }) {
+        this.titleActionCluster()
+        Text(this.sectionTitle())
+          .fontSize(21)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_1'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
+          .textAlign(TextAlign.End)
+        this.titleDrawerButton()
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+      .transition(TransitionEffect.move(TransitionEdge.END).animation({ duration: 220, curve: Curve.Friction }))
+    }
+  }
+
+  /** 抽屉入口（三条横线）；⚠️ 触发走 onTouch(Up)：stackBuilder 里 Button.onClick 不回调 */
+  @Builder
+  private titleDrawerButton() {
+    Button({ type: ButtonType.Normal, stateEffect: false }) {
+      SymbolGlyph($r('sys.symbol.line_3_horizontal'))
+        .fontSize(22)
+        .fontColor([$r('app.color.text_1')])
+    }
+    .width(44)
+    .height(44)
+    .borderRadius(12)
+    .backgroundColor(Color.Transparent)
+    .id('nbTitleProbe')
+    .visualEffect(pressLightEffect(this.litKey === 'tb:drawer', true))
+    .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down) {
+        this.litKey = 'tb:drawer';
+      } else if (event.type === TouchType.Up) {
+        this.litKey = '';
+        this.openDrawer();
+      } else if (event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+    })
+  }
+
+  /** 顶栏动作按钮组：搜索 / 添加 / 连接 / 溢出菜单 */
+  @Builder
+  private titleActionCluster() {
+    Row({ space: 4 }) {
+      GlowIconButton({
+        symbol: $r('sys.symbol.magnifyingglass'),
+        iconSize: 20,
+        iconColor: $r('app.color.text_1'),
+        onTap: () => {
+          this.searchVisible = true;
+        }
+      })
+      GlowIconButton({
+        symbol: $r('sys.symbol.plus'),
+        iconSize: 22,
+        iconColor: $r('app.color.text_1'),
+        onTap: () => {
+          this.addEntryDialog.open();
+        }
+      })
+      GlowIconButton({
+        symbol: $r('sys.symbol.link'),
+        iconSize: 20,
+        iconColor: $r('app.color.text_1'),
+        onTap: () => {
+          router.pushUrl({ url: 'pages/ConnectionsPage' });
+        }
+      })
+      Button({ type: ButtonType.Normal, stateEffect: false }) {
+        SymbolGlyph($r('sys.symbol.more'))
+          .fontSize(20)
+          .fontColor([$r('app.color.text_1')])
+      }
+      .id(OVERFLOW_MENU_ANCHOR)
+      .width(44)
+      .height(44)
+      .borderRadius(12)
+      .backgroundColor(Color.Transparent)
+      .visualEffect(pressLightEffect(this.litKey === 'tb:more', true))
+      .onTouch((event: TouchEvent) => {
+        if (event.type === TouchType.Down) {
+          this.litKey = 'tb:more';
+        } else if (event.type === TouchType.Up) {
+          this.litKey = '';
+          this.openOverflowMenu();
+        } else if (event.type === TouchType.Cancel) {
+          this.litKey = '';
+        }
+      })
+    }
+    .alignItems(VerticalAlign.Center)
+  }
+
+  /** 溢出动作（顶栏 ⋮ 的沉浸光感菜单；与改造前同一批，一个不少；排序项带当前选中勾） */
+  private overflowActions(): Array<MenuItemData> {
+    const items: Array<MenuItemData> = [];
+    const add = (label: ResourceStr, value: string, selected: boolean): void => {
+      const it: MenuItemData = new MenuItemData();
+      it.label = label;
+      it.value = value;
+      it.selected = selected;
+      items.push(it);
+    };
+    add($r('app.string.update_current_subscription'), 'update_sub', false);
+    add($r('app.string.clear_traffic_statistics'), 'clear_traffic', false);
+    add($r('app.string.test_all_nodes'), 'test_all', false);
+    add($r('app.string.clear_test_results'), 'clear_results', false);
+    add($r('app.string.dedup_action'), 'dedup', false);
+    add($r('app.string.delete_unavailable'), 'delete_unavailable', false);
+    add($r('app.string.sort_manual'), 'sort_manual', this.settings.profileSortMode === 'manual');
+    add($r('app.string.sort_latency'), 'sort_latency', this.settings.profileSortMode === 'latency');
+    add($r('app.string.sort_name'), 'sort_name', this.settings.profileSortMode === 'name');
+    return items;
+  }
+
+  /** 打开顶栏 ⋮ 的沉浸光感菜单（RzdSchool HdsMenu：系统菜单窗口 + 自绘面板 + 模糊背板 + 自适应取色） */
+  private openOverflowMenu(): void {
+    const items: Array<MenuItemData> = this.overflowActions();
+    this.overflowMenu.open(this.getUIContext(), OVERFLOW_MENU_ANCHOR, items, (index: number): void => {
+      if (index < 0 || index >= items.length) {
+        return;
+      }
+      const value: string = items[index].value;
+      if (value === 'update_sub') {
+        this.updateCurrentSubscription();
+      } else if (value === 'clear_traffic') {
+        this.clearTrafficStatistics();
+      } else if (value === 'test_all') {
+        this.runSpeedTest();
+      } else if (value === 'clear_results') {
+        this.clearTestResults('__all__');
+      } else if (value === 'dedup') {
+        this.dedupGroup('__all__');
+      } else if (value === 'delete_unavailable') {
+        this.deleteUnavailable('__all__');
+      } else if (value === 'sort_manual') {
+        this.setSortMode('manual');
+      } else if (value === 'sort_latency') {
+        this.setSortMode('latency');
+      } else if (value === 'sort_name') {
+        this.setSortMode('name');
+      }
+    });
+  }
   // ---------------------------------------------------------------- 内容切换 + 骨架
 
   @Builder
@@ -2005,16 +2155,13 @@ struct Index {
           this.refresh();
         },
         onOpenDrawer: () => {
-          this.drawerOpen = true;
+          this.openDrawer();
         }
       })
     } else if (this.activeTab === 2) {
       RouteRulesPanel({
-        onSettingsChanged: (settings: AppSettings) => {
-          this.settings = settings;
-        },
         onOpenDrawer: () => {
-          this.drawerOpen = true;
+          this.openDrawer();
         }
       })
     } else if (this.activeTab === 3) {
@@ -2023,54 +2170,170 @@ struct Index {
           this.settings = settings;
         },
         onOpenDrawer: () => {
-          this.drawerOpen = true;
+          this.openDrawer();
         }
       })
     } else if (this.activeTab === 4) {
       LogPanel({
         onOpenDrawer: () => {
-          this.drawerOpen = true;
+          this.openDrawer();
         }
       })
     } else if (this.activeTab === 5) {
       ToolsPage({
         onOpenDrawer: () => {
-          this.drawerOpen = true;
+          this.openDrawer();
         }
       })
     } else {
       AboutPage({
         onOpenDrawer: () => {
-          this.drawerOpen = true;
+          this.openDrawer();
         }
       })
     }
   }
 
-  build() {
-    Stack({ alignContent: Alignment.BottomEnd }) {
-      Column() {
-        Column() {
-          this.activeContent()
-        }        .width('100%')
-        .layoutWeight(1)
-        if (this.isRunning && (this.activeTab === 0 || this.settings.showBottomBar)) {
-          this.statsBar()
+  @Builder
+  private titleBottomBuilder() {
+    Column({ space: 2 }) {
+      this.modeSwitchRow()
+      this.groupTabBar()
+    }
+    .width('100%')
+    .id('nbBarBottomProbe')
+  }
+
+  /**
+   * HDS 标题栏配置 —— **那层"渐变模糊"是 HDS 自带的，不要自己画**（用户 2026-10-17 明确要求）：
+   *  · `blurStrategy: ENABLE` + `scrollEffectOpts: IMMERSIVE_GRADIENT_BLUR`
+   *    ⇒ 官方"滚动渐变模糊背板"：滚动时顶栏从透明渐变到模糊；
+   *  · `systemMaterialEffect: IMMERSIVE + EXQUISITE` ⇒ 沉浸光感材质（与 RzdSchool 设置页同档）；
+   *  · `avoidLayoutSafeArea: **false**` ⇒ HDS 把**背景材质**铺进状态栏，而**标题内容**仍落在状态栏下方。
+   *    （RzdMusic RecommendPage 的实测注释：设成 true 会把标题再退一个状态栏 ⇒ 38..94 → 76..132vp）
+   *  · 内容自绘：标题行 `content.stackBuilder`，模式行 + 分组条 `content.bottomBuilder`。
+   */
+  private shellTitleBar(): HdsNavigationTitleBarOptions {
+    return {
+      /* ★ true：整条标题栏（材质 + 内容）**再退一个状态栏高度** ⇒ 落在时钟下方。
+         RzdMusic 的注释里 false 时标题在 38..94vp，是因为它的外壳根节点本来就落在安全区里；
+         本工程根 Stack 挂了 ignoreLayoutSafeArea 铺满整窗 ⇒ false 会把标题排到 y=0、与状态栏文字重叠。 */
+      avoidLayoutSafeArea: true,
+      style: {
+        blurStrategy: BlurStrategy.ENABLE,
+        scrollEffectOpts: {
+          scrollEffectType: ScrollEffectType.IMMERSIVE_GRADIENT_BLUR
+        },
+        originalStyle: {
+          backgroundStyle: { backgroundColor: Color.Transparent },
+          contentStyle: {
+            titleStyle: { mainTitleColor: $r('app.color.text_1') },
+            menuStyle: { iconColor: $r('app.color.text_1'), textColor: $r('app.color.text_1') }
+          }
+        },
+        scrollEffectStyle: {
+          contentStyle: {
+            titleStyle: { mainTitleColor: $r('app.color.text_1') },
+            menuStyle: { iconColor: $r('app.color.text_1'), textColor: $r('app.color.text_1') }
+          }
+        },
+        systemMaterialEffect: {
+          materialType: hdsMaterial.MaterialType.IMMERSIVE,
+          materialLevel: hdsMaterial.MaterialLevel.EXQUISITE
+        }
+      },
+      content: {
+        /* ⚠️ 这里不要再自己补 padding.top：HDS 给标题行的是**固定高度的槽位**，
+           自己加 44vp 会让内容溢出槽位、与 bottomBuilder 的模式行叠在一起（2.0.27 真机"上面错位"就是这个）。
+           让位交给 HDS：avoidLayoutSafeArea:false 的语义 = 材质伸进状态栏、内容留在状态栏下方。 */
+        stackBuilder: (): void => {
+          this.titleStackBuilder();
+        },
+        bottomBuilder: {
+          builder: (): void => {
+            this.titleBottomBuilder();
+          },
+          height: 66
         }
       }
-      .width('100%')
+    };
+  }
+
+  /** 列表顶部占位 = HDS 标题栏底边（窗口坐标）+ 4。纯几何，不打日志。 */
+  private calibrateTopInset(): void {
+    try {
+      const ui = this.getUIContext();
+      const utils = ui.getComponentUtils();
+      let bar = utils.getRectangleById('nbBarBottomProbe');
+      let bottomPx = bar.windowOffset.y + bar.size.height;
+      if (bottomPx <= 0) {
+        bar = utils.getRectangleById('nbTitleProbe');
+        bottomPx = bar.windowOffset.y + bar.size.height;
+      }
+      const inset = Math.round(ui.px2vp(bottomPx) + 4);
+      if (inset > 0 && inset < 400 && Math.abs(inset - this.contentTopInset) >= 2) {
+        this.contentTopInset = inset;
+      }
+    } catch (e) {
+    }
+  }
+
+  build() {
+    /* 外壳：**HdsNavigation 开着官方标题栏**（它自带渐变模糊 + 沉浸光感材质），
+       内容走 matchParent + ignoreLayoutSafeArea 铺满整窗 ⇒ 列表能从标题栏后面滚过去；
+       FAB 与抽屉是根 Stack 的兄弟（在 Navigation 之后）⇒ 抽屉能盖住标题栏。
+       列表顶部垫一个"标题栏等高"的占位项（contentTopInset 由 nbBarBottomProbe 实测量出）。 */
+    Stack({ alignContent: Alignment.TopStart }) {
+      HdsNavigation(this.pathStack) {
+        Column() {
+          Column() {
+            this.activeContent()
+          }
+          .width('100%')
+          .layoutWeight(1)
+          .id('nbBodyProbe')
+          .onAreaChange((_oldArea: Area, _newArea: Area) => {
+            this.calibrateTopInset();
+          })
+          /* 配置页列表自己用【占位项】让位(见 configFragment) ⇒ 容器不再留白;
+             其它分区页还没接占位项，用 contentTopInset 让位 */
+          .padding({ top: this.activeTab === 0 ? 0 : this.contentTopInset })
+          if (this.isRunning && (this.activeTab === 0 || this.settings.showBottomBar)) {
+            this.statsBar()
+          }
+        }
+        .width(LayoutPolicy.matchParent)
+        .height(LayoutPolicy.matchParent)
+        .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
+        .backgroundColor($r('app.color.bg_page'))
+        .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.CUTOUT], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+      }
+      .titleMode(HdsNavigationTitleMode.MINI)
+      .mode(NavigationMode.Stack)
+      .titleBar(this.shellTitleBar())
+      /* 顶栏渐变模糊要跟着列表滚 ⇒ 必须把列表的 Scroller 交给它 */
+      .bindToScrollable([this.configScroller])
+      /* 左上角 HDS 自带的返回箭头没用（本页是根页面，栈里没有上一级）⇒ 关掉 */
+      .hideBackButton(true)
+      .hideToolBar(true)
+      /* ⚠️ 这里**不再**挂 ignoreLayoutSafeArea：挂上整条标题栏会顶到 y=0，标题与状态栏文字重叠。
+         现在 Navigation 的盒子落在安全区里 ⇒ 标题落在时钟下方；内容层自己有
+         matchParent + ignoreLayoutSafeArea ⇒ 列表仍铺满整窗、能从标题栏后面滚过去。 */
       .height('100%')
       .backgroundColor($r('app.color.bg_page'))
 
       if (this.activeTab === 0 || this.settings.showBottomBar) {
-        this.fabButton()
+        this.fabLayer()
       }
 
+      /* 抽屉(最后一个兄弟 ⇒ 盖住标题栏与状态栏) */
       this.drawerOverlay()
     }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.CUTOUT], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
   }
 }
 
@@ -2329,3 +2592,4 @@ struct MoveToGroupDialog {
     .width('100%')
   }
 }
+

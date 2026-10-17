@@ -5,7 +5,7 @@ import picker from '@ohos.file.picker';
 import fs from '@ohos.file.fs';
 import util from '@ohos.util';
 import { UiSpec } from '../common/UiSpec';
-import { DrawerButton } from '../common/components/DrawerButton';
+import { pressLightEffect } from '../common/Effects';
 import { initStore, resetAllData, LogStore } from '../model/Store';
 import { exportBackup, importBackup, BackupRestoreResult } from '../core/Backup';
 import { VpnService } from '../core/VpnService';
@@ -23,6 +23,8 @@ export struct ToolsPage {
   @State stunResult: StunResult | null = null;
   @State resetting: boolean = false;
   @State backupFileBusy: boolean = false;
+  /** 当前被按下的元素 key(测速 / 备份恢复四颗 / 恢复出厂):"按下才亮"靠它逐颗判断 */
+  @State litKey: string = '';
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   onOpenDrawer: () => void = () => {};
 
@@ -247,13 +249,7 @@ export struct ToolsPage {
 
   build() {
     Column() {
-      Row() {
-        DrawerButton({ onOpen: () => this.onOpenDrawer() })
-        Text($r('app.string.nav_tools'))
-          .fontSize(16).fontWeight(800).fontColor($r('app.color.text_1')).layoutWeight(1)
-      }
-      .width('100%')
-      .padding({ left: UiSpec.PAGE_PADDING - 10, right: UiSpec.PAGE_PADDING, top: 26, bottom: 8 })
+      /* 标题与抽屉入口都在壳层的 HDS 顶栏里(Index.shellTitleBar),这里不再自带页头 */
 
       Scroll() {
         Column({ space: 14 }) {
@@ -272,6 +268,15 @@ export struct ToolsPage {
                 .enabled(!this.stunTesting)
                 .backgroundColor(this.stunTesting ? $r('app.color.control_disabled') : $r('app.color.primary'))
                 .fontColor($r('app.color.surface'))
+                /* 卡片在 Scroll 里(会跟滚动跑位)⇒ 只"按下才亮",不挂常亮光源、不加 scale */
+                .visualEffect(pressLightEffect(this.litKey === 'tools:stun', true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+        this.litKey = 'tools:stun';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+                })
                 .onClick(() => this.runStun())
             }.width('100%')
 
@@ -318,6 +323,14 @@ export struct ToolsPage {
                 .enabled(!this.backupFileBusy)
                 .backgroundColor($r('app.color.primary'))
                 .fontColor($r('app.color.surface'))
+                .visualEffect(pressLightEffect(this.litKey === 'tools:backup:export', true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+        this.litKey = 'tools:backup:export';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+                })
                 .onClick(() => this.exportBackupFile())
               Button($r('app.string.restore_from_file'))
                 .layoutWeight(1)
@@ -325,6 +338,14 @@ export struct ToolsPage {
                 .enabled(!this.backupFileBusy)
                 .backgroundColor($r('app.color.surface'))
                 .fontColor($r('app.color.text_primary'))
+                .visualEffect(pressLightEffect(this.litKey === 'tools:backup:import', true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+        this.litKey = 'tools:backup:import';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+                })
                 .onClick(() => this.importBackupFile())
             }.width('100%')
             Row({ space: 8 }) {
@@ -333,6 +354,14 @@ export struct ToolsPage {
                 .height(UiSpec.BTN_HEIGHT)
                 .backgroundColor($r('app.color.surface'))
                 .fontColor($r('app.color.text_primary'))
+                .visualEffect(pressLightEffect(this.litKey === 'tools:clipboard:export', true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+        this.litKey = 'tools:clipboard:export';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+                })
                 .onClick(async () => {
                   try {
                     const data = await exportBackup(this.context);
@@ -348,6 +377,14 @@ export struct ToolsPage {
                 .height(UiSpec.BTN_HEIGHT)
                 .backgroundColor($r('app.color.surface'))
                 .fontColor($r('app.color.text_primary'))
+                .visualEffect(pressLightEffect(this.litKey === 'tools:clipboard:import', true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+        this.litKey = 'tools:clipboard:import';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+                })
                 .onClick(async () => {
                   try {
                     const text = await getClipboardText();
@@ -379,6 +416,14 @@ export struct ToolsPage {
               .height(UiSpec.BTN_HEIGHT)
               .backgroundColor($r('app.color.error'))
               .fontColor($r('app.color.surface'))
+              .visualEffect(pressLightEffect(this.litKey === 'tools:reset', true))
+              .onTouch((event: TouchEvent) => {
+                if (event.type === TouchType.Down) {
+        this.litKey = 'tools:reset';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+              })
               .onClick(() => this.requestReset())
           }
           .alignItems(HorizontalAlign.Start)
@@ -388,7 +433,7 @@ export struct ToolsPage {
           .backgroundColor($r('app.color.surface'))
         }
         .width('100%')
-        .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, bottom: 20 })
+        .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 8, bottom: 20 })
       }
         .edgeEffect(EdgeEffect.Spring)
       .layoutWeight(1)
