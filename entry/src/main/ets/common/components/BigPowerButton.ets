@@ -1,5 +1,12 @@
 import { UiSpec } from '../UiSpec';
+import { pressLightEffect } from '../Effects';
 
+/**
+ * 大号电源键(带外圈圆环)。
+ * ⚠️ 本组件目前**零引用**(Index 用的是自己的 FAB)——保留但一并对齐本轮口径:
+ * 图标从字符 `⏻` 换成系统符号 `sys.symbol.power`(名字已在 SDK
+ * `ets-loader\sysResource.js` 的 `sys.symbol` 表里核实),并挂 HDS 点按光效。
+ */
 @Component
 export struct BigPowerButton {
   @Prop running: boolean = false;
@@ -24,38 +31,23 @@ export struct BigPowerButton {
         .fill(Color.Transparent)
         .stroke(this.running ? $r('app.color.success') : $r('app.color.mono'))
         .strokeWidth(UiSpec.POWER_RING_WIDTH)
-      Button({ type: ButtonType.Circle }) {
+      Button({ type: ButtonType.Circle, stateEffect: false }) {
         if (this.connecting) {
           LoadingProgress()
             .width(30)
             .height(30)
             .color($r('app.color.power_icon'))
         } else {
-          // 自绘电源符号:270° 圆弧(顶部留缺口)+ 居中圆角竖杆,替代 Unicode 字形 ⏻
-          // (字形在不同字体/字号下基线不稳、边缘发虚;矢量绘制任意尺寸下边缘锐利)
-          Stack({ alignContent: Alignment.Center }) {
-            Path()
-              .commands('M 14.5 18.5 A 12 12 0 1 1 29.5 18.5')
-              .width(44)
-              .height(44)
-              .fillOpacity(0)
-              .stroke($r('app.color.power_icon'))
-              .strokeWidth(4)
-              .strokeLineCap(LineCapStyle.Round)
-              .antialias(true)
-            Rect({ width: 4, height: 20 })
-              .radius(2)
-              .fill($r('app.color.power_icon'))
-              .translate({ y: -3 })
-          }
-          .width(44)
-          .height(44)
+          SymbolGlyph($r('sys.symbol.power'))
+            .fontSize(UiSpec.POWER_ICON_SIZE)
+            .fontColor([$r('app.color.power_icon')])
         }
       }
       .width(UiSpec.POWER_CORE_SIZE)
       .height(UiSpec.POWER_CORE_SIZE)
       .backgroundColor($r('app.color.mono'))
       .opacity(this.connecting ? 0.85 : 1)
+      .visualEffect(pressLightEffect(this.pressed, true))
       .onClick(() => this.onToggle())
     }
     .width(UiSpec.POWER_LIVE_RING_SIZE)

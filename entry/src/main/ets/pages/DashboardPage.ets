@@ -2,6 +2,7 @@ import web_webview from '@ohos.web.webview';
 import common from '@ohos.app.ability.common';
 import { UiSpec } from '../common/UiSpec';
 import { DrawerButton } from '../common/components/DrawerButton';
+import { illuminatedEffect } from '../common/Effects';
 import { initStore, loadSettings, LogStore } from '../model/Store';
 
 /**
@@ -39,6 +40,9 @@ export struct DashboardPage {
       }
       .width('100%')
       .padding({ left: UiSpec.PAGE_PADDING - 10, right: UiSpec.PAGE_PADDING, top: 20, bottom: 4 })
+      /* 本页除了共用的 DrawerButton 没有别的可点宿主(内嵌 Web 面板 + 两行说明文字),
+         所以这里只给页头挂"受光":DrawerButton 按下时的点光源会把整条页头一起照亮。 */
+      .visualEffect(illuminatedEffect())
 
       if (!this.clashEnabled) {
         Column({ space: 10 }) {

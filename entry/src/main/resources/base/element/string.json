@@ -9,10 +9,6 @@
       "value": "用于从剪贴板读取并导入订阅链接或节点配置"
     },
     {
-      "name": "permission_get_bundle_info_privileged_reason",
-      "value": "用于分应用代理模式下枚举已安装应用列表以供选择"
-    },
-    {
       "name": "brand_name",
       "value": "NEKOBOX"
     },
@@ -345,26 +341,6 @@
       "value": "暂无自定义路由规则"
     },
     {
-      "name": "route_builtin_geo_ready",
-      "value": "内置 cn 直连分流已启用"
-    },
-    {
-      "name": "route_builtin_geo_missing",
-      "value": "Geo 数据未下载,cn 直连分流未启用"
-    },
-    {
-      "name": "route_builtin_geo_desc",
-      "value": "规则模式连接时自动注入 geosite:cn(中国域名)与 geoip:cn(中国 IP)直连规则,国内流量不绕代理;此规则由内核执行,不在下方自定义列表中显示"
-    },
-    {
-      "name": "route_settings_title",
-      "value": "路由设置"
-    },
-    {
-      "name": "route_settings_hint",
-      "value": "分流全局参数与 geo 资产管理(自设置页合并而来);改动即存,重连 VPN 后生效"
-    },
-    {
       "name": "route_rule_remark",
       "value": "规则备注"
     },
@@ -435,22 +411,6 @@
     {
       "name": "route_rule_packages",
       "value": "应用包名"
-    },
-    {
-      "name": "route_rule_app_name",
-      "value": "应用名"
-    },
-    {
-      "name": "route_rule_app_name_hint",
-      "value": "如 微信(仅备注用)"
-    },
-    {
-      "name": "route_rule_packages_effective",
-      "value": "生效"
-    },
-    {
-      "name": "route_rule_packages_note",
-      "value": "勾选「生效」后该规则才按包名匹配进程;多个包名用英文逗号分隔"
     },
     {
       "name": "route_rule_config",
@@ -669,54 +629,6 @@
       "value": "测速完成，结果已保存"
     },
     {
-      "name": "speed_test_degraded",
-      "value": "%1$s；已回退为 TCPing（仅握手延迟，不代表真连接可用）"
-    },
-    {
-      "name": "speed_test_bind_fallback",
-      "value": "绑定物理网卡后全部失败，已改为直连测速重测"
-    },
-    {
-      "name": "latency_stale",
-      "value": "已过期"
-    },
-    {
-      "name": "settings_test_timeout",
-      "value": "测速超时 (毫秒)"
-    },
-    {
-      "name": "settings_test_retries",
-      "value": "失败重试次数"
-    },
-    {
-      "name": "settings_test_samples",
-      "value": "每节点取样次数 (取平均)"
-    },
-    {
-      "name": "settings_test_expect_status",
-      "value": "响应判定"
-    },
-    {
-      "name": "test_expect_2xx",
-      "value": "仅 2xx 算通 (推荐)"
-    },
-    {
-      "name": "test_expect_any",
-      "value": "任意响应码算通"
-    },
-    {
-      "name": "settings_test_bypass_tunnel",
-      "value": "测速绕过当前隧道"
-    },
-    {
-      "name": "settings_test_bypass_tunnel_hint",
-      "value": "开启后测速流量绑定物理网卡直出，测的是节点本身；关闭则测的是「节点套当前节点」，连接中测速会整体偏高"
-    },
-    {
-      "name": "settings_latency_stale",
-      "value": "延迟结果有效期 (小时)"
-    },
-    {
       "name": "timeout",
       "value": "超时"
     },
@@ -803,14 +715,6 @@
     {
       "name": "use_selector_sum",
       "value": "组内生成内核 selector 出站,本组全部节点作为候选(对齐安卓 groupIsSelector)"
-    },
-    {
-      "name": "use_auto_select",
-      "value": "启用自动选最快"
-    },
-    {
-      "name": "use_auto_select_sum",
-      "value": "组内生成内核 urltest 出站,周期做真连接探测并自动留在延迟最低的节点(等价 Clash 的 url-test 组);与「启用 selector」互斥"
     },
     {
       "name": "front_proxy",
@@ -1282,7 +1186,7 @@
     },
     {
       "name": "settings_geo_import_hint",
-      "value": "从文件导入 geoip.srs / geosite.srs(覆盖内置 cn 库)"
+      "value": "从文件导入 geoip.db / geosite.db(覆盖内置 cn 库)"
     },
     {
       "name": "settings_geo_site",
@@ -1455,14 +1359,6 @@
     {
       "name": "sub_update_result",
       "value": "订阅更新完成: 新增 %1$d, 移除 %2$d"
-    },
-    {
-      "name": "sub_update_skipped",
-      "value": "有 %1$d 个节点内核不支持而跳过"
-    },
-    {
-      "name": "sub_update_not_modified",
-      "value": "订阅内容未变更"
     },
     {
       "name": "update_failed_reason",
@@ -1857,6 +1753,10 @@
       "value": "工具"
     },
     {
+      "name": "nav_docs",
+      "value": "使用文档"
+    },
+    {
       "name": "nav_about",
       "value": "关于"
     },
@@ -1870,7 +1770,7 @@
     },
     {
       "name": "test_all_nodes",
-      "value": "测试节点"
+      "value": "测速全部节点"
     },
     {
       "name": "update_current_subscription",
@@ -2003,70 +1903,6 @@
     {
       "name": "groups_empty",
       "value": "暂无订阅与分组"
-    },
-    {
-      "name": "group_type_label",
-      "value": "类型"
-    },
-    {
-      "name": "group_type_manual",
-      "value": "手动分组"
-    },
-    {
-      "name": "group_type_subscription",
-      "value": "订阅分组"
-    },
-    {
-      "name": "group_sub_link_hint",
-      "value": "订阅链接(http/https)"
-    },
-    {
-      "name": "group_sub_url_required",
-      "value": "请输入有效的订阅链接"
-    },
-    {
-      "name": "group_sub_fetch_now",
-      "value": "创建后立即拉取节点"
-    },
-    {
-      "name": "group_created",
-      "value": "分组已创建"
-    },
-    {
-      "name": "group_subscription_created",
-      "value": "订阅分组已创建"
-    },
-    {
-      "name": "group_status_empty",
-      "value": "空"
-    },
-    {
-      "name": "group_rename_label",
-      "value": "分组名称"
-    },
-    {
-      "name": "group_name_exists",
-      "value": "同名分组已存在"
-    },
-    {
-      "name": "group_manual_note",
-      "value": "手动分组:节点通过「移动到分组」加入"
-    },
-    {
-      "name": "home_sub_empty",
-      "value": "该订阅暂无节点,可在分组页更新订阅"
-    },
-    {
-      "name": "home_manual_view",
-      "value": "手动"
-    },
-    {
-      "name": "group_sub_note",
-      "value": "每个订阅就是一个分组;在首页底部选择订阅即可查看它下面的分组"
-    },
-    {
-      "name": "group_sub_group_count",
-      "value": "%d 个分组"
     },
     {
       "name": "share_sub_link",
@@ -2555,6 +2391,10 @@
     {
       "name": "ipv6_mode_only",
       "value": "仅"
+    },
+    {
+      "name": "more_actions",
+      "value": "更多操作"
     }
   ]
 }

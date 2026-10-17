@@ -4,6 +4,7 @@ import promptAction from '@ohos.promptAction';
 import image from '@ohos.multimedia.image';
 import { generateBarcode, scanCore } from '@kit.ScanKit';
 import { UiSpec } from '../common/UiSpec';
+import { pressLightEffect } from '../common/Effects';
 import { initStore, loadProfiles, saveProfiles, loadGroups, ensureGroupByName, LogStore } from '../model/Store';
 import { ProfileGroup } from '../model/Profile';
 import { SubInfo, listSubs, saveSubs, removeSub, updateSubscription, markSubSuccess, markSubFailure, saveSubSettings } from '../core/Subscriptions';
@@ -25,6 +26,8 @@ struct SubDetailPage {
   @State groupDraft: string = '';
   @State intervalDraft: string = '';
   @State allGroups: Array<ProfileGroup> = [];
+  /** HDS 点按光效:记录"当前被按下的那一个"的 key,松手/取消即清空(按下那一刻才亮) */
+  @State litKey: string = '';
   private groupDialog: CustomDialogController = new CustomDialogController({
     builder: SubGroupDialog({
       draft: $groupDraft,
@@ -162,14 +165,7 @@ struct SubDetailPage {
     try {
       const result = await updateSubscription(this.sub.url);
       await markSubSuccess(this.sub.url);
-      if (result.notModified) {
-        promptAction.showToast({ message: $r('app.string.sub_update_not_modified') });
-      } else {
-        promptAction.showToast({ message: $r('app.string.sub_update_result', result.added, result.removed) });
-      }
-      if (result.skipped > 0) {
-        LogStore.addLog(`[sub] 跳过 ${result.skipped} 个节点(内核不支持): ${result.skippedNames.join(', ')}`);
-      }
+      promptAction.showToast({ message: $r('app.string.sub_update_result', result.added, result.removed) });
     } catch (e) {
       await markSubFailure(this.sub.url);
       const message = subErrorText(e as Object);
@@ -201,7 +197,19 @@ struct SubDetailPage {
     Column() {
     Column() {
       Row() {
-        Text('←').fontSize(22).padding(8).onClick(() => router.back())
+        /* 返回:字符图标 → 系统符号(chevron_left);宿主从 Text 换成 Row
+           —— 官方点光源宿主白名单里没有 Text,字符图标配了也不会亮(见 common/Effects.ets) */
+        Row() {
+          SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(22).fontColor([$r('app.color.text_1')])
+        }
+        .width(44).height(44).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
+        .visualEffect(pressLightEffect(this.litKey === 'back', false))
+        .onTouch((event: TouchEvent) => { if (event.type === TouchType.Down) {
+        this.litKey = 'back';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      } })
+        .onClick(() => { router.back(); })
         Text($r('app.string.subscription_detail_title')).fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
       }.width('100%').padding(12)
 
@@ -230,6 +238,12 @@ struct SubDetailPage {
           Button($r('app.string.reload'))
             .height(36)
             .backgroundColor($r('app.color.primary'))
+            .visualEffect(pressLightEffect(this.litKey === 'reload', true))
+            .onTouch((event: TouchEvent) => { if (event.type === TouchType.Down) {
+        this.litKey = 'reload';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      } })
             .onClick(() => this.load())
         }
         .layoutWeight(1)
@@ -247,7 +261,13 @@ struct SubDetailPage {
           Button($r('app.string.back'))
             .height(36)
             .backgroundColor($r('app.color.primary'))
-            .onClick(() => router.back())
+            .visualEffect(pressLightEffect(this.litKey === 'notfound:back', true))
+            .onTouch((event: TouchEvent) => { if (event.type === TouchType.Down) {
+        this.litKey = 'notfound:back';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      } })
+            .onClick(() => { router.back(); })
         }
         .layoutWeight(1)
         .width('100%')
@@ -281,18 +301,37 @@ struct SubDetailPage {
             .borderRadius(UiSpec.CARD_RADIUS)
             .backgroundColor($r('app.color.surface'))
 
-            // 操作按钮:主 / 次 / 危险
+            /* 操作按钮:主 / 次 / 危险 —— 按钮在 Scroll 内容里,只给点按光效,不加 .scale */
             Button(this.updating ? $r('app.string.updating') : $r('app.string.update_now'))
               .width('100%').height(UiSpec.BTN_HEIGHT)
               .backgroundColor($r('app.color.primary')).fontColor($r('app.color.surface'))
-              .enabled(!this.updating).onClick(() => this.updateNow())
+              .enabled(!this.updating)
+              .visualEffect(pressLightEffect(this.litKey === 'act:update', true))
+              .onTouch((event: TouchEvent) => { if (event.type === TouchType.Down) {
+        this.litKey = 'act:update';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      } })
+              .onClick(() => this.updateNow())
             Button($r('app.string.share_subscription'))
               .width('100%').height(UiSpec.BTN_HEIGHT)
               .backgroundColor($r('app.color.surface')).fontColor($r('app.color.text_primary'))
+              .visualEffect(pressLightEffect(this.litKey === 'act:share', true))
+              .onTouch((event: TouchEvent) => { if (event.type === TouchType.Down) {
+        this.litKey = 'act:share';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      } })
               .onClick(() => this.openSubscriptionShare())
             Button($r('app.string.sub_group_edit'))
               .width('100%').height(UiSpec.BTN_HEIGHT)
               .backgroundColor($r('app.color.surface')).fontColor($r('app.color.text_primary'))
+              .visualEffect(pressLightEffect(this.litKey === 'act:group', true))
+              .onTouch((event: TouchEvent) => { if (event.type === TouchType.Down) {
+        this.litKey = 'act:group';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      } })
               .onClick(() => {
                 this.groupDraft = this.sub.group;
                 this.groupDialog.open();
@@ -300,6 +339,12 @@ struct SubDetailPage {
             Button($r('app.string.delete_subscription_profiles'))
               .width('100%').height(UiSpec.BTN_HEIGHT)
               .backgroundColor($r('app.color.surface')).fontColor($r('app.color.error'))
+              .visualEffect(pressLightEffect(this.litKey === 'act:delete', true))
+              .onTouch((event: TouchEvent) => { if (event.type === TouchType.Down) {
+        this.litKey = 'act:delete';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      } })
               .onClick(() => this.confirmDelete())
 
             // 订阅设置(对齐安卓 group_preferences.xml 的 subscriptionUpdate 分类)
@@ -391,6 +436,8 @@ struct SubDetailPage {
     .width('100%')
     .height('100%')
     .alignItems(HorizontalAlign.Center)
+    /* 窗口为 layout-full-screen(内容要钻进状态栏)⇒ 本页自己让出状态栏高度 */
+    .padding({ top: 44 })
     .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
   }
 }

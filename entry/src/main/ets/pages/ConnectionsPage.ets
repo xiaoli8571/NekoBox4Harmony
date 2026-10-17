@@ -3,11 +3,10 @@ import common from '@ohos.app.ability.common';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
+import { pressLightEffect } from '../common/Effects';
 import { formatBytes, formatSpeed } from '../utils/TrafficStats';
-import { clashApiHeaders, clashApiErrorMessage } from '../utils/ClashAuth';
 import { AppSettings } from '../model/Profile';
 import { initStore, loadSettings } from '../model/Store';
-import { ArrayDataSource } from '../common/components/ArrayDataSource';
 
 interface ConnItem {
   id: string;
@@ -28,15 +27,19 @@ interface ConnectionsResponse {
 async function apiCall(settings: AppSettings, method: string, path: string): Promise<string> {
   const client = http.createHttp();
   try {
+    const headers: Record<string, string> = {};
+    if (settings.clashApiSecret.length > 0) {
+      headers['Authorization'] = `Bearer ${settings.clashApiSecret}`;
+    }
     const resp = await client.request(`http://127.0.0.1:${settings.clashApiPort}${path}`, {
       method: method === 'DELETE' ? http.RequestMethod.DELETE : http.RequestMethod.GET,
-      header: clashApiHeaders(settings.clashApiSecret),
+      header: headers,
       connectTimeout: 1500,
       readTimeout: 1500,
       expectDataType: http.HttpDataType.STRING
     });
     if (resp.responseCode < 200 || resp.responseCode >= 300) {
-      throw new Error(clashApiErrorMessage(resp.responseCode, '连接列表加载失败'));
+      throw new Error(`HTTP ${resp.responseCode}`);
     }
     return `${resp.result}`;
   } finally {
@@ -74,8 +77,7 @@ function parseConnections(raw: string): Array<ConnItem> {
 @Entry
 @Component
 struct ConnectionsPage {
-  /** LazyForEach 数据源:每秒全量刷新只重建可视区节点(cachedCount),不重建整表 */
-  conns: ArrayDataSource<ConnItem> = new ArrayDataSource<ConnItem>();
+  @State conns: Array<ConnItem> = [];
   @State lastError: ResourceStr = '';
   @State loading: boolean = true;
   @State uploadTotal: number = 0;
@@ -83,6 +85,8 @@ struct ConnectionsPage {
   @State uploadSpeed: number = 0;
   @State downloadSpeed: number = 0;
   @State settings: AppSettings = new AppSettings();
+  /** HDS 点按光效:记录"当前被按下的那一个"的 key,松手/取消即清空(按下那一刻才亮) */
+  @State litKey: string = '';
   @StorageLink('vpnRunning') @Watch('onRunningChange') isRunning: boolean = false;
   @StorageLink('vpnUpSpeed') fallbackUpSpeed: number = 0;
   @StorageLink('vpnDownSpeed') fallbackDownSpeed: number = 0;
@@ -110,7 +114,7 @@ struct ConnectionsPage {
     this.stopPolling();
     if (!this.isRunning || !this.settings.clashApiEnabled) {
       this.loading = false;
-      this.conns.clear();
+      this.conns = [];
       return;
     }
     this.loading = true;
@@ -140,7 +144,7 @@ struct ConnectionsPage {
       this.lastDownload = download;
       this.uploadTotal = upload;
       this.downloadTotal = download;
-      this.conns.reset(parseConnections(raw));
+      this.conns = parseConnections(raw);
       this.lastError = '';
     } catch (e) {
       this.lastError = $r('app.string.connections_api_unavailable');
@@ -167,10 +171,31 @@ struct ConnectionsPage {
     Column() {
     Column() {
       Row() {
-        Text('←').fontSize(22).onClick(() => router.back()).padding(8)
-        Text($r('app.string.connections_title_count', this.conns.totalCount())).fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
-        Text($r('app.string.refresh')).fontSize(14).fontColor($r('app.color.primary')).padding(8)
-          .onClick(() => this.refresh())
+        /* 返回:字符图标 → 系统符号(chevron_left);宿主从 Text 换成 Row
+           —— 官方点光源宿主白名单里没有 Text,字符图标配了也不会亮(见 common/Effects.ets) */
+        Row() {
+          SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(22).fontColor([$r('app.color.text_1')])
+        }
+        .width(44).height(44).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
+        .visualEffect(pressLightEffect(this.litKey === 'back', false))
+        .onTouch((event: TouchEvent) => { if (event.type === TouchType.Down) {
+        this.litKey = 'back';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      } })
+        .onClick(() => { router.back(); })
+        Text($r('app.string.connections_title_count', this.conns.length)).fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
+        Button({ type: ButtonType.Normal, stateEffect: false }) {
+          Text($r('app.string.refresh')).fontSize(14).fontColor($r('app.color.primary'))
+        }
+        .height(36).padding({ left: 10, right: 10 }).backgroundColor(Color.Transparent)
+        .visualEffect(pressLightEffect(this.litKey === 'refresh', true))
+        .onTouch((event: TouchEvent) => { if (event.type === TouchType.Down) {
+        this.litKey = 'refresh';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      } })
+        .onClick(() => this.refresh())
       }
       .width('100%').padding(12)
 
@@ -206,6 +231,12 @@ struct ConnectionsPage {
           Button($r('app.string.reload'))
             .height(36)
             .backgroundColor($r('app.color.primary'))
+            .visualEffect(pressLightEffect(this.litKey === 'reload', true))
+            .onTouch((event: TouchEvent) => { if (event.type === TouchType.Down) {
+        this.litKey = 'reload';
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      } })
             .onClick(() => {
               this.loading = true;
               this.refresh();
@@ -213,7 +244,7 @@ struct ConnectionsPage {
         }
         .width('100%')
         .padding({ top: 28, bottom: 20 })
-      } else if (this.conns.isEmpty()) {
+      } else if (this.conns.length === 0) {
         Column({ space: 8 }) {
           Text($r('app.string.connections_empty'))
             .fontSize(16)
@@ -228,7 +259,7 @@ struct ConnectionsPage {
       }
 
       List({ space: 6 }) {
-        LazyForEach(this.conns, (c: ConnItem) => {
+        ForEach(this.conns, (c: ConnItem) => {
           ListItem() {
             Column({ space: 2 }) {
               Row() {
@@ -251,9 +282,21 @@ struct ConnectionsPage {
               Row() {
                 Text(`↑ ${formatBytes(c.up)}  ↓ ${formatBytes(c.down)}`)
                   .fontSize(11).fontColor($r('app.color.text_secondary')).layoutWeight(1)
-                Text($r('app.string.notification_disconnect'))
-                  .fontSize(12).fontColor($r('app.color.error'))
-                  .onClick(() => this.closeConn(c))
+                /* 断开:滚动内容里的按钮只给点按光效,不加 .scale(缩放会让光源中心相对本行跑位) */
+                Button({ type: ButtonType.Normal, stateEffect: false }) {
+                  Text($r('app.string.notification_disconnect'))
+                    .fontSize(12).fontColor($r('app.color.error'))
+                }
+                .height(28).padding({ left: 6, right: 6 }).backgroundColor(Color.Transparent)
+                .visualEffect(pressLightEffect(this.litKey === `conn:${c.id}`, true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+                    this.litKey = `conn:${c.id}`;
+                  } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                    this.litKey = '';
+                  }
+                })
+                .onClick(() => this.closeConn(c))
               }.width('100%')
             }
             .alignItems(HorizontalAlign.Start)
@@ -265,7 +308,6 @@ struct ConnectionsPage {
         }, (c: ConnItem) => c.id)
       }
         .edgeEffect(EdgeEffect.Spring)
-        .cachedCount(10)
       .layoutWeight(1)
       .width('100%')
       .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
@@ -277,6 +319,8 @@ struct ConnectionsPage {
     .width('100%')
     .height('100%')
     .alignItems(HorizontalAlign.Center)
+    /* 窗口为 layout-full-screen(内容要钻进状态栏)⇒ 本页自己让出状态栏高度 */
+    .padding({ top: 44 })
     .backgroundColor($r('app.color.app_background'))
     .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
   }

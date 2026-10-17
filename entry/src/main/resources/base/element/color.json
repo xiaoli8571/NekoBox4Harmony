@@ -138,11 +138,11 @@
     },
     {
       "name": "fab_bg",
-      "value": "#CC2364D8"
+      "value": "#FF2364D8"
     },
     {
       "name": "fab_running",
-      "value": "#CC12A150"
+      "value": "#FF12A150"
     }
   ]
 }
