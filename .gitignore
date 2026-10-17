@@ -10,3 +10,7 @@ dist/
 .clang-tidy/
 *.hap
 local.properties
+
+nb_*.jpeg
+layout.json
+l2.json
