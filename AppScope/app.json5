@@ -3,7 +3,7 @@
     "bundleName": "com.nekobox.app.jynxen",
     "vendor": "nekobox4harmony",
     "versionCode": 2100007,
-    "versionName": "2.1.7-hdsui",
+    "versionName": "2.1.7",
     "icon": "$media:layered_image",
     "label": "$string:app_name"
   }
