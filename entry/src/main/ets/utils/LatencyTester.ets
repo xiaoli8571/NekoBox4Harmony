@@ -106,20 +106,69 @@ function averageOf(values: Array<number>): number {
   return Math.round(sum / values.length);
 }
 
+/**
+ * 内核桥接调用(NAPI→CGo)的兜底超时。正常路径内核自身有超时、结果必回;
+ * 但一旦 native 侧异常挂死(旧内核/系统异常),Promise 永不 settle 会把
+ * urlTestProfiles 的 await 连同 Index.testing 一起卡死 —— 之后所有测速点击
+ * 都被"进行中"卫兵静默拦下,用户看到的就是"测速点了没反应"。这里保证
+ * 桥接调用最迟 ms 毫秒后以 fallbackValue 返回(超时只影响本轮结果,不影响进程)。
+ */
+function withBridgeTimeout<T>(p: Promise<T>, ms: number, fallbackValue: T): Promise<T> {
+  return new Promise<T>((resolve: (v: T) => void) => {
+    let settled = false;
+    let timer = -1;
+    const finish = (v: T): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timer >= 0) {
+        clearTimeout(timer);
+        timer = -1;
+      }
+      resolve(v);
+    };
+    timer = setTimeout(() => {
+      LogStore.addLog(`[test] 内核桥接调用超过 ${ms}ms 无响应,按失败处理`);
+      finish(fallbackValue);
+    }, ms);
+    p.then((v: T) => {
+      finish(v);
+    }).catch(() => {
+      finish(fallbackValue);
+    });
+  });
+}
+
+/** 单次探测结果:ms=-1 表示失败;timedOut 标记失败是"等满超时"类(区别于快速被拒) */
+interface ProbeOutcome {
+  ms: number;
+  timedOut: boolean;
+}
+
 /** 单节点一次 URL Test 探测;ms = -1 表示失败。 */
-async function urlTestOnce(tag: string, url: string, timeoutMs: number, expectStatus: string): Promise<number> {
+async function urlTestOnce(tag: string, url: string, timeoutMs: number, expectStatus: string): Promise<ProbeOutcome> {
   try {
-    const res = await CoreManager.testProxy(tag, url, timeoutMs, expectStatus);
+    // 兜底超时 = 内核超时的 2 倍 + 5s:内核超时之后还要走 HEAD→GET 回退等收尾
+    const res = await withBridgeTimeout(
+      CoreManager.testProxy(tag, url, timeoutMs, expectStatus), timeoutMs * 2 + 5000, 'err:bridge timeout');
     if (res.startsWith('err:') || res.startsWith('内核不支持')) {
-      return -1;
+      const lower = res.toLowerCase();
+      return {
+        ms: -1,
+        // 超时类失败(i/o timeout / context deadline exceeded / 桥接兜底超时):
+        // 节点大概率死了,立刻重试同样会满等 —— 调用方据此跳过重试,
+        // 不让死节点在批量测速里占双倍的并发槽位时间
+        timedOut: lower.includes('timeout') || lower.includes('deadline')
+      };
     }
     const n = parseInt(res);
     if (isNaN(n) || n < 0) {
-      return -1;
+      return { ms: -1, timedOut: false };
     }
-    return n;
+    return { ms: n, timedOut: false };
   } catch (e) {
-    return -1;
+    return { ms: -1, timedOut: false };
   }
 }
 
@@ -138,6 +187,12 @@ export async function urlTestProfiles(targets: Array<Profile>, allProfiles: Arra
     report.degraded = true;
     report.degradeReason = why;
     LogStore.addLog(`[test] ${why},已回退 TCPing(结果只反映握手耗时,不代表真连接可用)`);
+    // 回退前尽力收掉可能残留的测速会话:若 testStart 实际"迟到成功",残留会
+    // 让下一次测速复用到旧配置(全部 outbound not found 假红)
+    const stopErr = await withBridgeTimeout(CoreManager.testStop(), 10000, '');
+    if (stopErr.length > 0) {
+      LogStore.addLog(`[test] 回退前停止测速内核报错(忽略): ${stopErr}`);
+    }
     await testProfiles(targets, onResult, concurrency, timeoutMs, settings.testRetries, settings.testSamples);
     return report;
   };
@@ -153,7 +208,7 @@ export async function urlTestProfiles(targets: Array<Profile>, allProfiles: Arra
   // 还会把结论带偏。绑定物理网卡让测速直出(内核 SO_BINDTODEVICE)。
   // 只有 V2 内核认 bindIfname;legacy 内核会忽略它,这里提前查一次能力,
   // 免得白跑一遍再靠"全红"反推。
-  const caps = await CoreManager.testCaps();
+  const caps = await withBridgeTimeout(CoreManager.testCaps(), 10000, '');
   const v2 = caps === 'v2';
   if (!v2 && settings.testBypassTunnel) {
     LogStore.addLog('[test] 内核为旧版测速导出,「测速绕过当前隧道」暂不生效(需重编 libsingbox.so)');
@@ -162,8 +217,17 @@ export async function urlTestProfiles(targets: Array<Profile>, allProfiles: Arra
     LogStore.addLog('[test] 内核为旧版测速导出,不做响应状态码判定(403/500 也会判绿,需重编 libsingbox.so)');
   }
   const bindIfname = (v2 && settings.testBypassTunnel) ? await resolvePhysicalIfname() : '';
+  // 防陈旧会话:内核侧对"已有会话"是直接复用(里面还是上一轮的旧配置/tag),
+  // 一旦上轮 testStop 在异常路径上没收到(桥接超时等),这轮就会整组 outbound
+  // not found 假红。开测前无条件尽力停一次(无会话时是空操作)。
+  const preStopErr = await withBridgeTimeout(CoreManager.testStop(), 10000, '');
+  if (preStopErr.length > 0) {
+    LogStore.addLog(`[test] 开测前清理旧会话报错(忽略): ${preStopErr}`);
+  }
   const run = async (bind: string): Promise<PassCount> => {
-    const startErr = await CoreManager.testStart(configPath, bind);
+    // 内核起会话正常是亚秒级;给 30s 兜底(大订阅 box.New 慢),超时按启动失败走回退
+    const startErr = await withBridgeTimeout(CoreManager.testStart(configPath, bind), 30000,
+      'err:test start bridge timeout');
     if (startErr.length > 0) {
       throw new Error(startErr);
     }
@@ -182,9 +246,13 @@ export async function urlTestProfiles(targets: Array<Profile>, allProfiles: Arra
               if (attempt >= round && ok.length > 0) {
                 break;
               }
-              const ms = await urlTestOnce(tag, testUrl, timeoutMs, expectStatus);
-              if (ms >= 0) {
-                ok.push(ms);
+              const outcome = await urlTestOnce(tag, testUrl, timeoutMs, expectStatus);
+              if (outcome.ms >= 0) {
+                ok.push(outcome.ms);
+              } else if (outcome.timedOut) {
+                // 超时失败不再重试:满等一次已足够判死,重试只会让批量测速的
+                // 尾巴翻倍(死节点 2×超时 → 1×超时)。快速失败(拒连/重置)仍重试。
+                break;
               }
               if (ok.length >= round) {
                 break;
@@ -205,7 +273,7 @@ export async function urlTestProfiles(targets: Array<Profile>, allProfiles: Arra
       }
       await Promise.all(workers);
     } finally {
-      const stopErr = await CoreManager.testStop();
+      const stopErr = await withBridgeTimeout(CoreManager.testStop(), 15000, 'err:test stop bridge timeout');
       if (stopErr.length > 0) {
         LogStore.addLog(`[test] 测速内核停止报错(忽略): ${stopErr}`);
       }

@@ -194,7 +194,33 @@ struct Index {
     return true;
   }
 
+  /** 节点搜索输入防抖计时器(见 configFragment 里 TextInput 的 onChange) */
+  private searchDebounceTimer: number = -1;
+
+  private scheduleSearchFilter(v: string): void {
+    this.cancelSearchFilterTimer();
+    this.searchDebounceTimer = setTimeout(() => {
+      this.searchDebounceTimer = -1;
+      this.nodeSearch = v;
+    }, 250);
+  }
+
+  private cancelSearchFilterTimer(): void {
+    if (this.searchDebounceTimer >= 0) {
+      clearTimeout(this.searchDebounceTimer);
+      this.searchDebounceTimer = -1;
+    }
+  }
+
+  /** 关闭节点搜索(「取消」按钮与再次点搜索图标共用):清未触发的防抖 + 清空关键词 */
+  private closeNodeSearch(): void {
+    this.cancelSearchFilterTimer();
+    this.nodeSearch = '';
+    this.searchVisible = false;
+  }
+
   aboutToDisappear(): void {
+    this.cancelSearchFilterTimer();
     this.stopSpeedPoller();
     if (this.uptimeTimer >= 0) {
       clearInterval(this.uptimeTimer);
@@ -501,61 +527,97 @@ struct Index {
 
   // ---------------------------------------------------------------- 测速
 
-  async runSpeedTest(): Promise<void> {
-    if (this.testing || this.profiles.length === 0) {
+  /** 测速一组节点(用户 2026-10-17:不再支持全量)。缺省 = 当前选中分组;
+   *  分组条长按"测速本组"传被按的那个组 id。 */
+  async runSpeedTest(groupId: string = this.selectedGroupId): Promise<void> {
+    if (this.testing) {
+      // 之前是静默 return:测速进行中再点测速毫无反馈,像"点了没反应"
+      promptAction.showToast({ message: $r('app.string.index_test_in_progress') });
       return;
     }
-    this.latencies = {};
-    promptAction.showToast({ message: $r('app.string.index_testing_count', this.profiles.length) });
-    await this.runProfilesTest(this.profiles.slice());
+    const targets = this.profiles.filter((item: Profile) => item.groupId === groupId);
+    if (targets.length === 0) {
+      promptAction.showToast({ message: $r('app.string.speed_test_group_empty') });
+      return;
+    }
+    /* 只清掉本组节点的旧延迟显示(其它组的历史结果保留),让本组测速中显示"…" */
+    const targetIds = new Set<string>(targets.map((item: Profile) => item.id));
+    const kept: Record<string, number> = {};
+    for (const k of Object.keys(this.latencies)) {
+      if (!targetIds.has(k)) {
+        kept[k] = this.latencies[k];
+      }
+    }
+    this.latencies = kept;
+    promptAction.showToast({ message: $r('app.string.index_testing_count', targets.length) });
+    await this.runProfilesTest(targets);
   }
 
   async runGroupSpeedTest(groupId: string): Promise<void> {
-    if (groupId === '__all__') {
-      await this.runSpeedTest();
-      return;
-    }
-    const profiles = this.profiles.filter((item: Profile) => item.groupId === groupId);
-    if (this.testing || profiles.length === 0) {
-      return;
-    }
-    promptAction.showToast({ message: $r('app.string.index_testing_count', profiles.length) });
-    await this.runProfilesTest(profiles);
+    await this.runSpeedTest(groupId);
   }
 
   private async runProfilesTest(snapshot: Array<Profile>): Promise<void> {
     this.testing = true;
+    /* 结果不能逐条写 @State:每张节点卡的延迟文本都依赖 latencies,逐条写会
+       把主页整页重渲染 N 次,节点多时 UI 线程被刷爆 —— 表现为"测速中页面卡死、
+       点搜索/点按钮都没反应"。结果先进缓冲,每 300ms 合并刷一次,测完补最后一次。 */
+    let pending: Record<string, number> = {};
+    let flushTimer = -1;
+    const flushPending = (): void => {
+      if (flushTimer >= 0) {
+        clearTimeout(flushTimer);
+        flushTimer = -1;
+      }
+      const keys = Object.keys(pending);
+      if (keys.length === 0) {
+        return;
+      }
+      const next: Record<string, number> = {};
+      for (const k of Object.keys(this.latencies)) {
+        next[k] = this.latencies[k];
+      }
+      for (const k of keys) {
+        next[k] = pending[k];
+      }
+      this.latencies = next;
+      pending = {};
+    };
+    const onOne = (id: string, ms: number): void => {
+      pending[id] = ms;
+      const profile = this.profiles.find((item: Profile) => item.id === id);
+      if (profile !== undefined) {
+        profile.latencyMs = ms;
+        profile.latencyTestedAt = Date.now();
+        const runningProfileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
+        if (this.isRunning && runningProfileId === id) {
+          publishVpnLatency(id, profile.name, ms);
+        }
+      }
+      if (flushTimer < 0) {
+        flushTimer = setTimeout(flushPending, 300);
+      }
+    };
     try {
-      const onOne = (id: string, ms: number): void => {
-        const next: Record<string, number> = {};
-        const keys = Object.keys(this.latencies);
-        for (const k of keys) {
-          next[k] = this.latencies[k];
-        }
-        next[id] = ms;
-        this.latencies = next;
-        const profile = this.profiles.find((item: Profile) => item.id === id);
-        if (profile !== undefined) {
-          profile.latencyMs = ms;
-          profile.latencyTestedAt = Date.now();
-          const runningProfileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
-          if (this.isRunning && runningProfileId === id) {
-            publishVpnLatency(id, profile.name, ms);
-          }
-        }
-      };
       if (this.settings.latencyTestMode === 'tcp') {
         await testProfiles(snapshot, onOne, this.settings.testConcurrent);
       } else {
         /* 上游签名：urlTestProfiles(targets, allProfiles, settings, context, onResult, concurrency, groups)
-           —— 超时由 settings.testTimeoutMs 决定（不再传 5000），返回 LatencyRunReport（此处忽略）。 */
-        await urlTestProfiles(snapshot, this.profiles, this.settings, this.context,
+           —— 超时由 settings.testTimeoutMs 决定（不再传 5000），返回 LatencyRunReport。 */
+        const report = await urlTestProfiles(snapshot, this.profiles, this.settings, this.context,
           onOne, this.settings.testConcurrent, this.groups);
+        if (report.degraded) {
+          // 内核测速起不来而回退 TCPing 时,数值含义完全变了(只反映握手耗时),
+          // 必须明示,否则用户拿着假数据对比 Clash
+          promptAction.showToast({ message: $r('app.string.speed_test_degraded', report.degradeReason) });
+        }
       }
+      flushPending();
       await saveProfiles(this.profiles);
       this.profiles = this.profiles.slice();
       promptAction.showToast({ message: $r('app.string.speed_test_complete') });
     } finally {
+      flushPending();
       this.testing = false;
     }
   }
@@ -1685,30 +1747,37 @@ struct Index {
         })
   }
 
+  /** 搜索态输入行:画在 HDS 顶栏 bottomBuilder 里,与分组条**同一条带互换**
+   *  (用户点名位置:动作按钮行之下、模式行之上);总高 32,凑底部带恒 68 */
+  @Builder
+  private searchInputRow() {
+    Row({ space: 2 }) {
+      TextInput({ text: this.nodeSearch, placeholder: $r('app.string.search_nodes') })
+        .id('nodeSearchInput')
+        .layoutWeight(1).height(32)
+        .padding({ top: 4, bottom: 4 })
+        .backgroundColor(Color.Transparent)
+        .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
+        /* 输入防抖 250ms:每敲一个字就全量重筛 + 重建节点列表,大订阅会越打越卡 */
+        .onChange((v: string) => { this.scheduleSearchFilter(v); })
+      Text($r('app.string.cancel'))
+        .fontSize(13).fontColor($r('app.color.text_2')).padding(6)
+        .onClick(() => {
+          this.closeNodeSearch();
+        })
+    }
+    .width('100%')
+    .height(32)
+    .alignItems(VerticalAlign.Center)
+    .padding({ left: UiSpec.PAGE_PADDING - 10, right: UiSpec.PAGE_PADDING - 10 })
+  }
+
   @Builder
   private configFragment() {
     Column() {
-      /* 原 configToolbar(连接/搜索/添加/更多)整排提进了 HDS 顶栏(stackBuilder 自绘 + ⋮ bindMenu),
-         这里只剩"搜索态"的输入行 —— TextInput 塞不进顶栏,只能留在内容区 */
-      if (this.searchVisible) {
-        Row({ space: 2 }) {
-          TextInput({ text: this.nodeSearch, placeholder: $r('app.string.search_nodes') })
-            .layoutWeight(1).height(36)
-            .backgroundColor(Color.Transparent)
-            .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
-            .onChange((v: string) => { this.nodeSearch = v; })
-          Text($r('app.string.cancel'))
-            .fontSize(13).fontColor($r('app.color.text_2')).padding(6)
-            .onClick(() => {
-              this.nodeSearch = '';
-              this.searchVisible = false;
-            })
-        }
-        .width('100%')
-        .alignItems(VerticalAlign.Center)
-        .padding({ left: UiSpec.PAGE_PADDING - 10, right: UiSpec.PAGE_PADDING - 10, top: 2, bottom: 2 })
-      }
-      /* 分组分类条(用户点名):单独一行、横向左右切换;点选后列表只显示该组节点 */
+      /* 原 configToolbar(连接/搜索/添加/更多)整排提进了 HDS 顶栏(stackBuilder 自绘 + ⋮ bindMenu)。
+         搜索态输入行(用户点名放在动作按钮行与模式行之间)也画在顶栏 bottomBuilder 里,
+         见 titleBottomBuilder()/searchInputRow();这里不再重复渲染。 */
 
       if (this.profiles.length === 0) {
         Column({ space: 10 }) {
@@ -1733,8 +1802,10 @@ struct Index {
           ListItem() {
             Row()
               .width('100%')
-              /* space:8 已经贡献 8vp,这里减掉,避免首卡与顶栏之间多一条缝 */
-              .height(this.searchVisible ? 0 : Math.max(0, this.contentTopInset - 8))
+              /* space:8 已经贡献 8vp,这里减掉,避免首卡与顶栏之间多一条缝。
+                 搜索态下顶栏 bottomBuilder 多了一行搜索框,探针量出的 contentTopInset
+                 会自动变大,占位项跟着长高,列表首卡始终落在搜索行下方 */
+              .height(Math.max(0, this.contentTopInset - 8))
           }
           .selectable(false)
           ForEach(this.visibleProfiles(this.selectedGroupId), (profile: Profile) => {
@@ -1865,6 +1936,11 @@ struct Index {
     .height(44)
     .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
     .border({ width: { top: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
+    /* 节点列表挂着 .clip(false),滚动时卡片会画到本条底部边界之外 ⇒ 无背景时
+       速率文字和列表文字直接重叠。半透明底色 + 组件级毛玻璃:透出的是模糊光斑,
+       文字不再互相干扰,且深浅色都由资源控制 */
+    .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
+    .backgroundColor($r('app.color.statsbar_bg'))
     .visualEffect(pressLightEffect(this.litKey === 'statsbar', false))
     .onTouch((event: TouchEvent) => {
       if (event.type === TouchType.Down) {
@@ -2044,7 +2120,20 @@ struct Index {
         iconSize: 20,
         iconColor: $r('app.color.text_1'),
         onTap: () => {
+          if (this.searchVisible) {
+            /* 已在搜索态:再点一次搜索图标 = 关闭(用户 2026-10-17) */
+            this.closeNodeSearch();
+            return;
+          }
           this.searchVisible = true;
+          /* 打开即聚焦弹键盘;延后到输入框挂载完成,抢不到焦点也不影响手动点输入框 */
+          setTimeout(() => {
+            try {
+              this.getUIContext().getFocusController().requestFocus('nodeSearchInput');
+            } catch (e) {
+              // 焦点不可用时保持旧行为(用户手动点输入框)
+            }
+          }, 120);
         }
       })
       GlowIconButton({
@@ -2193,11 +2282,21 @@ struct Index {
   @Builder
   private titleBottomBuilder() {
     /* 模式行 + 分组条只在首页显示(用户 2026-10-17):其它分区页顶部不再带订阅分组条。
-       nbBarBottomProbe 也没了 ⇒ calibrateTopInset 回退到 nbTitleProbe(标题栏底边),让位照常。 */
+       nbBarBottomProbe 也没了 ⇒ calibrateTopInset 回退到 nbTitleProbe(标题栏底边),让位照常。
+       ⚠️ 搜索态(用户 2026-10-17):搜索行要与分组条**同一条带互换**,底部带总高恒定 ——
+       高度一变 HDS 会整条重排标题栏(顶部按钮闪一下),且列表让位量来不及重算,
+       分组条会压到节点卡上(真机截图确认过两个坑)。
+       行距(用户 2026-10-17):搜索行↔模式行、模式行↔分组条一律 8vp,与节点卡间距一致;
+       两个状态下内容总高都凑成 68(32+8+28 / 28+8+32),底部带高度才能恒定。 */
     if (this.activeTab === 0) {
-      Column({ space: 2 }) {
+      Column({ space: 8 }) {
+        if (this.searchVisible) {
+          this.searchInputRow()
+        }
         this.modeSwitchRow()
-        this.groupTabBar()
+        if (!this.searchVisible) {
+          this.groupTabBar()
+        }
       }
       .width('100%')
       .id('nbBarBottomProbe')
@@ -2253,14 +2352,17 @@ struct Index {
           builder: (): void => {
             this.titleBottomBuilder();
           },
-          /* 非首页不再有分组条:高度也要归零,否则留一条 66vp 空带 */
-          height: this.activeTab === 0 ? 66 : 0
+          /* 非首页不再有分组条:高度也要归零,否则留一条空带。
+             底部带恒 68(两个搜索/常规态内容都是 32+8+28 / 28+8+32,见 titleBottomBuilder) */
+          height: this.activeTab === 0 ? 68 : 0
         }
       }
     };
   }
 
-  /** 列表顶部占位 = HDS 标题栏底边（窗口坐标）+ 4。纯几何，不打日志。 */
+  /** 列表顶部占位 = HDS 标题栏底边（窗口坐标）+ 8。纯几何，不打日志。
+   *  +8(用户 2026-10-17):首卡与底部带(分组条)的间距 = 节点卡间距(List space 8),
+   *  占位项公式是 inset-8 再加列表 space 8 ⇒ inset 必须是 probeBottom+8 才落出 8vp 缝。 */
   private calibrateTopInset(): void {
     try {
       const ui = this.getUIContext();
@@ -2271,7 +2373,7 @@ struct Index {
         bar = utils.getRectangleById('nbTitleProbe');
         bottomPx = bar.windowOffset.y + bar.size.height;
       }
-      const inset = Math.round(ui.px2vp(bottomPx) + 4);
+      const inset = Math.round(ui.px2vp(bottomPx) + 8);
       if (inset > 0 && inset < 400 && Math.abs(inset - this.contentTopInset) >= 2) {
         this.contentTopInset = inset;
       }

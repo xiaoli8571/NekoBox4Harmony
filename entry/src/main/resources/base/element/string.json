@@ -1097,6 +1097,18 @@
       "value": "正在测速 %1$d 个节点…"
     },
     {
+      "name": "index_test_in_progress",
+      "value": "测速进行中,请等当前一轮结束"
+    },
+    {
+      "name": "speed_test_group_empty",
+      "value": "当前分组没有节点可测"
+    },
+    {
+      "name": "speed_test_degraded",
+      "value": "测速已降级:%1$s"
+    },
+    {
       "name": "switching_to_name",
       "value": "切换到 %1$s…"
     },
@@ -1770,7 +1782,7 @@
     },
     {
       "name": "test_all_nodes",
-      "value": "测速全部节点"
+      "value": "测速当前分组"
     },
     {
       "name": "update_current_subscription",
@@ -2098,7 +2110,7 @@
     },
     {
       "name": "settings_test_url_desc",
-      "value": "URL Test 会经节点实际访问此网址;默认 gstatic,若节点出口访问不通可自行改为其他 204/HTTP 地址。"
+      "value": "URL Test 会经节点实际访问此网址。默认 HTTP 204(gstatic),与 Clash 系客户端口径一致;换用 HTTPS 网址会额外计入到目标站的 TLS 握手,数值会偏高。"
     },
     {
       "name": "settings_test_concurrent",

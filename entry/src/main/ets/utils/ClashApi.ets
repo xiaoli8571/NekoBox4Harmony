@@ -7,7 +7,8 @@ import { clashApiHeaders, clashApiErrorMessage } from './ClashAuth';
  * URL Test 直接查它的真实转发延迟(完整走一遍代理隧道 + 目标 204 探测)。
  */
 
-export const URL_TEST_TARGET: string = 'https://www.gstatic.com/generate_204';
+// 与 Clash/mihomo 同口径的 HTTP 204 探测(HTTPS 会多算到目标站的 TLS 握手)
+export const URL_TEST_TARGET: string = 'http://www.gstatic.com/generate_204';
 
 /** 查询当前激活出站('proxy')经隧道的真实延迟(ms);非 200 或缺 delay 抛异常 */
 export async function fetchCurrentProxyDelay(timeoutMs: number = 5000,

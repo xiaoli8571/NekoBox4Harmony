@@ -1310,3 +1310,56 @@ Existing notification files reviewed:
 - 构建与签名: `assembleHap --mode module -p product=default -p buildMode=release`(BUILD SUCCESSFUL 33 tasks)→ unsigned `entry-default-unsigned.hap` 14,301,541 字节,SHA256 `D365416D179A932F2A52EFB1FF43DC5E13E405BC1E0E3DD6CF6E66B7DDFEA934` → sign-app(`-compatibleVersion=60101024`,AGC 通用证书 Release Profile)→ `dist/NekoBox-2.1.6-signed.hap` **14,352,818 字节,SHA256 `E41035952E75F4F20E2F4BDE8CB5C782FF4C63FD74AC17262FA4BA505E0F80A8`**。`assembleApp --mode project ... release`(BUILD SUCCESSFUL 42 tasks)→ 官方 unsigned .app 13,620,986 字节(pack.info 873 B)→ 解包 + 内层 HAP 带 `-compatibleVersion=60101024` 重签(14,352,824 字节)+ `ZipFile.CreateFromDirectory`(includeBaseDirectory=false)重打 + 签外壳 → `dist/NekoBox-2.1.6-signed.app` **13,672,245 字节,SHA256 `AD5D513079C93A9A26F2FF19D2EE14BC3FD36DDBD7A737D730B01B08BD94A158`**;两层 `verify-app` 均 `Verify success`(外壳 block count 2 + Digest true,内层 block count 3 + codesign 三 .so + permission sign)。
 - 静态取证: 交付 HAP 的 `ets/modules.abc`(SHA256 `9364F710B5E6DED9FB4C077FF40860E7A0E0799036647974D7146F79106C5DC1`)含 `routeSettingsCard`/`persistSettings`/`downloadSingleGeo`/`confirmDeleteGeo`/`geoOk`/`settingsExpanded`/`clashApiHeaders`;`resources.index` 含 `route_settings_title`/`route_settings_hint`/`route_builtin_geo_desc`;`libsingbox.so` 未重编(与 `entry/libs/arm64-v8a/libsingbox.so` 同哈希 `9B2B9839...8D49`)。
 - 未验证项: 无真机安装与像素验收(合并后路由页折叠卡的观感、设置页删减后的空档、版本号在系统应用信息里的显示);`route_settings_hint` 等文案仅中英双语。
+
+## 2026-10-17 测速口径对齐 Clash(HTTP 204) + 测速/搜索卡死修复(2.1.8)
+
+用户报障三项:①"节点测速不准,别的 clash 客户端里测几十 ms,NekoBox 里 200 多 ms";②"点测速全部节点有时候卡死,点了没反应";③"点主页右上角的搜索图标有时候也会卡死"。
+
+- ①根因(确定性): 默认测速 URL 是 `https://www.gstatic.com/generate_204`,URL Test 数值包含**到目标站的 TLS 握手**(代理隧道→TLS→HTTP 三段);Clash/mihomo 系客户端默认口径是 **HTTP** 204,只计到目标站的一次 HTTP 往返。同一个节点 HTTPS 口径天然比 HTTP 口径高 1~2 个 RTT,80ms RTT 的节点在 NekoBox 显示 200ms+ 属必然。修复: 默认值与全部兜底改 `http://www.gstatic.com/generate_204`(`Profile.ets` AppSettings 默认值 / `Store.loadSettings` 空值兜底 / `ConfigBuilder.ets:863` urltest 组兜底 / `ClashApi.URL_TEST_TARGET`),并在 `Store.loadSettings` 增加历史默认迁移:`https://www.gstatic.com/generate_204` → HTTP 版(**仅迁移仍是历史默认值的装机**,用户自定义过的网址不动;迁移不落盘、每次加载时归一,与 cp.cloudflare 迁移同模式)。`settings_test_url_desc` 中英双语同步改写,说明 HTTPS 网址会偏高。
+- ②两个成因都修: (a) **UI 线程刷爆**——`runProfilesTest` 的 `onOne` 每收到一个节点结果就整份重建 `latencies` Record 并写 `@State`,而每张节点卡的延迟文本都依赖 latencies ⇒ 整页重渲染 N 次,大订阅(几百节点)下测速期间 UI 线程被打满,表现为"测速中页面卡死、点哪都没反应"。改为结果先入缓冲、每 300ms 合并刷新一次、测完(含异常路径 finally)补最后一次;profile 对象的 `latencyMs/latencyTestedAt` 仍逐条即时写(通知延迟发布不受影响)。(b) **testing 标志永久卡死**——测速桥接(NAPI→CGo)的 Promise 若因 native 侧异常挂死永不 settle,`testing` 永远为 true,之后所有测速点击都被卫兵静默拦下,正是"点了没反应"。`LatencyTester` 新增 `withBridgeTimeout` 兜底:`testProxy`(内核超时×2+5s,留 HEAD→GET 回退余量)/`testStart`(30s)/`testStop`(15s)/`testCaps`(10s)超时按失败返回并写 `[test] 内核桥接调用…无响应` 日志;回退 TCPing 前先尽力 `testStop` 收掉可能"迟到成功"的残留测速会话(否则下次测速复用旧配置会整组 outbound not found 假红)。另外"测速进行中再点测速"从静默 return 改为 toast 提示(新增 `index_test_in_progress`,中英双语)。
+- ③搜索: 搜索输入框加 250ms 防抖(此前每敲一个字符全量重筛+重建节点列表,大订阅越打越卡);点搜索图标后 120ms 自动聚焦输入框并弹键盘(`focusControl.requestFocus('nodeSearchInput')`,失败静默降级为手动点输入框);取消按钮会清掉未触发的防抖。
+- 改动文件: `entry/src/main/ets/model/Profile.ets`、`entry/src/main/ets/model/Store.ets`、`entry/src/main/ets/core/ConfigBuilder.ets`、`entry/src/main/ets/utils/ClashApi.ets`、`entry/src/main/ets/utils/LatencyTester.ets`、`entry/src/main/ets/pages/Index.ets`、`entry/src/main/resources/{base,en_US}/element/string.json`、`AppScope/app.json5`(2100007→**2100008/2.1.8**)。
+- 测试: 全 15 套件逐个跑,12 绿;`ipv6-modes.cjs`/`parity-config.cjs`/`route-rules-ui.cjs` 3 个失败为 2.1.6/2.1.7 路由页合并后遗留断言未同步(git stash 掉本次改动复测同样失败,与本次无关)。
+- 构建: `assembleHap --mode module -p product=default -p buildMode=release` BUILD SUCCESSFUL(33 tasks);`ets/modules.abc` 含 `scheduleSearchFilter`/`withBridgeTimeout`,`resources.index` 含 `index_test_in_progress` 及双语新文案;HAP 内 versionName 2.1.8/versionCode 2100008;`libsingbox.so` 未重编。产物: `dist/NekoBox-2.1.8-signed.hap`(14,395,373 字节,SHA256 `691F8D296368DA30742D9CAA62A8883920CA836EBCBAB380A7814FC9743489`);`dist/NekoBox-2.1.8-unsigned.hap`(14,343,390 字节,SHA256 `EA4297D0AB828891C7592B8C53AF63A9461153BA10D634E5FD6D4D37726981DF`)。
+- 已知限制/未验证: 无真机安装验收(①口径对齐需实测与 Clash 对比;②③的"卡死"感知需大订阅真机复测)。结构性遗留: 节点列表仍是普通 `ForEach` 全量构建(非 LazyForEach),超大订阅下打开搜索/弹键盘的整窗重排开销仍在,本次未动(风险高需真机回归,建议后续单独做);测速绕过隧道依赖 v2 内核导出,已确认随仓库分发的 .so 含 V2 符号,legacy .so 装机仍按旧日志提示降级。
+
+## 2026-10-17(续) 搜索框顶栏让位 + 底部速率面板毛玻璃背景(2.1.8 追加)
+
+用户报障(附真机截图):①点搜索后搜索框跑到顶部状态栏,和系统时间重叠;②启动代理后底部速率/状态面板太透明,与背景文字混在一起。
+
+- ①根因: 内容层 matchParent + ignoreLayoutSafeArea 铺满整窗(列表靠占位项让位),搜索态的输入行是内容**第一个元素**,顶到 y=0 正好压在状态栏上。修复: 搜索行顶部让位改为实测顶栏底边(`contentTopInset - 6`,与列表首卡占位项同源),搜索框稳定落在分组条下方、列表上方。已在真机(MatePad mini, 192.168.3.146)装包后经 uitest 点击搜索图标 + 截图确认: 搜索行不再与状态栏/时间重叠。
+- ②根因: `statsBar` 完全没有背景,而节点列表挂着 `.clip(false)`(卡片会画到列表底部边界之外),滚动时列表文字直接透进速率栏。修复: 新增 `statsbar_bg` 颜色资源(base `#EAFAFAF9` / dark `#E6101318`,约 91%/90% 不透明度),`statsBar` 挂 `backgroundBlurStyle(COMPONENT_THICK)` + 该半透明底色 —— 透出的是模糊光斑,速率/状态文字与列表文字不再互相干扰,深浅色都走资源。
+- 改动文件: `entry/src/main/ets/pages/Index.ets`、`entry/src/main/resources/{base,dark}/element/color.json`。版本号维持 2.1.8(2100008,上一轮产物仅本地安装未分发,同版本号覆盖安装)。
+- 构建与分发: BUILD SUCCESSFUL;`dist/NekoBox-2.1.8-signed.hap`/`-unsigned.hap` 已更新为本轮产物,debug 证书签名后 `hdc install -r` 覆盖安装到真机成功。
+- 未验证项: ②的视觉效果需 VPN 运行态截图确认(速率面板仅在 `isRunning` 或 `showBottomBar` 时显示;远程 uitest 模拟点击 FAB 未能建立连接,且设备随后被转回桌面,为不干扰使用者停止了远程操作),待用户连接后确认。
+
+## 2026-10-17(续2) 搜索框移入顶栏(动作行与模式行之间)+ 同带互换方案(2.1.8 追加)
+
+用户要求:搜索框放到"搜索按钮行"和"规则/全局/直连"之间;随后追加两条反馈:①点搜索按钮整个顶部按钮行会闪一下;②两个订阅的分组条会遮挡节点卡,要"各占各的位置"。
+
+- 第一版实现把搜索行加进 HDS 顶栏 bottomBuilder 并把底部带高度 66→108:位置对了,但高度跳变有两个真机确认的副作用 —— HDS 整条重排标题栏(顶部按钮闪现),且 `contentTopInset` 校准不会在 bottomBuilder 高度变化时重跑(nbBodyProbe 尺寸不随顶栏变),列表占位项偏短,分组条压到首卡上。
+- 最终方案:**底部带总高恒定 66** —— 搜索态下搜索行(高 36)与分组条**同槽位互换**,模式行(28)始终保留,顺序 = [搜索行, 模式行];非搜索态 = [模式行, 分组条]。搜索框仍在动作按钮行与"规则"行之间(用户点名位置),但标题栏高度不变 ⇒ 无整条重排、无按钮闪烁;`contentTopInset` 恒定 ⇒ 分组条与节点卡各占各位不再重叠。代价(有意取舍):搜索期间分组条隐藏,搜索仍只在当前选中分组内过滤。
+- 改动文件: `entry/src/main/ets/pages/Index.ets`(titleBottomBuilder/searchInputRow/底部带高度回 66;configFragment 里的搜索行与 `searchVisible ? 0 :` 占位逻辑移除,占位项恒为 `contentTopInset - 8`)。
+- 真机验证(MatePad mini): 打开搜索 → 搜索框位于按钮行与"规则"之间、键盘弹出、列表首卡完整无遮挡;点取消 → 分组条(吹雪云 24 节点 最低 79ms / ikuuu 7 节点 最低 49ms)回位,与节点卡无重叠。分组成员徽标里的最低延迟数值为 HTTP 204 新口径,与 Clash 客户端量级一致。
+- 分发: BUILD SUCCESSFUL,`dist/NekoBox-2.1.8-signed.hap`/`-unsigned.hap` 已更新,debug 证书 `hdc install -r` 覆盖安装成功。版本维持 2.1.8(2100008)。
+
+## 2026-10-17(续3) 顶栏行距统一 8vp + 搜索图标开合切换(2.1.8 追加)
+
+用户要求:①搜索行与"规则"行之间、订阅分组与"规则"行之间、订阅分组与首张节点卡之间都要有间距,且最后一个间距与节点卡间距(List space 8)一致;②搜索态下再点一次搜索图标也能关闭(不只「取消」)。
+
+- 间距: bottomBuilder 列 `space: 2 → 8`;搜索行高 36→32(两个状态内容总高凑成恒定 68:搜索态 32+8+28 / 常规态 28+8+32,底部带高度选项 66→68,继续满足"高度恒定防闪烁"约束);`calibrateTopInset` 的 +4 → **+8**,使首卡落在分组条下方 8vp(占位项公式 inset-8 + 列表 space 8,校准值必须 +8 才落出 8vp 缝)。深色主题真机截图核对:三处间距与节点卡间距观感一致。
+- 开合切换: 新增 `closeNodeSearch()`(清防抖 + 清关键词 + 收起),搜索图标 onTap 在搜索态下再次点击即调用;「取消」按钮改用同一函数。真机验证: 打开→再点搜索图标→关闭,列表与分组条恢复正常。
+- 改动文件: `entry/src/main/ets/pages/Index.ets`。版本维持 2.1.8(2100008),`dist/NekoBox-2.1.8-{signed,unsigned}.hap` 已更新,debug 证书覆盖安装成功。
+
+## 2026-10-17(续4) 批量测速提速与准确度加固 + 只测当前分组(2.1.8 追加)
+
+用户要求复查批量测速的速度与准确度,并追加要求:测速只测当前选中分组的节点,不再全量。
+
+- **只测当前分组**(用户点名): 顶栏 ⋮ 的「测速全部节点」改为只测当前选中分组(未分组也算一组),空分组 toast 提示;分组条长按「测速本组」语义不变(测被按的那个组)。`runSpeedTest(groupId = selectedGroupId)` 接管两条路径,`runGroupSpeedTest` 变为透传;测前只清本组的旧延迟显示,其它组历史结果保留。菜单文案 `test_all_nodes` 改「测速当前分组 / Test current group」。新增字符串 `speed_test_group_empty`。
+- **提速 1 — 死节点不再双倍占槽**: 原逻辑超时失败还会重试一次,死节点占 2×超时的并发槽位(默认 5s×2),订阅里死节点多时批量测速尾巴翻倍。现在 `urlTestOnce` 区分"超时类失败"(i/o timeout / context deadline exceeded / 桥接兜底超时)与"快速失败"(拒连/重置/HTTP 状态不符),超时类直接不再重试 —— 快速失败仍重试(那类重试真的能救活)。比 mihomo(完全不重试)仍更宽容。
+- **提速 2 — 并发默认 5→10**: 5 是历史默认,对几十上百节点的订阅偏慢;默认值改 10,`loadSettings` 把历史默认 5 迁移到 10(用户自定义的其它值不动),钳制上限 20→32,设置页输入框同步。10 并发下每探测主要是等网络 RTT,CPU 占用极小,不会明显互相干扰测量值。
+- **准确度 1 — 杜绝陈旧测速会话假红**: 内核对"已有会话"直接复用(里面是上一轮的旧配置/tag),若上一轮 testStop 走了异常路径,下一轮会整组 outbound not found 假红。现在每轮开测前无条件 `testStop` 兜底一次(无会话时是空操作)。
+- **准确度 2 — 降级明示**: 内核测速起不来而回退 TCPing 时(数值只反映握手耗时,与 Clash 口径完全不同),此前只写日志;现在 toast `测速已降级:<原因>`(新增字符串 `speed_test_degraded`,带 %1$s 占位)。
+- 改动文件: `entry/src/main/ets/utils/LatencyTester.ets`、`entry/src/main/ets/pages/Index.ets`、`entry/src/main/ets/pages/SettingsPage.ets`、`entry/src/main/ets/model/{Profile,Store}.ets`、`entry/src/main/resources/{base,en_US}/element/string.json`。
+- 测试: 全 15 套件 12 绿,3 个失败为 2.1.6 路由页合并遗留(与本次无关,前轮已用 stash 验证)。构建 BUILD SUCCESSFUL,`dist/NekoBox-2.1.8-{signed,unsigned}.hap` 已更新,debug 证书覆盖安装真机成功。版本维持 2.1.8(2100008)。
+- 未验证项: 提速/降级提示需真机批量测速实测(死节点比例、总耗时对比);10 并发在低端机上的测量稳定性未回归。

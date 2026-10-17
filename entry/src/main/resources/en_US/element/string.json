@@ -1097,6 +1097,18 @@
       "value": "Testing %1$d profiles…"
     },
     {
+      "name": "index_test_in_progress",
+      "value": "A speed test is already running"
+    },
+    {
+      "name": "speed_test_group_empty",
+      "value": "No profiles in this group"
+    },
+    {
+      "name": "speed_test_degraded",
+      "value": "Speed test degraded: %1$s"
+    },
+    {
       "name": "switching_to_name",
       "value": "Switching to %1$s…"
     },
@@ -1770,7 +1782,7 @@
     },
     {
       "name": "test_all_nodes",
-      "value": "Test all nodes"
+      "value": "Test current group"
     },
     {
       "name": "update_current_subscription",
@@ -2098,7 +2110,7 @@
     },
     {
       "name": "settings_test_url_desc",
-      "value": "URL Test visits this URL through the profile. The default is gstatic; change it to another 204/HTTP endpoint if the egress cannot reach it."
+      "value": "URL Test visits this URL through the profile. The default is an HTTP 204 endpoint (gstatic), matching Clash-family clients; HTTPS URLs add the TLS handshake to the target and read higher."
     },
     {
       "name": "settings_test_concurrent",

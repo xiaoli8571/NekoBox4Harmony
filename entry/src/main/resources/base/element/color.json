@@ -101,6 +101,10 @@
       "value": "#FAFAF9"
     },
     {
+      "name": "statsbar_bg",
+      "value": "#EAFAFAF9"
+    },
+    {
       "name": "mono",
       "value": "#17181A"
     },

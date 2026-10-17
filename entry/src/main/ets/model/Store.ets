@@ -156,15 +156,25 @@ export async function loadSettings(): Promise<AppSettings> {
   if (s.mixedPort !== 0) {
     s.mixedPort = Math.max(1024, Math.min(65535, s.mixedPort));
   }
-  if (s.testConcurrent < 1 || s.testConcurrent > 20) {
-    s.testConcurrent = 5;
+  if (s.testConcurrent < 1 || s.testConcurrent > 32) {
+    s.testConcurrent = 10;
+  }
+  // 2.1.8 提速迁移:5 是历史默认值(测大订阅偏慢),迁到新默认 10;用户改过的其它值不动
+  if (s.testConcurrent === 5) {
+    s.testConcurrent = 10;
   }
   if (s.testUrl.trim().length === 0) {
-    s.testUrl = 'https://www.gstatic.com/generate_204';
+    s.testUrl = 'http://www.gstatic.com/generate_204';
   }
   // 迁移历史默认测试网址(cp.cloudflare.com 在部分网络下经代理也不通,易误红)
   if (s.testUrl.trim() === 'http://cp.cloudflare.com/' || s.testUrl.trim() === 'https://cp.cloudflare.com/') {
-    s.testUrl = 'https://www.gstatic.com/generate_204';
+    s.testUrl = 'http://www.gstatic.com/generate_204';
+  }
+  // 2.1.8 测速口径对齐:历史默认是 HTTPS 204,数值含到目标站的 TLS 握手(比
+  // Clash 系客户端的 HTTP 204 口径高 1~2 个 RTT,用户对比两边的延迟会差好几倍)。
+  // 仅迁移"仍是历史默认值"的装机,用户自定义过的网址不动。
+  if (s.testUrl.trim() === 'https://www.gstatic.com/generate_204') {
+    s.testUrl = 'http://www.gstatic.com/generate_204';
   }
   const TEST_MODES: Array<string> = ['url', 'tcp'];
   if (TEST_MODES.indexOf(s.latencyTestMode) < 0) {

@@ -182,8 +182,10 @@ export class AppSettings {
   allowInsecureAll: boolean = false;   // 全局放行不安全 TLS
   subAllowInsecure: boolean = false;   // 订阅请求放行不安全 TLS
   logLevel: string = 'info';           // trace/debug/info/warn/error
-  testUrl: string = 'https://www.gstatic.com/generate_204';
-  testConcurrent: number = 5;          // 测速并发数
+  // 默认 HTTP(非 HTTPS)204 探测,与 Clash/mihomo 口径一致:只计到目标站的
+  // 一次 HTTP 往返;HTTPS 会额外包含到目标站的 TLS 握手,数值天然高 1~2 个 RTT。
+  testUrl: string = 'http://www.gstatic.com/generate_204';
+  testConcurrent: number = 10;         // 测速并发数(2.1.8 起:5 并发测大订阅太慢,翻倍;上限 32)
   latencyTestMode: string = 'url';     // url(真连接测试,经内核 URLTest) / tcp(TCPing 握手计时)
   // 单节点超时(毫秒)。此前硬编码 5000,跨境节点偏紧、局域网偏长,开放为可配。
   testTimeoutMs: number = 5000;

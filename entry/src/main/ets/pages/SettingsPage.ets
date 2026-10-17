@@ -545,7 +545,7 @@ export struct SettingsPage {
                 .type(InputType.Number).width('100%').height(40)
                 .onChange((v: string) => {
                   const n = parseInt(v);
-                  this.s.testConcurrent = isNaN(n) ? 5 : Math.max(1, Math.min(20, n));
+                  this.s.testConcurrent = isNaN(n) ? 10 : Math.max(1, Math.min(32, n));
                   this.markDirty();
                 })
             }.alignItems(HorizontalAlign.Start).width('100%')

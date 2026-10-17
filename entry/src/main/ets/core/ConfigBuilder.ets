@@ -860,7 +860,7 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     }
     if (selectedGroup.autoSelect) {
       // sing-box 1.14 urltest 出站:url/interval/tolerance/interrupt_exist_connections
-      const probeUrl = s.testUrl.trim().length > 0 ? s.testUrl.trim() : 'https://www.gstatic.com/generate_204';
+      const probeUrl = s.testUrl.trim().length > 0 ? s.testUrl.trim() : 'http://www.gstatic.com/generate_204';
       const urlTestGroup: Record<string, Object> = {
         'type': 'urltest', 'tag': 'proxy', 'outbounds': memberTags,
         'url': probeUrl,
