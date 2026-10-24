@@ -12,7 +12,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
-const src = fs.readFileSync(path.join(root, 'entry/src/main/ets/core/Subscriptions.ets'), 'utf8');
+// W17 起更新事务搬至 core/SubscriptionRepository.ets(Subscriptions.updateSubscription 只做委托);
+// 断言意图不变:校验器只能在解析成功后落盘,304 对 0 节点订阅强制重下。
+const src = fs.readFileSync(path.join(root, 'entry/src/main/ets/core/SubscriptionRepository.ets'), 'utf8');
+const subsSrc = fs.readFileSync(path.join(root, 'entry/src/main/ets/core/Subscriptions.ets'), 'utf8');
 
 let pass = 0, fail = 0;
 function check(name, cond, detail) {
@@ -20,31 +23,37 @@ function check(name, cond, detail) {
   else { fail++; console.log('FAIL ' + name + (detail !== undefined ? ' — ' + detail : '')); }
 }
 
-const fnStart = src.indexOf('export async function updateSubscription');
-const fn = src.slice(fnStart, src.indexOf('\n}\n', fnStart));
-check('updateSubscription located', fnStart > 0 && fn.length > 100);
+check('updateSubscription delegates to the transaction repository',
+  subsSrc.includes('SubscriptionRepository.runUpdate(url)'));
+
+const fetchStart = src.indexOf('private static async fetchAndParse');
+const commitStart = src.indexOf('private static async commitUpdate');
+check('transaction phases located', fetchStart > 0 && commitStart > fetchStart);
+const fetchFn = src.slice(fetchStart, commitStart);
+const commitFn = src.slice(commitStart);
 
 // ---- 1. 校验器落盘必须晚于「解析出节点」的判断 ----
-const saveAt = fn.indexOf('saveSubValidators(url, fetched.etag, fetched.lastModified)');
-const zeroAt = fn.indexOf('if (parsed.length === 0)');
-check('saveSubValidators exists in updateSubscription', saveAt > 0);
-check('the 0-node guard exists', zeroAt > 0);
-check('validators are written AFTER the 0-node guard (not before)',
-  saveAt > zeroAt, `save@${saveAt} zero@${zeroAt}`);
-check('no validator write before parsing',
-  fn.slice(0, zeroAt).indexOf('saveSubValidators') < 0);
+// fetchAndParse(锁外)遇到 0 节点直接抛错,函数内不写任何 sub.etag/sub.lastModified;
+// 落盘只发生在 commitUpdate(sub.etag = prep.etag),而 commitUpdate 只可能在
+// fetchAndParse 成功返回 prep 之后被调用 —— 结构上保证「先解析成功,后落盘」。
+const zeroAt = fetchFn.indexOf('if (parsed.length === 0)');
+check('the 0-node guard exists in the fetch/parse phase', zeroAt > 0);
+check('0 nodes throws with a diagnosable message',
+  fetchFn.indexOf('throw new Error(subFailureText(') > 0);
+check('no validator persistence in the fetch/parse phase',
+  !/sub\.etag\s*=/.test(fetchFn) && !/sub\.lastModified\s*=/.test(fetchFn));
+check('validators are persisted only in the commit phase',
+  commitFn.includes('sub.etag = prep.etag') && commitFn.includes('sub.lastModified = prep.lastModified'));
 
 // ---- 2. 304 分支必须有「本订阅 0 节点则强制重下」的兜底 ----
-const guardAt = fn.indexOf('fetched.notModified && ownedBefore === 0');
+const guardAt = fetchFn.indexOf('fetched.notModified && ownedBefore === 0');
 check('304 branch re-fetches when this subscription owns no nodes', guardAt > 0);
 check('the re-fetch drops the validators (sends no If-None-Match)',
-  guardAt > 0 && /fetchSubscriptionConditional\(\s*url,\s*settings\.subAllowInsecure,\s*\n?\s*customUA,\s*'',\s*''\s*\)/.test(fn));
-check('ownedBefore counts this subscription\'s existing nodes',
-  /ownedBefore\s*=\s*existing\.filter\(p\s*=>\s*p\.subUrl\s*===\s*url\)\.length/.test(fn));
+  guardAt > 0 && fetchFn.indexOf("customUA, '', ''") > guardAt);
+check("ownedBefore counts this subscription existing nodes",
+  /ownedBefore\s*=\s*existing\.filter\(\(p: Profile\)\s*=>\s*p\.subUrl\s*===\s*url\)\.length/.test(fetchFn));
 
-// ---- 3. 抛错路径不得留下已落盘的校验器 ----
-const throwAt = fn.indexOf('throw new Error(subFailureText(');
-check('0 nodes throws with a diagnosable message', throwAt > 0 && throwAt < saveAt);
+// ---- 3. 抛错路径不得留下已落盘的校验器(执行对照见下) ----
 
 // ---- 4. 红测试对照:把状态机显式跑一遍,证明旧顺序会锁死 ----
 // 服务端:带 ETag。若客户端发 If-None-Match 就回 304,否则回「错误页 + ETag」。

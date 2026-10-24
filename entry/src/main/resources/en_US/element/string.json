@@ -1746,15 +1746,15 @@
     },
     {
       "name": "nav_config",
-      "value": "Configuration"
+      "value": "Nodes"
     },
     {
       "name": "nav_groups",
-      "value": "Groups"
+      "value": "Subscriptions"
     },
     {
       "name": "nav_route",
-      "value": "Route"
+      "value": "Routing"
     },
     {
       "name": "nav_dashboard",
@@ -1819,6 +1819,50 @@
     {
       "name": "dedup_none",
       "value": "No duplicate nodes"
+    },
+    {
+      "name": "confirm",
+      "value": "Confirm"
+    },
+    {
+      "name": "dedup_confirm_body",
+      "value": "Remove the following duplicate nodes?\n%1$s"
+    },
+    {
+      "name": "group_no_difference",
+      "value": "%1$s: No difference"
+    },
+    {
+      "name": "group_updated",
+      "value": "%1$s: Updated %2$d proxies"
+    },
+    {
+      "name": "group_diff_title",
+      "value": "Diff (%1$s)"
+    },
+    {
+      "name": "group_diff_added",
+      "value": "Added:\n%1$s\n\n"
+    },
+    {
+      "name": "group_diff_updated",
+      "value": "Updated:\n%1$s\n\n"
+    },
+    {
+      "name": "group_diff_deleted",
+      "value": "Deleted:\n%1$s\n\n"
+    },
+    {
+      "name": "group_diff_duplicate",
+      "value": "Duplicate (ignored):\n%1$s\n\n"
+    },
+    {
+      "name": "update_subscription_warning",
+      "value": "Not connected to VPN. The subscription will be updated directly. Continue?"
+    },
+    {
+      "name": "sub_interval_minutes",
+      "value": "Update interval (minutes)"
     },
     {
       "name": "no_unavailable_nodes",
@@ -2086,7 +2130,7 @@
     },
     {
       "name": "latency_test_mode_desc",
-      "value": "URL Test actually visits the test URL through the proxy, so it only counts as reachable when the full path works. TCPing only checks the server port handshake, so dead nodes may still appear green."
+      "value": "URL Test fetches the URL below through the node and only counts as up when the whole chain works; TCPing only measures the TCP handshake (fixed 3000ms, skips Hysteria/TUIC/WireGuard and other protocols that do not support it), so a broken node can still show green."
     },
     {
       "name": "settings_route",
@@ -2110,7 +2154,7 @@
     },
     {
       "name": "settings_test_url_desc",
-      "value": "URL Test visits this URL through the profile. The default is an HTTP 204 endpoint (gstatic), matching Clash-family clients; HTTPS URLs add the TLS handshake to the target and read higher."
+      "value": "URL Test fetches this URL through the node. Default is http://cp.cloudflare.com/ (same as the Android app); an HTTPS URL adds the TLS handshake to the target site and will read higher."
     },
     {
       "name": "settings_test_concurrent",
@@ -2407,6 +2451,854 @@
     {
       "name": "more_actions",
       "value": "More actions"
+    },
+    {
+      "name": "per_app_hint_exclude",
+      "value": "Checked apps bypass the VPN; all others follow the routing rules"
+    },
+    {
+      "name": "per_app_hint_include",
+      "value": "Only checked apps use the VPN; all others connect directly"
+    },
+    {
+      "name": "per_app_search_placeholder",
+      "value": "Search app name or package"
+    },
+    {
+      "name": "per_app_add_import",
+      "value": "Add / bulk import"
+    },
+    {
+      "name": "per_app_empty",
+      "value": "No apps yet. Tap \"Add / bulk import\" to enter an app name and package"
+    },
+    {
+      "name": "per_app_search_empty",
+      "value": "No matching app"
+    },
+    {
+      "name": "per_app_preset_tag",
+      "value": "Preset"
+    },
+    {
+      "name": "per_app_remove_entry",
+      "value": "Remove entry"
+    },
+    {
+      "name": "per_app_remove_confirm",
+      "value": "Remove \"%s\"?"
+    },
+    {
+      "name": "per_app_effective_count",
+      "value": "%d app(s) currently effective"
+    },
+    {
+      "name": "per_app_note",
+      "value": "The app name is display-only and never affects system routing; unchecked entries are not applied. Changes reconnect the VPN automatically."
+    },
+    {
+      "name": "per_app_dialog_title",
+      "value": "Add / bulk import"
+    },
+    {
+      "name": "per_app_dialog_hint",
+      "value": "One HarmonyOS bundle name per line; the name note applies to a single app only. Do not use Android package names."
+    },
+    {
+      "name": "per_app_dialog_label_placeholder",
+      "value": "Name note (optional)"
+    },
+    {
+      "name": "per_app_dialog_packages_placeholder",
+      "value": "com.tencent.wechat\ncom.ss.hm.ugc.aweme"
+    },
+    {
+      "name": "per_app_dialog_confirm",
+      "value": "Add to list"
+    },
+    {
+      "name": "per_app_dialog_need_package",
+      "value": "Enter at least one bundle name"
+    },
+    {
+      "name": "per_app_dialog_all_invalid",
+      "value": "Invalid bundle name: %s"
+    },
+    {
+      "name": "per_app_added_count",
+      "value": "%d app(s) added"
+    },
+    {
+      "name": "per_app_added_with_invalid",
+      "value": "%d app(s) added; %d invalid bundle name(s) ignored"
+    },
+    {
+      "name": "permission_keep_bg_running_system_reason",
+      "value": "Used to request a compute-task long-running task so the VPN tunnel keeps running"
+    },
+    {
+      "name": "ok",
+      "value": "OK"
+    },
+    {
+      "name": "connection_test_testing",
+      "value": "Testing…"
+    },
+    {
+      "name": "connection_test_refused",
+      "value": "Connection refused"
+    },
+    {
+      "name": "connection_test_unreachable",
+      "value": "Unreachable"
+    },
+    {
+      "name": "connection_test_domain_not_found",
+      "value": "Domain not found"
+    },
+    {
+      "name": "connection_test_unavailable",
+      "value": "Unavailable"
+    },
+    {
+      "name": "connection_test_tcp_ping",
+      "value": "TCPing"
+    },
+    {
+      "name": "connection_test_tcp_ping_unavailable",
+      "value": "No TCPing-capable nodes in this group"
+    },
+    {
+      "name": "connection_test_url_test",
+      "value": "URL Test"
+    },
+    {
+      "name": "connection_test_error",
+      "value": "Failed: %1$s"
+    },
+    {
+      "name": "connection_test_error_timeout",
+      "value": "Failed: Timeout"
+    },
+    {
+      "name": "connection_test_error_refused",
+      "value": "Failed: Connection refused"
+    },
+    {
+      "name": "connection_test_error_unreachable",
+      "value": "Failed: Unreachable"
+    },
+    {
+      "name": "connection_test_available",
+      "value": "Success: HTTPS handshake took %1$dms"
+    },
+    {
+      "name": "connection_test_available_http",
+      "value": "Success: HTTP handshake took %1$dms"
+    },
+    {
+      "name": "connection_test_error_detail",
+      "value": "Error details"
+    },
+    {
+      "name": "crash_recovery_title",
+      "value": "Reconnect"
+    },
+    {
+      "name": "crash_recovery_prompt",
+      "value": "The app was reclaimed by the system while the VPN was running last time, and the VPN may be disconnected. Reconnect now?"
+    },
+    {
+      "name": "crash_recovery_connect",
+      "value": "Reconnect"
+    },
+    {
+      "name": "notification_uptime",
+      "value": "Uptime"
+    },
+    {
+      "name": "route_rule_packages_platform_hint",
+      "value": "Routing by app bundle name is not supported on HarmonyOS yet. Use Settings → Per-app proxy to select which apps use the VPN. Existing values are retained here."
+    },
+    {
+      "name": "speed_test_bind_fallback",
+      "value": "Physical interface binding failed; tests ran again without binding. While connected, results may include the current VPN tunnel latency."
+    },
+    {
+      "name": "settings_section_appearance",
+      "value": "Appearance & Browsing"
+    },
+    {
+      "name": "settings_section_startup",
+      "value": "Startup & Behavior"
+    },
+    {
+      "name": "settings_section_probe",
+      "value": "Connection Test"
+    },
+    {
+      "name": "settings_section_dns",
+      "value": "DNS"
+    },
+    {
+      "name": "settings_section_ipv6",
+      "value": "IPv6"
+    },
+    {
+      "name": "settings_section_inbound",
+      "value": "Inbound"
+    },
+    {
+      "name": "settings_section_mode",
+      "value": "Routing Mode"
+    },
+    {
+      "name": "settings_section_perapp",
+      "value": "Per-App Proxy"
+    },
+    {
+      "name": "settings_section_advanced",
+      "value": "Advanced"
+    },
+    {
+      "name": "settings_mode",
+      "value": "Routing Mode"
+    },
+    {
+      "name": "settings_direct_domains",
+      "value": "Direct Domain Suffixes"
+    },
+    {
+      "name": "settings_direct_ip",
+      "value": "Direct IP Ranges"
+    },
+    {
+      "name": "settings_sniff_mode",
+      "value": "Sniffing Mode"
+    },
+    {
+      "name": "settings_fake_dns",
+      "value": "FakeDNS"
+    },
+    {
+      "name": "settings_ipv6",
+      "value": "IPv6"
+    },
+    {
+      "name": "settings_ipv6_mode",
+      "value": "IPv6 Mode"
+    },
+    {
+      "name": "settings_per_app_mode",
+      "value": "Per-App Mode"
+    },
+    {
+      "name": "settings_per_app_list",
+      "value": "App Package List"
+    },
+    {
+      "name": "settings_per_app_entries",
+      "value": "Per-App Entries"
+    },
+    {
+      "name": "settings_latency_test_mode",
+      "value": "Test Method"
+    },
+    {
+      "name": "settings_test_timeout",
+      "value": "Test Timeout (ms)"
+    },
+    {
+      "name": "settings_test_retries",
+      "value": "Retry Count"
+    },
+    {
+      "name": "settings_test_samples",
+      "value": "Samples per Node"
+    },
+    {
+      "name": "settings_test_expect_status",
+      "value": "Expected Status"
+    },
+    {
+      "name": "settings_test_bypass_tunnel",
+      "value": "Bypass Tunnel During Tests"
+    },
+    {
+      "name": "settings_latency_stale",
+      "value": "Stale Latency Threshold"
+    },
+    {
+      "name": "settings_sub_update_interval",
+      "value": "Subscription Update Interval (hours)"
+    },
+    {
+      "name": "settings_appearance",
+      "value": "Theme"
+    },
+    {
+      "name": "settings_haptic",
+      "value": "Haptic Feedback"
+    },
+    {
+      "name": "settings_liquid_glass",
+      "value": "Liquid Glass"
+    },
+    {
+      "name": "settings_show_bottom_bar",
+      "value": "Show Bottom Bar"
+    },
+    {
+      "name": "settings_nav_layout",
+      "value": "Navigation Layout"
+    },
+    {
+      "name": "settings_profile_sort",
+      "value": "Node Sorting"
+    },
+    {
+      "name": "settings_network_reset",
+      "value": "Reset Connections on Network Change"
+    },
+    {
+      "name": "settings_wake_reset",
+      "value": "Reset Connections on Wake"
+    },
+    {
+      "name": "settings_profile_traffic",
+      "value": "Per-Node Traffic Statistics"
+    },
+    {
+      "name": "settings_mtu",
+      "value": "MTU"
+    },
+    {
+      "name": "settings_stack",
+      "value": "Protocol Stack"
+    },
+    {
+      "name": "settings_allow_insecure",
+      "value": "Allow Insecure TLS Globally"
+    },
+    {
+      "name": "settings_clash_api",
+      "value": "Clash API"
+    },
+    {
+      "name": "settings_clash_port",
+      "value": "Clash API Port"
+    },
+    {
+      "name": "settings_clash_secret",
+      "value": "Clash API Secret"
+    },
+    {
+      "name": "settings_global_custom",
+      "value": "Global Custom Config"
+    },
+    {
+      "name": "settings_coexist_fix",
+      "value": "Coexist Fix Flag"
+    },
+    {
+      "name": "settings_value_on",
+      "value": "On"
+    },
+    {
+      "name": "settings_value_off",
+      "value": "Off"
+    },
+    {
+      "name": "settings_apply_immediate",
+      "value": "Immediate"
+    },
+    {
+      "name": "settings_apply_next_task",
+      "value": "Next task"
+    },
+    {
+      "name": "settings_apply_reconnect",
+      "value": "Reconnect required"
+    },
+    {
+      "name": "subscription_page_title_count",
+      "value": "Subscriptions (%1$d)"
+    },
+    {
+      "name": "subscription_update_all",
+      "value": "Update all"
+    },
+    {
+      "name": "subscription_updating_all",
+      "value": "Updating %1$d subscriptions…"
+    },
+    {
+      "name": "subscription_offline_hint",
+      "value": "Network unavailable; cannot update subscriptions now"
+    },
+    {
+      "name": "subscription_batch_dismiss",
+      "value": "Got it"
+    },
+    {
+      "name": "subscription_batch_incomplete",
+      "value": "Update unfinished"
+    },
+    {
+      "name": "subscription_action_view_nodes",
+      "value": "View nodes"
+    },
+    {
+      "name": "subscription_action_probe",
+      "value": "Check availability"
+    },
+    {
+      "name": "subscription_empty_add",
+      "value": "Add / import subscription"
+    },
+    {
+      "name": "subscription_empty_scan",
+      "value": "Scan to add"
+    },
+    {
+      "name": "subscription_empty_import",
+      "value": "Import from file"
+    },
+    {
+      "name": "subscription_empty_manual",
+      "value": "Add manually"
+    },
+    {
+      "name": "subscription_row_update",
+      "value": "Update"
+    },
+    {
+      "name": "subscription_row_more",
+      "value": "More"
+    },
+    {
+      "name": "subscription_row_detail",
+      "value": "Subscription details"
+    },
+    {
+      "name": "subscription_row_clear_nodes",
+      "value": "Clear nodes"
+    },
+    {
+      "name": "subscription_row_delete",
+      "value": "Delete subscription"
+    },
+    {
+      "name": "subscription_row_node_count",
+      "value": "%1$d nodes"
+    },
+    {
+      "name": "subscription_delete_confirm_title",
+      "value": "Delete subscription"
+    },
+    {
+      "name": "subscription_delete_confirm_body",
+      "value": "Delete subscription \"%1$s\" and its %2$d nodes? You will need to import it again."
+    },
+    {
+      "name": "subscription_clear_nodes_confirm_title",
+      "value": "Clear nodes"
+    },
+    {
+      "name": "subscription_clear_nodes_confirm_body",
+      "value": "Clear the %2$d nodes of \"%1$s\"? The subscription record stays; nodes come back on the next update."
+    },
+    {
+      "name": "subscription_sort_name",
+      "value": "Sort: name"
+    },
+    {
+      "name": "subscription_sort_recent",
+      "value": "Sort: recently updated"
+    },
+    {
+      "name": "subscription_error_expand",
+      "value": "Show reason"
+    },
+    {
+      "name": "subscription_error_collapse",
+      "value": "Hide reason"
+    },
+    {
+      "name": "sub_state_ok",
+      "value": "OK"
+    },
+    {
+      "name": "sub_state_never",
+      "value": "Never updated"
+    },
+    {
+      "name": "sub_state_failed",
+      "value": "Update failed"
+    },
+    {
+      "name": "sub_state_updating",
+      "value": "Updating"
+    },
+    {
+      "name": "sub_state_expired",
+      "value": "Expired"
+    },
+    {
+      "name": "sub_last_updated_never",
+      "value": "Never updated"
+    },
+    {
+      "name": "sub_last_updated_just_now",
+      "value": "Just now"
+    },
+    {
+      "name": "sub_last_updated_minutes_ago",
+      "value": "%1$d min ago"
+    },
+    {
+      "name": "sub_last_updated_hours_ago",
+      "value": "%1$d h ago"
+    },
+    {
+      "name": "sub_last_updated_days_ago",
+      "value": "%1$d d ago"
+    },
+    {
+      "name": "sub_auto_update_off",
+      "value": "Auto-update off"
+    },
+    {
+      "name": "sub_auto_update_every_minutes",
+      "value": "Every %1$d min"
+    },
+    {
+      "name": "sub_auto_update_daily",
+      "value": "Daily"
+    },
+    {
+      "name": "sub_auto_update_every_days",
+      "value": "Every %1$d days"
+    },
+    {
+      "name": "sub_auto_update_hourly",
+      "value": "Hourly"
+    },
+    {
+      "name": "sub_auto_update_every_hours",
+      "value": "Every %1$d h"
+    },
+    {
+      "name": "sub_traffic_total_unknown",
+      "value": "%1$s / quota unknown"
+    },
+    {
+      "name": "sub_expiry_unknown",
+      "value": "Expiry unknown"
+    },
+    {
+      "name": "sub_expiry_expired_days",
+      "value": "Expired %1$d d ago"
+    },
+    {
+      "name": "sub_expiry_just_expired",
+      "value": "Just expired"
+    },
+    {
+      "name": "sub_expiry_in_days",
+      "value": "Expires in %1$d d"
+    },
+    {
+      "name": "sub_expiry_on_date",
+      "value": "Expires on %1$s"
+    },
+    {
+      "name": "sub_summary_updated",
+      "value": "updated %1$d"
+    },
+    {
+      "name": "sub_summary_added",
+      "value": "added %1$d"
+    },
+    {
+      "name": "sub_summary_removed",
+      "value": "removed %1$d"
+    },
+    {
+      "name": "sub_summary_not_modified",
+      "value": "unchanged %1$d"
+    },
+    {
+      "name": "sub_summary_skipped",
+      "value": "skipped %1$d"
+    },
+    {
+      "name": "sub_summary_failed",
+      "value": "failed %1$d"
+    },
+    {
+      "name": "sub_outcome_failed",
+      "value": "%1$s: update failed — %2$s"
+    },
+    {
+      "name": "sub_outcome_not_modified",
+      "value": "%1$s: unchanged"
+    },
+    {
+      "name": "sub_outcome_changed",
+      "value": "%1$s: %2$s"
+    },
+    {
+      "name": "sub_empty_no_subs_title",
+      "value": "No subscriptions yet"
+    },
+    {
+      "name": "sub_empty_no_subs_body",
+      "value": "Add a subscription link; imported nodes are grouped automatically."
+    },
+    {
+      "name": "sub_empty_offline_title",
+      "value": "Network unavailable"
+    },
+    {
+      "name": "sub_empty_offline_body",
+      "value": "Add a subscription once back online, or import from a file now."
+    },
+    {
+      "name": "sub_import_none",
+      "value": "No importable nodes found"
+    },
+    {
+      "name": "sub_import_nodes",
+      "value": "%1$d nodes"
+    },
+    {
+      "name": "sub_import_groups",
+      "value": "%1$d groups"
+    },
+    {
+      "name": "sub_import_skipped",
+      "value": "%1$d skipped"
+    },
+    {
+      "name": "sub_tombstone_header",
+      "value": "%1$d nodes were removed remotely (deleted on update; convert to manual to keep them)"
+    },
+    {
+      "name": "sub_tombstone_kept",
+      "value": "Favorite/sort kept"
+    },
+    {
+      "name": "sub_tombstone_pending",
+      "value": "Overrides kept, pending restore"
+    },
+    {
+      "name": "sub_tombstone_convert",
+      "value": "Convert to manual"
+    },
+    {
+      "name": "sub_tombstone_converted",
+      "value": "Converted to manual node: %1$s"
+    },
+    {
+      "name": "connection_filter_all",
+      "value": "All"
+    },
+    {
+      "name": "connection_chain_proxy",
+      "value": "Proxy"
+    },
+    {
+      "name": "connection_chain_direct",
+      "value": "Direct"
+    },
+    {
+      "name": "connection_chain_reject",
+      "value": "Rejected"
+    },
+    {
+      "name": "connection_not_provided",
+      "value": "Not provided"
+    },
+    {
+      "name": "connection_search_hint",
+      "value": "Search target / node / rule"
+    },
+    {
+      "name": "connection_evidence_title",
+      "value": "Why this route"
+    },
+    {
+      "name": "connection_evidence_target",
+      "value": "Target"
+    },
+    {
+      "name": "connection_evidence_network",
+      "value": "Network"
+    },
+    {
+      "name": "connection_evidence_rule",
+      "value": "Kernel rule"
+    },
+    {
+      "name": "connection_evidence_rule_payload",
+      "value": "Rule payload"
+    },
+    {
+      "name": "connection_evidence_chains",
+      "value": "Policy chain"
+    },
+    {
+      "name": "connection_evidence_final_node",
+      "value": "Final node"
+    },
+    {
+      "name": "connection_evidence_revision",
+      "value": "Running revision"
+    },
+    {
+      "name": "connection_evidence_unknown",
+      "value": "Unknown"
+    },
+    {
+      "name": "connection_evidence_collected",
+      "value": "Collected at"
+    },
+    {
+      "name": "connection_evidence_close",
+      "value": "Close"
+    },
+    {
+      "name": "log_export_dialog_title",
+      "value": "Export logs (redacted by default)"
+    },
+    {
+      "name": "log_export_dialog_note",
+      "value": "The export redacts URL credentials, subscription tokens, passwords and keys."
+    },
+    {
+      "name": "log_export_redacted",
+      "value": "Export redacted"
+    },
+    {
+      "name": "log_export_raw",
+      "value": "Export raw"
+    },
+    {
+      "name": "log_redact_preview_tail",
+      "value": "…(%1$d lines, redacted)"
+    },
+    {
+      "name": "nav_action_search",
+      "value": "Search"
+    },
+    {
+      "name": "nav_action_add",
+      "value": "Add"
+    },
+    {
+      "name": "nav_action_probe",
+      "value": "Check availability"
+    },
+    {
+      "name": "nav_action_cancel_probe",
+      "value": "Cancel check"
+    },
+    {
+      "name": "nav_action_update_all",
+      "value": "Update all subscriptions"
+    },
+    {
+      "name": "nav_action_more",
+      "value": "More actions"
+    },
+    {
+      "name": "nav_action_probing",
+      "value": "Checking availability"
+    },
+    {
+      "name": "nav_reason_no_profiles",
+      "value": "No profiles to check"
+    },
+    {
+      "name": "nav_reason_no_subscriptions",
+      "value": "No subscriptions"
+    },
+    {
+      "name": "nav_reason_probe_unsupported",
+      "value": "Probe unsupported by kernel"
+    },
+    {
+      "name": "nav_reason_updating",
+      "value": "Updating"
+    },
+    {
+      "name": "nav_reason_not_running",
+      "value": "VPN not running"
+    },
+    {
+      "name": "topbar_connections",
+      "value": "Connections"
+    },
+    {
+      "name": "settings_pending_summary",
+      "value": "%1$d pending changes"
+    },
+    {
+      "name": "settings_impact_reconnect",
+      "value": "%1$d need reconnect"
+    },
+    {
+      "name": "settings_impact_next_task",
+      "value": "%1$d apply on next task"
+    },
+    {
+      "name": "settings_impact_immediate",
+      "value": "%1$d immediate"
+    },
+    {
+      "name": "settings_search_hint",
+      "value": "Search settings"
+    },
+    {
+      "name": "settings_clear_search",
+      "value": "Clear"
+    },
+    {
+      "name": "settings_restore_defaults",
+      "value": "Restore defaults"
+    },
+    {
+      "name": "settings_section_defaults_toast",
+      "value": "Section defaults restored and applied"
+    },
+    {
+      "name": "settings_section_already_default",
+      "value": "This section is already at defaults"
+    },
+    {
+      "name": "settings_restore_confirm_title",
+      "value": "Restore \"%1$s\" defaults?"
+    },
+    {
+      "name": "settings_restore_confirm_body",
+      "value": "This changes %1$d fields:\n%2$s\n\nSaved changes apply automatically (reconnects once if needed)."
+    },
+    {
+      "name": "settings_jump_toast",
+      "value": "Jumped to \"%1$s\""
+    },
+    {
+      "name": "favorite_add",
+      "value": "Add to favorites"
+    },
+    {
+      "name": "favorite_remove",
+      "value": "Remove from favorites"
+    },
+    {
+      "name": "app_page_system",
+      "value": "System"
     }
   ]
 }

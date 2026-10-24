@@ -465,7 +465,7 @@ export function buildCustomRule(r: RouteRule, collectRefs: boolean = true): Reco
     const suffixes: Array<string> = [];
     const regexes: Array<string> = [];
     const keywords: Array<string> = [];
-    for (const raw of splitCsv(r.domains)) {
+    for (const raw of splitRuleList(r.domains)) {
       const it = raw.toLowerCase();
       if (it.startsWith('geosite:')) {
         ruleSetAcc.push(it);
@@ -477,7 +477,7 @@ export function buildCustomRule(r: RouteRule, collectRefs: boolean = true): Reco
       } else if (it.startsWith('domain:')) {
         suffixes.push(it.substring('domain:'.length));
       } else if (it.startsWith('regexp:')) {
-        regexes.push(it.substring('regexp:'.length));
+        regexes.push(raw.substring('regexp:'.length));
       } else if (it.startsWith('keyword:')) {
         keywords.push(it.substring('keyword:'.length));
       } else {
@@ -497,7 +497,7 @@ export function buildCustomRule(r: RouteRule, collectRefs: boolean = true): Reco
   // 目的 IP
   if (r.ip.trim().length > 0) {
     const cidrs: Array<string> = [];
-    for (const it of splitCsv(r.ip)) {
+    for (const it of splitRuleList(r.ip)) {
       if (it === 'geoip:private') {
         rule['ip_is_private'] = true;
         matched = true;
@@ -523,7 +523,7 @@ export function buildCustomRule(r: RouteRule, collectRefs: boolean = true): Reco
     matched = true;
   }
   // 源 IP
-  const sourceCidrs = splitCsv(r.source);
+  const sourceCidrs = splitRuleList(r.source);
   if (sourceCidrs.length > 0) {
     rule['source_ip_cidr'] = sourceCidrs;
     matched = true;
@@ -545,7 +545,7 @@ export function buildCustomRule(r: RouteRule, collectRefs: boolean = true): Reco
     matched = true;
   }
   // 应用包名(进程名匹配);仅当规则内勾选「生效」复选框时才写入内核
-  const packages = r.packagesEnabled === true ? splitCsv(r.packages) : [];
+  const packages = r.packagesEnabled === true ? splitRuleList(r.packages) : [];
   if (packages.length > 0) {
     rule['process_name'] = packages;
     matched = true;
@@ -706,13 +706,49 @@ function buildDnsServer(tag: string, addr: string, detour: string): Record<strin
   return server;
 }
 
-/** 生成 geo 本地 rule-set 定义(sing-geo* rule-set 分支的 *.db 为编译二进制 rule set) */
-function buildGeoRuleSet(tag: string, path: string): Record<string, Object> {
+/* OHOS 存储别名(/data/storage/el2/base/...)允许读写但**不允许 inotify** —— 内核对 local
+ * rule-set 的 fswatch 在别名路径上 permission denied,每次启动刷两条 ERROR 红字
+ * (route: watch rule-set file: fswatch: watch ...: permission denied)。
+ * 内核冻结不能改,只能把发进内核配置的文件路径换算成真实沙箱路径:
+ * /data/storage/el2/base/haps/<X> → /data/app/el2/100/base/<bundleName>/haps/<X>
+ * (两个路径指向同一文件;真实路径即 hdc shell 读 singbox.log 用的那条,监听/读取都放行)。 */
+const STORAGE_ALIAS_PREFIX: string = '/data/storage/el2/base/haps/';
+const REAL_APP_PREFIX: string = '/data/app/el2/100/base/com.nekobox.app.jynxen/haps/';
+
+function kernelWatchablePath(path: string): string {
+  if (path.startsWith(STORAGE_ALIAS_PREFIX)) {
+    return REAL_APP_PREFIX + path.substring(STORAGE_ALIAS_PREFIX.length);
+  }
+  return path;
+}
+
+/** geo 规则集下载源(primary;实际几乎不会拉取,见下) */
+/* 用 jsdelivr 镜像而不是 raw.githubusercontent(国内可达):内核 initial_path 加载不写
+ * lastUpdated,更新循环会「立即到期」拉一次;拉成功才写缓存(LastUpdated=now)此后不再拉。
+ * 源不可达 ⇒ 每次连接一条 fetch ERROR 红字,jsdelivr 能拉成一次就永久安静。 */
+const GEO_SITE_SOURCE: string = 'https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-cn.srs';
+const GEO_IP_SOURCE: string = 'https://cdn.jsdelivr.net/gh/SagerNet/sing-geoip@rule-set/geoip-cn.srs';
+
+/** 生成 geo rule-set 定义(sing-geo* rule-set 分支的 *.srs 为编译二进制)。
+ *  ⚠️ 用 **remote + initial_path** 而不是 local(2026-10-24 真机定稿):
+ *  - local 类型内核会对文件做 fswatch,而 OHOS 应用存储别名(/data/storage/el2/*)
+ *    不支持 inotify ⇒ 每次启动刷两条 permission denied ERROR 红字(内核冻结,无开关);
+ *  - 「别名→真实路径」换算不可行:扩展进程命名空间里 /data/app/el2/100/... 不存在,
+ *    内核 open 直接失败拒绝启动(真机证伪);
+ *  - remote 启动顺序 = cache_file 缓存 → **initial_path 本地文件(离线可用)** → 才网络拉取,
+ *    且不做 fswatch。update_interval 放 10 年,实际永不主动拉;
+ *  - URL 带 ?v=<mtime>-<size>:geo 资产更新后 URL 变 ⇒ 缓存键变 ⇒ 下次启动重读
+ *    initial_path 的新文件(内核 remote 缓存按 URL 哈希存,不绕会一直用旧缓存)。 */
+function buildGeoRuleSet(tag: string, path: string, version: string): Record<string, Object> {
   const def: Record<string, Object> = {};
   def['tag'] = tag;
-  def['type'] = 'local';
+  def['type'] = 'remote';
   def['format'] = 'binary';
-  def['path'] = path;
+  const base = tag.startsWith('geoip') ? GEO_IP_SOURCE : GEO_SITE_SOURCE;
+  def['url'] = version.length > 0 ? `${base}?v=${version}` : base;
+  def['download_detour'] = 'direct';
+  def['update_interval'] = '87600h';
+  def['initial_path'] = path;
   return def;
 }
 
@@ -799,7 +835,8 @@ function profileRootTag(id: string): string {
 export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: string,
   logPath: string = '', geositePath: string = '', geoIpPath: string = '',
   customRules: Array<RouteRule> = [], remoteRuleSets: Array<RemoteRuleSet> = [],
-  cachePath: string = '', allProfiles: Array<Profile> = [], groups: Array<ProfileGroup> = []): string {
+  cachePath: string = '', allProfiles: Array<Profile> = [], groups: Array<ProfileGroup> = [],
+  geositeVersion: string = '', geoIpVersion: string = ''): string {
   if (p.type !== ProfileType.CUSTOM && p.type !== ProfileType.CHAIN && p.server.length === 0) {
     throw new Error('服务器地址为空');
   }
@@ -845,6 +882,38 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   const profileTags = new Map<string, string>();
   const profiles = allProfiles.filter(x => x.id !== p.id).concat([p]);
   const selectedGroup = groups.find(g => g.id === p.groupId);
+  // W15(§9.4 组图与引用):同一节点可以属于多个策略组，节点 tag 由 profileRootTag 决定，
+  // 重复下发会让内核因 "duplicate outbound tag" 启动失败 —— 这里按 tag 去重后再入图。
+  const emittedTags = new Set<string>();
+  const emitProfileGraph = (profile: Profile, tag: string): void => {
+    const graph = buildProfileGraph(profile, profiles, groups, s, tag);
+    for (const o of graph.outbounds) {
+      const t = `${o['tag'] ?? ''}`;
+      if (t.length > 0 && emittedTags.has(t)) {
+        continue;
+      }
+      outbounds.push(o);
+      if (t.length > 0) {
+        emittedTags.add(t);
+      }
+    }
+    for (const e of graph.endpoints) {
+      const t = `${e['tag'] ?? ''}`;
+      if (t.length > 0 && emittedTags.has(t)) {
+        continue;
+      }
+      endpoints.push(e);
+      if (t.length > 0) {
+        emittedTags.add(t);
+      }
+    }
+    profileTags.set(profile.id, tag);
+  };
+  /** 策略组 id → 内核出站 tag：选中组保持历史 tag 'proxy'，其余组用稳定 tag group-<enc(id)>。 */
+  const groupTags = new Map<string, string>();
+  if (selectedGroup !== undefined) {
+    groupTags.set(selectedGroup.id, 'proxy');
+  }
   // isSelector:用户手动选成员;autoSelect:内核按真连接延迟自动留在最快的成员上
   // (等价 Clash 的 url-test 组)。两者互斥,autoSelect 优先。
   if (selectedGroup !== undefined && (selectedGroup.isSelector || selectedGroup.autoSelect)) {
@@ -852,10 +921,7 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     const memberTags: Array<string> = [];
     for (const member of members) {
       const tag = profileRootTag(member.id);
-      const graph = buildProfileGraph(member, profiles, groups, s, tag);
-      outbounds.push(...graph.outbounds);
-      endpoints.push(...graph.endpoints);
-      profileTags.set(member.id, tag);
+      emitProfileGraph(member, tag);
       memberTags.push(tag);
     }
     if (selectedGroup.autoSelect) {
@@ -879,9 +945,44 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
       outbounds.unshift(selector);
     }
   } else {
-    const graph = buildProfileGraph(p, profiles, groups, s, 'proxy');
-    outbounds.push(...graph.outbounds);
-    endpoints.push(...graph.endpoints);
+    emitProfileGraph(p, 'proxy');
+  }
+  // W15/§9.4:其它策略组也各自下发为稳定 tag 的出站，规则可用 group:<id> 指向它们；
+  // 选中组仍是 'proxy'(route.final 与历史行为不变)。空组不下发(§9.4 空组单独校验/阻止应用)。
+  for (const g of groups) {
+    if (selectedGroup !== undefined && g.id === selectedGroup.id) {
+      continue;
+    }
+    if (!(g.isSelector || g.autoSelect)) {
+      continue;
+    }
+    const members = profiles.filter(x => x.groupId === g.id);
+    if (members.length === 0) {
+      continue;
+    }
+    const groupTag = `group-${encodeURIComponent(g.id)}`;
+    const memberTags: Array<string> = [];
+    for (const member of members) {
+      const tag = profileRootTag(member.id);
+      emitProfileGraph(member, tag);
+      memberTags.push(tag);
+    }
+    if (g.autoSelect) {
+      const probeUrl = s.testUrl.trim().length > 0 ? s.testUrl.trim() : 'http://www.gstatic.com/generate_204';
+      const urlTestGroup: Record<string, Object> = {
+        'type': 'urltest', 'tag': groupTag, 'outbounds': memberTags,
+        'url': probeUrl, 'interval': '10m', 'idle_timeout': '30m',
+        'tolerance': 50, 'interrupt_exist_connections': false
+      };
+      outbounds.push(urlTestGroup);
+    } else {
+      const selector: Record<string, Object> = {
+        'type': 'selector', 'tag': groupTag, 'outbounds': memberTags,
+        'default': memberTags[0]
+      };
+      outbounds.push(selector);
+    }
+    groupTags.set(g.id, groupTag);
   }
   // Android aliases a rule referencing the active ID to proxy (also for selector).
   profileTags.set(p.id, 'proxy');
@@ -898,11 +999,7 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
       console.warn(`[NB] 路由引用节点不存在,跳过: ${id}`);
       continue;
     }
-    const tag = profileRootTag(id);
-    const graph = buildProfileGraph(target, profiles, groups, s, tag);
-    outbounds.push(...graph.outbounds);
-    endpoints.push(...graph.endpoints);
-    profileTags.set(id, tag);
+    emitProfileGraph(target, profileRootTag(id));
   }
   const direct: Record<string, Object> = { 'type': 'direct', 'tag': 'direct' };
   // 1.11: block/dns 特殊 outbound 已移除,分流用 rule action(hijack-dns / reject)
@@ -959,7 +1056,7 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
         } else if (it.startsWith('domain:')) {
           suffixes.push(it.substring('domain:'.length));
         } else if (it.startsWith('regexp:')) {
-          regexes.push(it.substring('regexp:'.length));
+          regexes.push(raw.substring('regexp:'.length));
         } else if (it.startsWith('keyword:')) {
           keywords.push(it.substring('keyword:'.length));
         } else {
@@ -967,7 +1064,7 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
         }
       }
       if (r.ip.trim().length > 0) {
-        for (const it of splitCsv(r.ip)) {
+        for (const it of splitRuleList(r.ip)) {
           if (it === 'geoip:private') {
             dnsRule['ip_is_private'] = true;
           } else if (it === 'geoip:cn' && geoIpPath.length > 0) {
@@ -993,11 +1090,12 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
         setIf(dnsRule, 'strategy', dnsStrategy(s.directDnsStrategy, s));
         dnsRules.push(dnsRule);
       } else if (r.outbound === 'reject') {
-        // 1.14 无 rcode server;reject 语义 = predefined 动作返回 NXDOMAIN。
-        // predefined 变体只接受 rcode/answer/ns/extra(内核 rule_action.go:340),
-        // disable_cache 属于 route 动作,写这里会被 strict schema 拒绝。
+        // 1.14 无 rcode server;reject 语义 = predefined 动作返回空应答。
+        // Android dns-block = rcode://success → NOERROR 且无记录;
+        // predefined 不写 rcode 时内核默认 RcodeSuccess(option/dns_record.go:51),
+        // 与安卓完全一致,显式写 rcode=3(NXDOMAIN)反而偏离。
+        // predefined 变体只接受 rcode/answer/ns/extra(内核 rule_action.go:340)。
         dnsRule['action'] = 'predefined';
-        dnsRule['rcode'] = 3;
         dnsRules.push(dnsRule);
       } else if (r.outbound === 'proxy') {
         if (s.fakeDns) {
@@ -1042,6 +1140,8 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   dns['servers'] = dnsServers;
   dns['rules'] = dnsRules;
   dns['final'] = 'remote';
+  // Android ConfigBuilder.kt:186 dns.independent_cache = true
+  dns['independent_cache'] = true;
   setIf(dns, 'strategy', dnsStrategy(s.remoteDnsStrategy, s));
 
   // ---- route ----
@@ -1090,10 +1190,19 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     privateRule['outbound'] = 'direct';
     builtinRules.push(privateRule);
   }
-  // block mcast:独立于 bypassLan 开关,目的/源命中组播段即拒绝
+  // block mcast:独立于 bypassLan 开关。
+  // 方案 §7.4/C7(2026-10-24 行为变更):旧实现把 ip_cidr 与 source_ip_cidr 写进同一条普通规则——
+  // sing-box 普通规则内**不同字段是 AND**,即"目的组播 且 源组播"几乎永不匹配,组播实际未被拒绝。
+  // 现改为明确 logical OR:源**或**目的命中组播段即拒绝。范围仍保留 224.0.0.0/3(含部分保留地址,
+  // 方案 §7.4:首轮不缩小到 /4,如要缩小须独立评估),ff00::/8 为 IPv6 组播。
+  const mcastDst: Record<string, Object> = {};
+  mcastDst['ip_cidr'] = ['224.0.0.0/3', 'ff00::/8'];
+  const mcastSrc: Record<string, Object> = {};
+  mcastSrc['source_ip_cidr'] = ['224.0.0.0/3', 'ff00::/8'];
   const mcastRule: Record<string, Object> = {};
-  mcastRule['ip_cidr'] = ['224.0.0.0/3', 'ff00::/8'];
-  mcastRule['source_ip_cidr'] = ['224.0.0.0/3', 'ff00::/8'];
+  mcastRule['type'] = 'logical';
+  mcastRule['mode'] = 'or';
+  mcastRule['rules'] = [mcastDst, mcastSrc];
   mcastRule['action'] = 'reject';
   builtinRules.push(mcastRule);
 
@@ -1112,6 +1221,14 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
       if (r.outbound.startsWith('profile:')) {
         const resolved = profileTags.get(r.outbound.substring('profile:'.length));
         if (resolved === undefined) {
+          continue;
+        }
+        targetTag = resolved;
+      } else if (r.outbound.startsWith('group:')) {
+        // §9.4：规则指向策略组时用组出站；组不存在/空组不下发时跳过并记录，不静默改成 proxy。
+        const resolved = groupTags.get(r.outbound.substring('group:'.length));
+        if (resolved === undefined) {
+          console.warn(`[NB] 路由引用策略组不存在或为空,跳过: ${r.outbound}`);
           continue;
         }
         targetTag = resolved;
@@ -1180,10 +1297,10 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     for (const tag of referencedRuleSetTags) {
       if (tag === 'geosite:cn' && geositePath.length > 0) {
         cnTags.push(tag);
-        pendingDefs.push(buildGeoRuleSet(tag, geositePath));
+        pendingDefs.push(buildGeoRuleSet(tag, geositePath, geositeVersion));
       } else if (tag === 'geoip:cn' && geoIpPath.length > 0) {
         cnTags.push(tag);
-        pendingDefs.push(buildGeoRuleSet(tag, geoIpPath));
+        pendingDefs.push(buildGeoRuleSet(tag, geoIpPath, geoIpVersion));
       }
     }
     for (const tag of referencedRuleSetTags) {
@@ -1204,10 +1321,10 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   // 1.14:顶层 route.geoip/geosite 仅支持 legacy geo.db;本项目下载的是
   // sing-geo* rule-set 分支的编译二进制,改为 local rule_set 定义(geo 规则按 tag 引用)
   if (geositePath.length > 0) {
-    ruleSetDefinitions.unshift(buildGeoRuleSet('geosite_cn', geositePath));
+    ruleSetDefinitions.unshift(buildGeoRuleSet('geosite_cn', geositePath, geositeVersion));
   }
   if (geoIpPath.length > 0) {
-    ruleSetDefinitions.unshift(buildGeoRuleSet('geoip_cn', geoIpPath));
+    ruleSetDefinitions.unshift(buildGeoRuleSet('geoip_cn', geoIpPath, geoIpVersion));
   }
   if (ruleSetDefinitions.length > 0) {
     route['rule_set'] = ruleSetDefinitions;
@@ -1339,9 +1456,15 @@ function buildLatencyProbeDns(s: AppSettings): string {
 }
 
 /**
- * 生成真连接测速专用配置:每个待测节点一个出站(tag=t<i>;链节点展开为 c<i>_* + t<i>),
- * 无入站/无 TUN/无 clash/无 cache,仅一条直连 DNS 用于解析节点域名。
- * 内核侧(CGoTestStartSingBox)会再强制清空 inbounds/experimental 做双保险。
+ * 生成真连接测速专用配置,形态 1:1 对齐 Android `buildConfig(proxy, forTest=true)`
+ * (fmt/ConfigBuilder.kt:126-146,650-686,741-744,详见 docs/PARITY-LATENCY-TEST.md §7):
+ * 每个待测节点一个出站(tag=t<i>;链节点展开为 c<i>_* + t<i>),无入站/无 TUN/无
+ * clash/无 fakeip/不套 globalCustomConfig,但每节点自定义出站(customConfigJson)仍合并。
+ * 与 Android 的两处有意差异(平台必需,见文档 §7):
+ *  - DNS 是单个 IP 字面量探针(Android 是 dns-local + dns-direct 两级直连链;效果等价);
+ *  - route.auto_detect_interface=false(OHOS 补丁 2 关闭 netlink monitor,true 拿不到默认网卡)。
+ * 内核侧(CGoTestStartSingBoxV2)会再强制清空 inbounds/experimental 做双保险。
+ * 单节点构建失败只标记该节点(tag 置空),不拖垮整批(Android 每节点实例的隔离性,见 D-1)。
  */
 export function buildLatencyTestConfig(targets: Array<Profile>, allProfiles: Array<Profile>,
   s: AppSettings, logPath: string, groups: Array<ProfileGroup> = []): LatencyTestConfig {

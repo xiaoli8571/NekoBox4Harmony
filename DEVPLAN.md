@@ -1,5 +1,37 @@
 # NekoBox for Harmony 开发计划(G 阶段,目标版本 1.6.0)
 
+## 版本 2.3.0 发布打包(2026-10-24)—— 状态:✅ 已构建 + AGC 双层签名(真机待验):复审修复 4 项后升 2.3.0/2300000,产物与 SHA256 见 CHANGES.md 顶部条目;Node 42 套件 + Go PASS。历史:全面体验与功能改造方案(2026-10-23)—— 状态：P0–P6 已完成(2026-10-24;P6=适配与回归 W21,见 `docs/p6-foundation/README.md`),P7 发布检查文档轮完成(真机项全部「待验」,`docs/p7-release/README.md`)。各阶段详见 `docs/p0-baseline/README.md`、`docs/p1-foundation/README.md`、`docs/p2-foundation/README.md`、`docs/p3-foundation/README.md`、`docs/p4-foundation/README.md`、`docs/p5-foundation/README.md`
+
+- 用户要求上一轮全部建议纳入改造，先写详细方案。统一依据：`docs/REDESIGN-PLAN-2026-10-23.md`。
+- 方案包含24项需求、七页职责与二级页、检测/分流/策略/订阅/设置完整流程、v5迁移和回滚、必要内核能力验证、P0—P7实施依赖、逐项验收与发布门槛。
+- **P0 完成报告与全部基线文档见 `docs/p0-baseline/README.md`**：工作区恢复快照(git stash + patch)、195 入口去向表(保留121/迁移42/合并26/移除6)、数据层调查(无稳定ID/跨进程双写)、内核能力清单(K1两层校验/K2会话导出的决定)、冲突文档清单(C1~C14)、测试基线(Node 18/19 通过、Go 16/16、release 构建通过)。
+- **P1 基础层(2026-10-24)已交付并全绿**：W03 ConfigRepository(双槽 manifest+单调 revision+FNV-1a checksum+孤儿防护，14 项测试) / W04 v5 迁移(6键采集+恢复点+稳定ID+映射表+风险标记，12 项测试) / W05 K1 内核校验导出(CGoCheckConfigV1+CGoValidateSRSFileV1，.so 11 导出，19 项 Go 测试) / W06 运行状态协议骨架(信封+命令通道+ApplyCoordinator，8 项测试) / W07 分应用门控(空名单/超限 block，8 项测试) / W08 规则集仓库(下载→验证→缓存→GC+失败策略，17 项测试)。合计 Node 23 套件全 PASS、Go 全 PASS、release assembleHap BUILD SUCCESSFUL。
+- 关键决定：`box.New` 有副作用不能做 check → K1 新增 `CGoCheckConfigV1`+`CGoValidateSRSFileV1` 无副作用导出；存储零 rename 先例 → 双槽 manifest+单调 revision+checksum；所有实体无稳定 ID → v5 迁移核心是 ID 分配+映射表；运行状态协议 = 信封(protocolVersion/sessionId/generation/sequence/operationId/appliedRevision) + ApplyCoordinator 事务状态机。
+- **P2 检测重构(2026-10-24)已交付并全绿**：W09 ProbeResult/ProbeCoordinator/ProbeRunner/K2 会话导出(16 导出)/ProbeStore + W10 ProbeFilters；删除整批 TCPing 回退(C3)，坏节点二分隔离，迟到回调与取消/写失败均有测试。Node 27 套件全 PASS、Go 全 PASS、release 构建成功。
+- **P3 导航与节点首页(2026-10-24)已交付并全绿**：W11 导航契约/抽屉七页/顶栏按页/返回语义/浏览记忆，W12 状态卡双状态独立/节点行 ProbeResult 驱动/工具条/空态/连接前置配置校验(K1)；订阅页(tab1)接线。29 套件全绿，release 构建成功。
+- **P4 部分交付(2026-10-24)**：W13 规则类型化/编译 manifest/DNS 投影校验（`model/RoutingRules.ets`，21 组测试）；W16 设置 schema/生效分类/待应用差异/应用事务（`model/SettingsSchema.ets` 25 组 + 设置页待应用条 + 扩展侧 `apply` 命令 + 全局横幅）。31 套件全绿、release 构建成功。
+- **P4 已完成(2026-10-24)**：W14 分流四子页 + 规则编辑器 + 旧规则区；W15 核心（ClashApi + PolicyGroups + 多组稳定 tag 下发 + 切换流程）；W13 规则模型与组播 OR 语义修正。release 构建成功（HAP 14,897,920 B），Node 35 套件全绿。
+- **P4 遗留**：策略组切换 UI 仅覆盖运行图 `proxy` 组；分应用完整名单管理仍在设置页；`SETTING_LABELS` 待扩到 54；`runningGroupTags` 待壳层下发。
+- P5 起未动：订阅源快照/用户覆盖/事务合并、诊断工具、视觉适配。真机验收(迁移落盘/TUN/分应用真实流量/检测真实探测/返回栈/应用事务恢复)全部待 HDC 设备。
+
+## 测速／分应用／路由综合审计(2026-10-23)—— 状态：主机审计及本轮修复完成，19套Node通过、16项Go测试通过、release构建通过；真机待验
+
+- 完整结论与未修问题以 `docs/FUNCTIONAL-AUDIT-2026-10-23.md` 为准，当前构建包版本实际为2.2.1/2200001。
+- 修复测速旧快照覆盖、保存失败后卡住、配置写盘异常、降级提示被覆盖、非法delay假0ms、分应用保存失败仍重启、多行规则与正则大小写、规则卡状态刷新。
+- 重要待办：include空名单放大全部应用、远程SRS首次失败阻止启动、坏节点影响整批URL Test、鸿蒙按包名指定出站缺口；另见报告中的测速判据及组功能差异。
+- 无HDC设备；外网Geo首选源检查因连接重置跳过。主机通过不等于真机功能全通过。未更改内核、权限、版本或签名配置。
+
+## 后台保活 AGC 合规整改(2026-10-23)—— 状态:✅ 已完成开发并编译通过(keepalive-policy 19/19,assembleHap release BUILD SUCCESSFUL),待真机回归
+
+- 依据 `docs/REA-FLCLASH-KEEPALIVE.md`(FlClash-ohos 0.8.96 逆向 + SDK 权限取证)整改,目标是"个人开发者可上架 AGC"的权限组合:
+  - 撤销 2026-10-19 的 `DATA_TRANSFER` 会话级保活(该任务 10 分钟无 live view 进度通知会被系统取消,且用途与 AGC 申请不符),`backgroundModes` 一并从 module.json5 移除;
+  - `TASK_KEEPING` 明确不使用:phone/tablet 上必需受限 ACL `KEEP_BACKGROUND_RUNNING_SYSTEM`(system_basic),个人开发者拿不到;
+  - 移除 `ohos.permission.READ_PASTEBOARD`(system_basic 受限),剪贴板导入改走系统"允许粘贴"弹窗;
+  - 长时任务只保留"真实传输期"用法(`KeepAliveManager.beginTransfer('subscription'|'geo')`,8 分钟告警 / 10 分钟系统取消线);
+  - 新增被杀自愈 `core/CrashGuard.ets`(运行态落盘 + hiAppEvent APP_KILLED/APP_CRASH/APP_FREEZE 取证 + 启动时自动重连或询问),对齐 FlClash 的 `AppCrashWatcher` 语义,零权限。
+- 新增 `tests/keepalive-policy.cjs`(19 断言);HAP 产物已复核 `module.json` 权限与 `resources.index` 文案。
+- 待真机:剪贴板"允许粘贴"路径、被杀自愈两条分支、以及 FlClash 在无 ACL 设备上的对照实验(详见 CHANGES.md 同条目的"已知限制")。
+
 ## 安卓端 P0-P2 全量对齐(2026-10-13)—— 状态：✅ 已完成开发并编译通过(BUILD SUCCESSFUL 33 tasks, entry-default-unsigned.hap 14.3MB),待真机回归
 
 - 按 `docs/PARITY-ANDROID-ALIGN.md` P0-P2 全部实施(用户确认"p0-p2全是开始"):
@@ -27,7 +59,7 @@
 - 源码证据、已知缺口及后续任务见 `docs/PARITY-REAUDIT.md`。分组分页、滚动防遮挡、主题/节点卡、完整 DNS/VPN 行为、任意节点出站及组级代理仍需完成。
 
 
-> 当前基线:1.5.8(versionCode 1001800,2026-09-03,commit eb35129)。**F 阶段 F1~F7 已全部交付(F7 已真机验收;F2~F6 待日常复核,勿重做)**;本阶段开发 G1~G6,目标版本 1.6.0。建议顺序:**G6 → G1 → G2 → G3 → G4 → G5**(G5 风险最高放最后)。**交付模式(用户 2026-09-03 指定):G6 已单独交付;剩余 G1~G5 由开发 agent 一次性全部开发完成后再统一交付构建,不分阶段**——但每完成一项仍须立即同步该项 DEVPLAN 状态行与 CHANGES.md 记录,全部完成后一次性汇报"已完成 G1~G5,请构建"。
+> 当前基线:**2.2.0(versionCode 2200000,2026-10-23,版本号全仓统一)**;历史基线 1.5.8(versionCode 1001800,2026-09-03,commit eb35129)。**F 阶段 F1~F7 已全部交付(F7 已真机验收;F2~F6 待日常复核,勿重做)**;本阶段开发 G1~G6,目标版本 1.6.0。建议顺序:**G6 → G1 → G2 → G3 → G4 → G5**(G5 风险最高放最后)。**交付模式(用户 2026-09-03 指定):G6 已单独交付;剩余 G1~G5 由开发 agent 一次性全部开发完成后再统一交付构建,不分阶段**——但每完成一项仍须立即同步该项 DEVPLAN 状态行与 CHANGES.md 记录,全部完成后一次性汇报"已完成 G1~G5,请构建"。
 > 详细架构见 `AGENTS.md`,上一阶段实现记录见 `CHANGES.md`,先读这两个文件与下方铁律/踩坑。
 
 ## 铁律(违反即返工)
@@ -466,3 +498,49 @@
 - 测试: 全 12 个 node 套件全绿(ipv6-modes 的四档断言随 UI 搬迁改指 RouteRulesPage.ets)。
 - 交付: `dist/NekoBox-2.1.6-signed.hap`(14,352,818 字节,SHA256 `E41035952E75F4F20E2F4BDE8CB5C782FF4C63FD74AC17262FA4BA505E0F80A8`)+ `dist/NekoBox-2.1.6-signed.app`(13,672,245 字节,SHA256 `AD5D513079C93A9A26F2FF19D2EE14BC3FD36DDBD7A737D730B01B08BD94A158`);两层签名 verify 均通过;unsigned HAP 14,301,541 字节 SHA256 `D365416D179A932F2A52EFB1FF43DC5E13E405BC1E0E3DD6CF6E66B7DDFEA934`。
 - 未验证: 无真机安装与像素验收;路由页折叠卡在窄屏下的排布、设置页删减后是否留下多余留白、应用信息里的 2.1.6 显示待用户回归。
+
+## 分应用代理修复 + 条目化重做 + 移除「读取应用」(2.1.10)—— 状态:✅ 已完成开发并本机编译通过 + 真机安装/迁移已验证(2026-10-19),分应用生效性待真机点选回归
+
+- 用户诉求: (原话) "分应用代理不生效，填写包名没有完成分流。再有就是你帮我把操作逻辑改成截图这种，填写的时候填应用名+包名，这样容易区分是哪个应用，填写后，后面有一个复选框，可勾选，可不勾选。再有就是把分应用分流里面的读取应用的那一部分删掉，没有这个权限，留着也没用"
+- 根因: ①`VpnExtensionAbility` 在独立 `:vpn` 进程,Preferences 读缓存是进程内的,常驻扩展不刷新 → `loadSettings()` 永远拿到旧名单(profileId 早就因同一原因改走 Want,perApp 当时没改);②`VpnService.wantFor()` 未下发 perApp 字段;③名单无格式校验,含非法包名会被系统整体判无效。
+- 修复: `Store.refreshStore()`(removePreferencesFromCache + getPreferences)供扩展每次启动强制重读;`VpnService` 经 Want 下发 `perAppMode`/`perAppList`(带 `perAppProvided` 标志,读取失败时不覆盖磁盘名单);`effectivePackages()` 在 UI 落盘与扩展建 VpnConfig 两处过滤非法/未勾选/重复/超 256;连接时打印 `[vpn] 分应用: 模式=... 来源=... 生效=N 个`。
+- 数据模型: 新增 `model/PerApp.ets`(纯函数,可 node 直测);`AppSettings.perAppEntries` 为权威条目(JSON),`perAppList` 改为勾选项派生以保持旧契约;首次载入用「预置 12 个常用鸿蒙应用 + 旧 perAppList(保持勾选)」迁移,显式清空落 `'[]'` 不复活。
+- 界面: 条目列表(应用名+包名+预置标签+移除条目+复选框)、按名称/包名搜索、「添加 / 批量导入」对话框(名称备注可选 + 每行一个包名,名称仅用于单个包名)、勾选即存、运行中自动重连;「清除选择」只取消勾选;剪贴板导入改为合并。
+- 移除「读取应用」: 删除 `import bundle`/`InstalledAppItem`/`loadInstalledApps`/`invertAppSelections`/`filteredInstalledApps` 及对应 UI(无特权时只能枚举自身,权限已结案)。
+- 验收口径: ①模式选「排除模式」,勾选某应用 → 该应用不走代理,其余走;切「仅这些走代理」→ 只有勾选项走;②取消勾选后重连,该应用立即不再受影响;③未勾选条目/非法包名绝不出现在日志的 `生效=N 个` 里;④「读取应用」按钮与列表彻底消失;⑤老装机升级后原有包名仍生效。
+- 测试: 新增 `tests/per-app.cjs`(21 条 PASS 断言线)全绿;`tests/ipv6-store.cjs` 补依赖桩后全绿;全量 14 套件 11 绿,3 套(`parity-config`/`ipv6-modes`/`route-rules-ui`)经 `git worktree` 在未改动 HEAD 复跑确认为**既有失败**。
+- 构建/取证: `assembleHap -p buildMode=release` BUILD SUCCESSFUL;HAP 内 `resources.index` 含全部新键,`modules.abc` 含新符号且不含已删符号。
+- 真机: MatePad mini(API 24)`hdc install -r` 成功;启动日志 `[store] 分应用条目已初始化: 12 条(生效 0 个)`,落盘 12 条预置(均未勾选),旧 `perAppMode=exclude` 保留;新 UI 真机渲染正常。
+- 交付: `dist/NekoBox-2.1.10-perapp-signed.hap`(14,425,762 字节,SHA256 `9cb3e30d58c8662a736cb911f999264c827179d30ff03bbd3d9dc5001b71292d`;versionName 2.1.10 / versionCode 2100010;已装真机)。
+- 未验证: 点选后的实际分流效果;`blockedApplications` 拦不住内核线程出站属系统框架行为(未变)。
+
+### 分发包(AGC 正式签名 .app / .hap,2026-10-19)
+
+- 用户要求"打包.app包"。走官方 `assembleApp --mode project -p buildMode=release`(42 tasks)→ 未签名骨架(内层 HAP 未签、release、minAPIVersion 60101024)→ 新增 `scripts/sign-release-agc.ps1` 双层签 AGC 发布证书(`AGC通用证书/General.p12` 别名 general + `General.cer` + `NekoBoxRelease.p7b`),两层 `verify-app` 通过,并断言两层证书链含发布证书叶子 `E3:5A:CF:…`(与 2.1.9 交付包同一张证书)。
+- 关键坑:`build-profile.json5` 是本地 **debug** 签名段,`assembleHap/assembleApp` 产物均为 debug 签名,只能装机、不能上架;正式分发必须走本脚本。口令仅经环境变量 `AGC_KEY_PASSWORD`。
+- 产物:`dist/NekoBox-2.1.10-release-signed.app`(13,701,265 字节,SHA256 `0F01C9470F65438CEC6BB563D5F46CC70F938BEE80896C10E74C27BB66867A81`)、`dist/NekoBox-2.1.10-release-signed.hap`(14,425,584 字节,SHA256 `D0137484DEFB5BD64D8D9F2C8D342A2E9444B7F839FA33E41CE53FAFC3AA2BEF`)。
+- 注意:先前交付的 `dist/NekoBox-2.1.10-perapp-signed.hap` 是 debug 签名(已装真机),与 release 包互不覆盖,换装需先卸载。
+
+## 订阅解析 + 节点测试 1:1 对齐安卓(2026-10-23)—— 状态:✅ 已完成开发并本机编译通过(15 套件 12 绿/3 既有红,BUILD SUCCESSFUL),待真机回归
+
+- 用户诉求:"不止是要求功能一样,更要求功能的实现方式……我要看到功能实现的对比,要完全一样的效果"。判定标准从"功能有没有"升级为"实现方式是否逐字一致",并要求逐项对照取证。
+- 交付物:`docs/PARITY-ANDROID-1TO1.md`(总览 + 判定汇总 + 证据)、`docs/PARITY-SUBSCRIPTION.md`(订阅 S1–S13,含 17 条超集/6 条平台替代/9 条已知怪癖)、`docs/PARITY-LATENCY-TEST.md`(测速 §1–§8,含 D-1 会话粒度/D-2 测量口径/D-3.1~10)。
+- 订阅链路:UA 逐字安卓值;非 200 即失败;Clash 10 类型逐字段 + 未知类型静默丢弃;JSON skip 名单对齐(group/wireguard 保留);parseProxies 按行+按空格取多者;trojan-go 映射;naive+ 显式 skipped;doUpdate 顺序(改名→forceResolve→去重→合并→删除→计数)与安卓 bug 字面复刻;autoUpdate=false / 分钟间隔 1440;Diff 对话框 + 未连接确认框接线三处入口。
+- 测速链路:Profile status/ping/error 三件套 + 旧数据迁移;⋮ 菜单 TCPing / URL Test 双入口(当前分组作用域);TCPing 固定 3000 + canTCPing 过滤 + 首地址 + 四分类;URL Test 不筛协议 + 超时 5000 + 默认不判状态码 + status3 原文;展示删 150/400 阈值、status3 点击弹原文;默认网址 cp.cloudflare.com、并发 5、连接中测速 3000。
+- 明确保留的差异(不可消除,已论证):测速会话粒度(内核单例 → 整批会话保并发)、单次探测测量口径(libneko GET×2 暖 RTT vs 内核 HEAD 单次含握手;需重编 .so)、订阅请求不走 mixed 端口(平台无显式代理,TUN 等价)、WorkManager→轮询、content:// 源、trojan-go 插件字段。
+- 验收(真机待做):同一订阅两端节点数/字段一致;Diff 对话框与确认框行为;TCPing/URL Test 当前分组 + 绿/红两档 + status3 原文;取消后落盘;同节点延迟对比(预期鸿蒙偏高)。
+
+## 版本 2.2.0 发布打包 + 版本号统一(2026-10-23)—— 状态:✅ 已构建、已装真机
+
+- **版本号统一**:`AppScope/app.json5` → `2200000` / `2.2.0`(编码 `major*1000000+minor*100000+patch`);
+  根 `oh-package.json5`(`1.8.0`→`2.2.0`)与 `entry/oh-package.json5`(`1.0.0`→`2.2.0`)同步;
+  `pack.info` 由构建自动写入;关于页读 `bundleManager`,无硬编码字面量。
+  文档侧:HANDOFF/DEVPLAN 的"当前基线"、AGENTS.md 版本条、CHANGES.md 顶部条目均已指向 2.2.0。
+  **内核版本串 `1.14.0-ohos-inproc` 不动**——它是 sing-box 版本,与应用版本无关。
+- 构建:`assembleHap` + `assembleApp` 均 BUILD SUCCESSFUL(versionCode 2200000 反映在 pack.info)。
+- 交付:`dist/NekoBox-2.2.0-signed.hap`(14,483,298 B,SHA256 `1e8de1c46458b6ebe370aba00366e4eb24dc4cfa3e034ac64a8fb9a4813f412a`)、
+  `dist/NekoBox-2.2.0-signed.app`(13,690,478 B,内含 HAP + pack.info 2200000/2.2.0)、
+  `dist/NekoBox4Harmony-2.2.0-unsigned.hap`(14,426,154 B)。
+- 真机:`hdc install -r` 覆盖安装成功,`bm dump` 回读 `versionCode 2200000 / versionName 2.2.0`。
+- 本轮内容(2.1.11→2.2.0)见 `CHANGES.md` 顶部两条:体验修复(测试结果即时刷新/半透明底栏/通知栏速率+运行时长/延迟分档)+
+  保活整改 + 两处 `[object Object]` 修复 + 7 菜单审计文档(`docs/MENU-PARITY-7.md`)。

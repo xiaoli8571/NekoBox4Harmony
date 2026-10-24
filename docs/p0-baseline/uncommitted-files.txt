@@ -1,0 +1,80 @@
+ M AGENTS.md
+ M AppScope/app.json5
+ M CHANGES.md
+ M DEVPLAN.md
+ M HANDOFF.md
+ D "NekoBox\345\272\224\347\224\250\346\210\252\345\233\276/NekoBox-logo-1024x1024.png"
+ D "NekoBox\345\272\224\347\224\250\346\210\252\345\233\276/NekoBox-phone-01-1080x1920.jpg"
+ D "NekoBox\345\272\224\347\224\250\346\210\252\345\233\276/NekoBox-phone-02-1080x1920.jpg"
+ D "NekoBox\345\272\224\347\224\250\346\210\252\345\233\276/NekoBox-phone-03-1080x1920.jpg"
+ D "NekoBox\345\272\224\347\224\250\346\210\252\345\233\276/screenshot_20260915_101219_com.nekobox.app.jynxen.jpg"
+ M entry/.cxx/default/default/debug/arm64-v8a/.ninja_log
+ M entry/.cxx/default/default/debug/arm64-v8a/output.log
+ M entry/.cxx/default/default/release/arm64-v8a/.ninja_log
+ M entry/.cxx/default/default/release/arm64-v8a/output.log
+ M entry/oh-package.json5
+ M entry/src/main/ets/core/Backup.ets
+ M entry/src/main/ets/core/ConfigBuilder.ets
+ M entry/src/main/ets/core/CoreManager.ets
+ M entry/src/main/ets/core/Subscriptions.ets
+ M entry/src/main/ets/core/VpnService.ets
+ M entry/src/main/ets/entryability/EntryAbility.ets
+ M entry/src/main/ets/model/Profile.ets
+ M entry/src/main/ets/model/Store.ets
+ M entry/src/main/ets/pages/GroupPage.ets
+ M entry/src/main/ets/pages/Index.ets
+ M entry/src/main/ets/pages/RouteRulesPage.ets
+ M entry/src/main/ets/pages/SettingsPage.ets
+ M entry/src/main/ets/pages/SubDetailPage.ets
+ M entry/src/main/ets/utils/ClashApi.ets
+ M entry/src/main/ets/utils/LatencyTester.ets
+ M entry/src/main/ets/utils/LinkParser.ets
+ M entry/src/main/ets/utils/Subscription.ets
+ M entry/src/main/ets/vpnext/VpnExtAbility.ets
+ M entry/src/main/module.json5
+ M entry/src/main/resources/base/element/color.json
+ M entry/src/main/resources/base/element/string.json
+ M entry/src/main/resources/dark/element/color.json
+ M entry/src/main/resources/en_US/element/string.json
+ M oh-package.json5
+ D release-1.9.1/NekoBoxRelease.p7b
+ D release-1.9.1/verified-profile.p7b
+ M tests/clash-auth.cjs
+ M tests/hostprobe/fixtures/production-dns.json
+ M tests/hostprobe/fixtures/production-graphs.json
+ M tests/ipv6-modes.cjs
+ M tests/ipv6-store.cjs
+ M tests/parity-config.cjs
+?? "NekoBox\345\272\224\347\224\250\346\210\252\345\233\276/iphone_01.jpg"
+?? "NekoBox\345\272\224\347\224\250\346\210\252\345\233\276/iphone_02.jpg"
+?? "NekoBox\345\272\224\347\224\250\346\210\252\345\233\276/iphone_03.jpg"
+?? "NekoBox\345\272\224\347\224\250\346\210\252\345\233\276/table_01.jpg"
+?? "NekoBox\345\272\224\347\224\250\346\210\252\345\233\276/table_02.jpg"
+?? "NekoBox\345\272\224\347\224\250\346\210\252\345\233\276/table_03.jpg"
+?? docs/FUNCTIONAL-AUDIT-2026-10-23.md
+?? docs/MENU-PARITY-7.md
+?? docs/PARITY-ANDROID-1TO1.md
+?? docs/PARITY-LATENCY-TEST.md
+?? docs/PARITY-SUBSCRIPTION.md
+?? docs/PRIVACY-POLICY.md
+?? docs/REA-FLCLASH-KEEPALIVE.md
+?? docs/REDESIGN-PLAN-2026-10-23.md
+?? docs/menu-audit/
+?? docs/p0-baseline/
+?? entry/src/main/ets/core/CrashGuard.ets
+?? entry/src/main/ets/core/KeepAliveManager.ets
+?? entry/src/main/ets/core/KeepAlivePolicy.ets
+?? entry/src/main/ets/model/PerApp.ets
+?? entry/src/main/ets/pages/SubUpdateFeedback.ets
+?? entry/src/main/ets/utils/ErrText.ets
+?? entry/src/main/ets/utils/NotifyText.ets
+?? scripts/mkapp.py
+?? scripts/sign-release-agc.ps1
+?? tests/functional-audit.cjs
+?? tests/hostprobe/functional_audit_test.go
+?? tests/keepalive-policy.cjs
+?? tests/latency-parity.cjs
+?? tests/notify-text.cjs
+?? tests/per-app.cjs
+?? tests/permission-policy.cjs
+?? tests/sub-parity-subscription.cjs

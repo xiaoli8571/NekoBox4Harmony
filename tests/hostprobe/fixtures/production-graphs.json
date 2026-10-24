@@ -22,6 +22,7 @@
         ],
         "rules": [],
         "final": "remote",
+        "independent_cache": true,
         "strategy": "ipv4_only"
       },
       "outbounds": [
@@ -76,13 +77,21 @@
             "outbound": "profile-b"
           },
           {
-            "ip_cidr": [
-              "224.0.0.0/3",
-              "ff00::/8"
-            ],
-            "source_ip_cidr": [
-              "224.0.0.0/3",
-              "ff00::/8"
+            "type": "logical",
+            "mode": "or",
+            "rules": [
+              {
+                "ip_cidr": [
+                  "224.0.0.0/3",
+                  "ff00::/8"
+                ]
+              },
+              {
+                "source_ip_cidr": [
+                  "224.0.0.0/3",
+                  "ff00::/8"
+                ]
+              }
             ],
             "action": "reject"
           }
@@ -119,6 +128,7 @@
         ],
         "rules": [],
         "final": "remote",
+        "independent_cache": true,
         "strategy": "ipv4_only"
       },
       "outbounds": [
@@ -189,13 +199,21 @@
             "outbound": "profile-c"
           },
           {
-            "ip_cidr": [
-              "224.0.0.0/3",
-              "ff00::/8"
-            ],
-            "source_ip_cidr": [
-              "224.0.0.0/3",
-              "ff00::/8"
+            "type": "logical",
+            "mode": "or",
+            "rules": [
+              {
+                "ip_cidr": [
+                  "224.0.0.0/3",
+                  "ff00::/8"
+                ]
+              },
+              {
+                "source_ip_cidr": [
+                  "224.0.0.0/3",
+                  "ff00::/8"
+                ]
+              }
             ],
             "action": "reject"
           }

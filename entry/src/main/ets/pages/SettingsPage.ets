@@ -1,5 +1,4 @@
 import common from '@ohos.app.ability.common';
-import bundle from '@ohos.bundle';
 import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
@@ -7,13 +6,95 @@ import { AppSettings } from '../model/Profile';
 import { initStore, loadSettings, saveSettings, LogStore } from '../model/Store';
 import { geoReady, downloadGeoAssets, importGeoAssetFromFile, geoAssetInfos, downloadGeoAsset, deleteGeoAsset, GeoAssetInfo } from '../utils/GeoAssets';
 import { formatBytes } from '../utils/TrafficStats';
-import { getClipboardText, setClipboardText } from '../utils/ClipboardHelper';
-import { VpnService } from '../core/VpnService';
 import { pressLightEffect } from '../common/Effects';
 import window from '@ohos.window';
+/* P4/W16-A:设置 Schema + 待应用差异模型(纯模型,无 I/O;§12.1/§12.2/§12.4) */
+import {
+  APPLY_IMMEDIATE, APPLY_NEXT_TASK, APPLY_RECONNECT, SettingDef, SettingsDiff, SettingsDiffItem,
+  settingDefs, settingDefOf, sectionDefs, SectionDef,
+  diffSettings, ImpactPart, impactParts, searchSettings, sectionDefaults, defaultsForAll
+} from '../model/SettingsSchema';
+import { ConfigRepository } from '../core/ConfigRepository';
+import { ApplyCoordinator, ApplyState } from '../core/ApplyCoordinator';
+import { SnapshotContent } from '../model/ConfigSnapshot';
+import { VpnCommand, publishVpnCommand } from '../core/VpnIpc';
 
-const APP_MODES: Array<string> = ['off', 'exclude', 'include'];
-const APP_MODE_LABELS: Array<Resource> = [$r('app.string.per_app_off'), $r('app.string.per_app_exclude'), $r('app.string.per_app_include')];
+/** SettingDef.labelToken → 本地化文案(54 项 = SettingsSchema registry 全量,§24.2-6/§12.1;
+ *  tests/i18n-keys.cjs 断言映射与 registry 逐键对齐,加设置字段漏登记这里会红)。Map 用 $r 静态登记,不能动态拼键。 */
+const SETTING_LABELS: Map<string, ResourceStr> = new Map<string, ResourceStr>([
+  ['settings_mode', $r('app.string.settings_mode')],
+  ['settings_direct_domains', $r('app.string.settings_direct_domains')],
+  ['settings_direct_ip', $r('app.string.settings_direct_ip')],
+  ['settings_resolve_destination', $r('app.string.settings_resolve_destination')],
+  ['settings_sniff_mode', $r('app.string.settings_sniff_mode')],
+  ['settings_bypass_lan', $r('app.string.settings_bypass_lan')],
+  ['settings_remote_dns', $r('app.string.settings_remote_dns')],
+  ['settings_direct_dns', $r('app.string.settings_direct_dns')],
+  ['settings_remote_dns_strategy', $r('app.string.settings_remote_dns_strategy')],
+  ['settings_direct_dns_strategy', $r('app.string.settings_direct_dns_strategy')],
+  ['settings_server_dns_strategy', $r('app.string.settings_server_dns_strategy')],
+  ['settings_dns_routing', $r('app.string.settings_dns_routing')],
+  ['settings_fake_dns', $r('app.string.settings_fake_dns')],
+  ['settings_ipv6', $r('app.string.settings_ipv6')],
+  ['settings_ipv6_mode', $r('app.string.settings_ipv6_mode')],
+  ['settings_mixed_port', $r('app.string.settings_mixed_port')],
+  ['settings_allow_access', $r('app.string.settings_allow_access')],
+  ['settings_per_app_mode', $r('app.string.settings_per_app_mode')],
+  ['settings_per_app_list', $r('app.string.settings_per_app_list')],
+  ['settings_per_app_entries', $r('app.string.settings_per_app_entries')],
+  ['settings_test_url', $r('app.string.settings_test_url')],
+  ['settings_test_concurrent', $r('app.string.settings_test_concurrent')],
+  ['settings_latency_test_mode', $r('app.string.settings_latency_test_mode')],
+  ['settings_test_timeout', $r('app.string.settings_test_timeout')],
+  ['settings_test_retries', $r('app.string.settings_test_retries')],
+  ['settings_test_samples', $r('app.string.settings_test_samples')],
+  ['settings_test_expect_status', $r('app.string.settings_test_expect_status')],
+  ['settings_test_bypass_tunnel', $r('app.string.settings_test_bypass_tunnel')],
+  ['settings_latency_stale', $r('app.string.settings_latency_stale')],
+  ['settings_auto_update_subs', $r('app.string.settings_auto_update_subs')],
+  ['settings_sub_update_interval', $r('app.string.settings_sub_update_interval')],
+  ['settings_appearance', $r('app.string.settings_appearance')],
+  ['settings_haptic', $r('app.string.settings_haptic')],
+  ['settings_liquid_glass', $r('app.string.settings_liquid_glass')],
+  ['settings_always_show_address', $r('app.string.settings_always_show_address')],
+  ['settings_notification_group', $r('app.string.settings_notification_group')],
+  ['settings_show_bottom_bar', $r('app.string.settings_show_bottom_bar')],
+  ['settings_nav_layout', $r('app.string.settings_nav_layout')],
+  ['settings_profile_sort', $r('app.string.settings_profile_sort')],
+  ['settings_speed_interval', $r('app.string.settings_speed_interval')],
+  ['settings_auto_connect', $r('app.string.settings_auto_connect')],
+  ['settings_network_reset', $r('app.string.settings_network_reset')],
+  ['settings_wake_reset', $r('app.string.settings_wake_reset')],
+  ['settings_profile_traffic', $r('app.string.settings_profile_traffic')],
+  ['settings_mtu', $r('app.string.settings_mtu')],
+  ['settings_stack', $r('app.string.settings_stack')],
+  ['settings_log_level', $r('app.string.settings_log_level')],
+  ['settings_allow_insecure', $r('app.string.settings_allow_insecure')],
+  ['settings_sub_allow_insecure', $r('app.string.settings_sub_allow_insecure')],
+  ['settings_clash_api', $r('app.string.settings_clash_api')],
+  ['settings_clash_port', $r('app.string.settings_clash_port')],
+  ['settings_clash_secret', $r('app.string.settings_clash_secret')],
+  ['settings_global_custom', $r('app.string.settings_global_custom')],
+  ['settings_coexist_fix', $r('app.string.settings_coexist_fix')]
+]);
+
+/** SectionDef.labelToken → 本地化(9 分区;与 SETTING_LABELS 同口径,tests/i18n-keys.cjs 守键存在) */
+const SECTION_LABELS: Map<string, ResourceStr> = new Map<string, ResourceStr>([
+  ['settings_section_appearance', $r('app.string.settings_section_appearance')],
+  ['settings_section_startup', $r('app.string.settings_section_startup')],
+  ['settings_section_probe', $r('app.string.settings_section_probe')],
+  ['settings_section_dns', $r('app.string.settings_section_dns')],
+  ['settings_section_ipv6', $r('app.string.settings_section_ipv6')],
+  ['settings_section_inbound', $r('app.string.settings_section_inbound')],
+  ['settings_section_mode', $r('app.string.settings_section_mode')],
+  ['settings_section_perapp', $r('app.string.settings_section_perapp')],
+  ['settings_section_advanced', $r('app.string.settings_section_advanced')]
+]);
+
+/** 草稿 AppSettings → Record(快照 settings 的 JSON 口径,与 Index.settingsToRecord 一致) */
+function draftToRecord(s: AppSettings): Record<string, Object> {
+  return JSON.parse(JSON.stringify(s)) as Record<string, Object>;
+}
 
 const STACKS: Array<string> = ['system'];
 const MODES: Array<string> = ['rule', 'global', 'direct'];
@@ -30,16 +111,6 @@ const STRATEGY_LABELS: Array<Resource> = [$r('app.string.strategy_default'), $r(
 const IPV6_MODES: Array<string> = ['disable', 'enable', 'prefer', 'only'];
 const IPV6_MODE_LABELS: Array<Resource> = [$r('app.string.ipv6_mode_disable'), $r('app.string.ipv6_mode_enable'), $r('app.string.ipv6_mode_prefer'), $r('app.string.ipv6_mode_only')];
 
-class InstalledAppItem {
-  bundleName: string = '';
-  label: string = '';
-
-  constructor(bundleName: string, label: string) {
-    this.bundleName = bundleName;
-    this.label = label;
-  }
-}
-
 @Component
 export struct SettingsPage {
   @State s: AppSettings = new AppSettings();
@@ -48,11 +119,15 @@ export struct SettingsPage {
   @State geoInfos: Array<GeoAssetInfo> = [];
   @State loading: boolean = true;
   @State loadError: string = '';
-  @State installedApps: Array<InstalledAppItem> = [];
   @State appSearch: string = '';
-  @State appListLoading: boolean = false;
-  @State appListError: ResourceStr = '';
   @State dirty: boolean = false;
+  /* ---- P4/W16-A 待应用条 / 变更列表 / 搜索 ---- */
+  /** 待应用条重渲染版本号(diff 由纯函数算出,不进 @State,靠 rev 触发重渲染) */
+  @State applyBarRev: number = 0;
+  /** 设置搜索词(空 = 常规分区视图;非空 = 搜索结果视图) */
+  @State settingsQuery: string = '';
+  /** 应用进行中(等扩展回执期间禁用应用按钮) */
+  @State applying: boolean = false;
   @State proxyExpanded: boolean = false;
   @State generalExpanded: boolean = false;
   @State networkExpanded: boolean = false;
@@ -60,7 +135,6 @@ export struct SettingsPage {
   @State inboundExpanded: boolean = false;
   @State appearanceExpanded: boolean = false;
   @State apiExpanded: boolean = false;
-  @State perAppExpanded: boolean = false;
   /**
    * HDS 点按光效的"当前光源 key":同一时刻只有一个宿主处于按下态。
    * 口径与 Index.ets 的 `litKey` 一致(按下写 key、抬起/取消清空),不挂常亮光源
@@ -68,8 +142,11 @@ export struct SettingsPage {
    */
   @State litKey: string = '';
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+
   onSettingsChanged: (settings: AppSettings) => void = (_settings: AppSettings) => {};
   onOpenDrawer: () => void = () => {};
+  /** P4/W16-A:待应用条「应用」→ 壳层提交快照 + 发布 apply(事务状态机在 Index,页面只发起) */
+  onApplyDraft: () => void = () => {};
 
   aboutToAppear(): void {
     this.load();
@@ -219,7 +296,7 @@ export struct SettingsPage {
     this.dirty = true;
   }
 
-  async save(quiet: boolean = false): Promise<void> {
+  async save(quiet: boolean = false): Promise<boolean> {
     try {
       await saveSettings(this.s);
       this.dirty = false;
@@ -227,8 +304,13 @@ export struct SettingsPage {
       if (!quiet) {
         promptAction.showToast({ message: $r('app.string.saved_reconnect_vpn') });
       }
+      /* 2026-10-24 真机用户反馈:设置页撤掉 应用/稍后/放弃 待应用条 ⇒ 保存即自动走
+       * 同一条应用事务(提交快照 → 运行中发 apply 由扩展串行重连一次;未运行则下次连接生效) */
+      this.requestApply();
+      return true;
     } catch (e) {
       promptAction.showToast({ message: $r('app.string.save_failed_reason', e instanceof Error ? e.message : `${e}`) });
+      return false;
     }
   }
 
@@ -242,187 +324,347 @@ export struct SettingsPage {
       this.dirty = false;
       this.onSettingsChanged(this.s);
       promptAction.showToast({ message: toast });
-      const running: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
-      const profileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
-      if (running && profileId.length > 0) {
-        AppStorage.setOrCreate('vpnStatus', 'switching');
-        LogStore.addLog(`[ui] 出站模式切换为 ${mode}，自动重启 VPN`);
-        await VpnService.switchTo(this.context, profileId);
-      }
+      /* P4/W16-B(§12.2):模式切换是高频操作 —— 界面立即切换 + 立即反馈,
+         随后走**同一条应用事务**(提交快照 → 发布 apply,由扩展串行重连一次),
+         不再在页面里直接 VpnService.switchTo(那会与事务管线各重连一次)。 */
+      this.requestApply();
     } catch (e) {
       const message = e instanceof Error ? e.message : `${e}`;
       promptAction.showToast({ message: $r('app.string.save_failed_reason', message) });
     }
   }
 
-  private selectedAppSet(): Set<string> {
-    const result = new Set<string>();
-    const parts = this.s.perAppList.split(',');
-    for (const part of parts) {
-      const bundleName = part.trim();
-      if (bundleName.length > 0) {
-        result.add(bundleName);
-      }
+
+  // ------------------------------------------------ P4/W16-A 待应用差异(§12.1/§12.2/§12.4)
+
+  /**
+   * 已应用设置 = 活动快照的 content.settings。
+   * ⚠️ 无活动快照(迁移未完成)时用 registry 默认值兜底 —— 传空 Record 会让 diff 把 54 项全部算成"已修改";
+   * 设置项已是默认值的情况也因此**不会**误报。
+   */
+  private appliedSettingsRecord(): Record<string, Object> {
+    const active = ConfigRepository.getActive();
+    if (active === null) {
+      return defaultsForAll();
     }
-    return result;
+    const rec: Record<string, Object> = active.content.settings;
+    return Object.keys(rec).length === 0 ? defaultsForAll() : rec;
   }
 
-  private isAppSelected(bundleName: string): boolean {
-    return this.selectedAppSet().has(bundleName);
+  /** 草稿(AppSettings) vs 已应用 的差异(纯函数,渲染期只读现算) */
+  private currentDiff(): SettingsDiff {
+    /* 读一下 applyBarRev:让调用方所在的渲染作用域依赖它(diff 本身是纯函数结果,不进 @State) */
+    if (this.applyBarRev < 0) {
+      return new SettingsDiff();
+    }
+    return diffSettings(draftToRecord(this.s), this.appliedSettingsRecord());
   }
 
-  private toggleInstalledApp(bundleName: string, selected: boolean): void {
-    const chosen = this.selectedAppSet();
-    if (selected) {
-      chosen.add(bundleName);
+  /** diff 是纯函数结果、不进 @State ⇒ 用版本号触发重渲染 */
+  private bumpApplyBar(): void {
+    this.applyBarRev = this.applyBarRev + 1;
+  }
+
+  /** 分区标题(9 个注册分区;未知分区回落 id 原文) */
+  private sectionLabelOf(sectionId: string): ResourceStr {
+    const token = `settings_section_${sectionId}`;
+    const label = SECTION_LABELS.get(token);
+    return label === undefined ? sectionId : label;
+  }
+
+  /** 差异项标题:labelToken → 本地化;registry 54 项全量映射,未知 token 回落原文(不拼动态资源键) */
+  private settingLabelOf(token: string): ResourceStr {
+    const label = SETTING_LABELS.get(token);
+    return label === undefined ? token : label;
+  }
+
+  /** 值展示:JSON 文本 → 人类可读(bool 开/关、数字、字符串、枚举原文);
+   *  开/关取本地化资源(变更列表是 string 拼接场景,经 resourceManager 现取,与 VpnExtAbility 通知同手法) */
+  private displayValue(json: string): string {
+    if (json.length === 0) {
+      return '—';
+    }
+    try {
+      const v: Object = JSON.parse(json) as Object;
+      if (v === null || v === undefined) {
+        return '—';
+      }
+      if (typeof v === 'boolean') {
+        const res = this.context.resourceManager;
+        if (v as boolean) {
+          return res.getStringSync($r('app.string.settings_value_on'));
+        }
+        return res.getStringSync($r('app.string.settings_value_off'));
+      }
+      const text = `${v}`;
+      return text.length === 0 ? '—' : text;
+    } catch (e) {
+      return json;
+    }
+  }
+
+  private applyClassLabel(cls: string): ResourceStr {
+    if (cls === APPLY_IMMEDIATE) {
+      return $r('app.string.settings_apply_immediate');
+    }
+    if (cls === APPLY_NEXT_TASK) {
+      return $r('app.string.settings_apply_next_task');
+    }
+    return $r('app.string.settings_apply_reconnect');
+  }
+
+  private applyClassColor(cls: string): ResourceColor {
+    if (cls === APPLY_IMMEDIATE) {
+      return $r('app.color.mono');
+    }
+    if (cls === APPLY_NEXT_TASK) {
+      return $r('app.color.text_3');
+    }
+    return $r('app.color.warning');
+  }
+
+  /** 应用草稿:交给壳层(Index)提交快照并发布 apply —— 页面只负责发起与展示 */
+  private requestApply(): void {
+    const diff = this.currentDiff();
+    if (diff.total === 0) {
+      return;
+    }
+    this.applying = true;
+    this.onApplyDraft();
+    /* 回执由壳层消化(协调器决定横幅文案);12s 后解禁按钮并重算差异:失败则差异仍在,条不会消失 */
+    setTimeout(() => {
+      this.applying = false;
+      this.bumpApplyBar();
+    }, 12000);
+  }
+
+  /** ResourceStr → 当前语言 string(对话框/Toast 的 message 是 string,不能塞 Resource;
+   *  与 VpnExtAbility 通知文案同手法:resourceManager.getStringSync) */
+  private resText(r: ResourceStr): string {
+    if (typeof r === 'string') {
+      return r;
+    }
+    return this.context.resourceManager.getStringSync(r as Resource);
+  }
+
+  /** 带参资源 → string(getStringSync 不展开 %n$s/%n$d,手动替换;只支持顺序占位符) */
+  private resFormat(res: Resource, ...args: Array<string | number>): string {
+    let text = this.context.resourceManager.getStringSync(res);
+    for (let i = 0; i < args.length; i++) {
+      const sToken = `%${i + 1}$s`;
+      const dToken = `%${i + 1}$d`;
+      text = text.split(sToken).join(`${args[i]}`);
+      text = text.split(dToken).join(`${args[i]}`);
+    }
+    return text;
+  }
+
+
+  /** 恢复本分区默认值(§12.4):写回**草稿**并保存,仍走待应用条(不直接应用) */
+  private applySectionDefaults(sectionId: string): void {
+    const defaults = sectionDefaults(sectionId);
+    const merged = draftToRecord(this.s);
+    Object.keys(defaults).forEach((key: string) => {
+      merged[key] = defaults[key];
+    });
+    this.s = JSON.parse(JSON.stringify(merged)) as AppSettings;
+    this.markDirty();
+    void saveSettings(this.s).then(() => {
+      this.onSettingsChanged(this.s);
+      /* 保存即自动走应用事务(2026-10-24 用户反馈撤待应用条) */
+      this.requestApply();
+    });
+    promptAction.showToast({ message: $r('app.string.settings_section_defaults_toast') });
+  }
+
+  private restoreSectionDefaults(sectionId: string): void {
+    const defaults = sectionDefaults(sectionId);
+    const draft = draftToRecord(this.s);
+    const changed: Array<string> = [];
+    Object.keys(defaults).forEach((key: string) => {
+      if (JSON.stringify(draft[key]) !== JSON.stringify(defaults[key])) {
+        changed.push(key);
+      }
+    });
+    if (changed.length === 0) {
+      promptAction.showToast({ message: $r('app.string.settings_section_already_default') });
+      return;
+    }
+    const names: Array<string> = [];
+    for (let i = 0; i < changed.length; i++) {
+      const def = settingDefOf(changed[i]);
+      names.push(def === null ? changed[i] : this.resText(this.settingLabelOf(def.labelToken)));
+    }
+    AlertDialog.show({
+      title: this.resFormat($r('app.string.settings_restore_confirm_title'), this.resText(this.sectionLabelOf(sectionId))),
+      message: this.resFormat($r('app.string.settings_restore_confirm_body'), changed.length, names.join('、')),
+      autoCancel: true,
+      primaryButton: { value: $r('app.string.cancel'), action: () => {} },
+      secondaryButton: {
+        value: $r('app.string.settings_restore_defaults'),
+        fontColor: $r('app.color.primary'),
+        action: () => {
+          this.applySectionDefaults(sectionId);
+        }
+      }
+    });
+  }
+
+
+
+  /** 设置分区跳转(搜索结果点击用):展开承载该 schema 分区的页内折叠区 */
+  private jumpToSchemaSection(sectionId: string): void {
+    if (sectionId === 'appearance') {
+      this.appearanceExpanded = true;
+    } else if (sectionId === 'dns' || sectionId === 'ipv6') {
+      this.dnsExpanded = true;
+    } else if (sectionId === 'inbound') {
+      this.inboundExpanded = true;
+    } else if (sectionId === 'mode') {
+      this.networkExpanded = true;
     } else {
-      chosen.delete(bundleName);
-    }
-    this.s.perAppList = Array.from(chosen).sort().join(',');
-    this.markDirty();
-  }
-
-  private filteredInstalledApps(): Array<InstalledAppItem> {
-    const query = this.appSearch.trim().toLowerCase();
-    if (query.length === 0) {
-      return this.installedApps;
-    }
-    return this.installedApps.filter((item: InstalledAppItem) =>
-      item.label.toLowerCase().includes(query) || item.bundleName.toLowerCase().includes(query));
-  }
-
-  /** 反选已加载的应用(对齐安卓 action_invert_selections) */
-  async invertAppSelections(): Promise<void> {
-    const chosen = this.selectedAppSet();
-    for (const item of this.installedApps) {
-      if (chosen.has(item.bundleName)) {
-        chosen.delete(item.bundleName);
-      } else {
-        chosen.add(item.bundleName);
-      }
-    }
-    this.s.perAppList = Array.from(chosen).sort().join(',');
-    await this.persistPerAppList('反选应用列表');
-  }
-
-  /** 清除全部已选应用(对齐安卓 action_clear_selections) */
-  async clearAppSelections(): Promise<void> {
-    if (this.s.perAppList.length === 0) {
-      return;
-    }
-    this.s.perAppList = '';
-    await this.persistPerAppList('清除应用列表');
-  }
-
-  /**
-   * 导出已选应用列表到剪贴板(对齐安卓 AppListActivity.action_export_clipboard):
-   * 格式为 "false\n<包名,逗号分隔>"(首行 false = 非 bypass 语义标记)。
-   */
-  async exportAppListToClipboard(): Promise<void> {
-    const payload = `false\n${this.s.perAppList}`;
-    try {
-      await setClipboardText(payload);
-      promptAction.showToast({ message: $r('app.string.action_export_msg') });
-    } catch (e) {
-      promptAction.showToast({ message: $r('app.string.action_export_err') });
+      /* startup / probe / advanced:字段落在「通用」区 */
+      this.generalExpanded = true;
     }
   }
 
-  /**
-   * 从剪贴板导入应用列表(对齐安卓 action_import_clipboard):
-   * 期望 "false\n<包名列表>" 格式;无换行则报错,有换行取首行之后全部。
-   */
-  async importAppListFromClipboard(): Promise<void> {
-    const clip = await getClipboardText();
-    const nl = clip.indexOf('\n');
-    if (clip.trim().length === 0 || nl < 0) {
-      promptAction.showToast({ message: $r('app.string.action_import_err') });
-      return;
-    }
-    const apps = clip.substring(nl + 1).trim();
-    this.s.perAppList = apps;
-    await this.persistPerAppList('从剪贴板导入应用列表');
-    promptAction.showToast({ message: $r('app.string.action_import_msg') });
+  /** 当前草稿里某 key 的值(搜索结果行显示用) */
+  private draftValueOf(key: string): string {
+    const rec = draftToRecord(this.s);
+    return JSON.stringify(rec[key]);
   }
 
-  private async persistPerAppList(reason: string): Promise<void> {
-    this.markDirty();
-    await this.save(true);
-    const running: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
-    const profileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
-    if (running && profileId.length > 0) {
-      LogStore.addLog(`[ui] ${reason}，自动重启 VPN 使配置生效`);
-      await VpnService.switchTo(this.context, profileId);
-    }
-  }
 
-  async loadInstalledApps(): Promise<void> {
-    if (this.appListLoading) {
-      return;
-    }
-    this.appListLoading = true;
-    this.appListError = '';
-    try {
-      const infos = await bundle.getAllBundleInfo(bundle.BundleFlag.GET_BUNDLE_DEFAULT);
-      const apps: Array<InstalledAppItem> = [];
-      for (const info of infos) {
-        const bundleName: string = info.name;
-        const label: string = info.appInfo === undefined || info.appInfo.label.length === 0
-          ? bundleName : info.appInfo.label;
-        apps.push(new InstalledAppItem(bundleName, label));
-      }
-      apps.sort((a: InstalledAppItem, b: InstalledAppItem) => a.label.localeCompare(b.label));
-      this.installedApps = apps;
-      if (apps.length === 0) {
-        this.appListError = $r('app.string.no_installed_apps_manual');
-      }
-    } catch (e) {
-      const message = e instanceof Error ? e.message : `${e}`;
-      this.installedApps = [];
-      this.appListError = $r('app.string.app_list_failed_reason', message);
-      LogStore.addLog(`[ui] 枚举已安装应用失败，降级为手动输入: ${message}`);
-    } finally {
-      this.appListLoading = false;
-    }
-  }
-
-  /** FlClash 式可折叠分组章节头:图标 + 小标题 + 展开状态 + 下缘 hairline */
+  /** 设置搜索框(§12.1):searchSettings(query) 驱动结果面板 */
   @Builder
-  private sectionHeader(icon: Resource, title: ResourceStr, expanded: boolean, onToggle: () => void) {
-    Row({ space: 10 }) {
-      /* 字符图标换成系统符号:SymbolGlyph 没有 textAlign,靠固定 width(24) 与标题左边距对齐 */
-      SymbolGlyph(icon)
-        .fontSize(17)
-        .fontColor([$r('app.color.mono')])
-        .width(24)
-      Text(title)
-        .fontSize(12)
-        .fontWeight(700)
-        .fontColor($r('app.color.text_3'))
-        .letterSpacing(2)
-        .layoutWeight(1)
-      SymbolGlyph(expanded ? $r('sys.symbol.chevron_up') : $r('sys.symbol.chevron_down'))
+  private settingsSearchRow() {
+    Row({ space: 8 }) {
+      SymbolGlyph($r('sys.symbol.magnifyingglass'))
         .fontSize(14)
         .fontColor([$r('app.color.text_3')])
+      TextInput({ text: this.settingsQuery, placeholder: $r('app.string.settings_search_hint') })
+        .height(36)
+        .layoutWeight(1)
+        .backgroundColor(Color.Transparent)
+        .fontSize(13)
+        .onChange((v: string) => {
+          this.settingsQuery = v;
+        })
+      if (this.settingsQuery.length > 0) {
+        Text($r('app.string.settings_clear_search'))
+          .fontSize(12)
+          .fontColor($r('app.color.primary'))
+          .onClick(() => {
+            this.settingsQuery = '';
+          })
+      }
     }
     .width('100%')
-    .padding({ top: 14, bottom: 6 })
-    .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
-    /* HDS 点按光效:这一行本来就可点(onClick(onToggle)),只补"按下那一刻发光"。
-       光源宿主白名单里有 Row、没有 Text —— 所以宿主保持 Row(图标 Text 已换成 SymbolGlyph)。
-       key 用 icon.id(Resource.id 是必填 number,每个章节的符号资源 id 唯一)。 */
-    .visualEffect(pressLightEffect(this.litKey === `sec:${icon.id}`, false))
-    .onTouch((event: TouchEvent) => {
-      if (event.type === TouchType.Down) {
-        this.litKey = `sec:${icon.id}`;
-      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.litKey = '';
+    .height(40)
+    .padding({ left: 12, right: 12 })
+    .margin({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, bottom: 4 })
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(10)
+  }
+
+  /** 搜索结果(§12.1):列出命中的设置项,点击跳到承载该分区的折叠区 */
+  @Builder
+  private searchResultsPanel() {
+    Column({ space: 2 }) {
+      ForEach(searchSettings(this.settingsQuery).filter((d: SettingDef): boolean => d.section !== 'perapp').slice(0, 20), (def: SettingDef) => {
+        Row({ space: 8 }) {
+          Column({ space: 2 }) {
+            Text(this.settingLabelOf(def.labelToken))
+              .fontSize(13)
+              .fontColor($r('app.color.text_1'))
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+            Text(`${this.resText(this.sectionLabelOf(def.section))} · ${def.key}`)
+              .fontSize(10)
+              .fontColor($r('app.color.text_3'))
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+          Text(this.displayValue(this.draftValueOf(def.key)))
+            .fontSize(11)
+            .fontColor($r('app.color.text_2'))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .constraintSize({ maxWidth: '40%' })
+        }
+        .width('100%')
+        .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+        .onClick(() => {
+          this.jumpToSchemaSection(def.section);
+          this.settingsQuery = '';
+          promptAction.showToast({ message: this.resFormat($r('app.string.settings_jump_toast'), this.resText(this.sectionLabelOf(def.section))) });
+        })
+      }, (def: SettingDef) => def.key)
+    }
+    .width('100%')
+    .margin({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, bottom: 6 })
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(12)
+  }
+
+
+  /**
+   * FlClash 式可折叠分组章节头:图标 + 小标题 + 展开状态 + 下缘 hairline。
+   * sectionId 非空时右侧带「恢复默认」(§12.4):只写回草稿并保存,仍走待应用条。
+   * 点击区拆成两个兄弟节点(标题块 / 恢复默认),避免嵌套点击互相触发。
+   */
+  @Builder
+  private sectionHeader(icon: Resource, title: ResourceStr, expanded: boolean, onToggle: () => void,
+    sectionId: string) {
+    Row({ space: 6 }) {
+      Row({ space: 10 }) {
+        /* 字符图标换成系统符号:SymbolGlyph 没有 textAlign,靠固定 width(24) 与标题左边距对齐 */
+        SymbolGlyph(icon)
+          .fontSize(17)
+          .fontColor([$r('app.color.mono')])
+          .width(24)
+        Text(title)
+          .fontSize(12)
+          .fontWeight(700)
+          .fontColor($r('app.color.text_3'))
+          .letterSpacing(2)
+          .layoutWeight(1)
+        SymbolGlyph(expanded ? $r('sys.symbol.chevron_up') : $r('sys.symbol.chevron_down'))
+          .fontSize(14)
+          .fontColor([$r('app.color.text_3')])
       }
-    })
-    .onClick(onToggle)
+      .layoutWeight(1)
+      .padding({ top: 14, bottom: 6 })
+      /* HDS 点按光效:这一块本来就可点(onClick(onToggle)),只补"按下那一刻发光"。
+         光源宿主白名单里有 Row、没有 Text —— 所以宿主保持 Row(图标 Text 已换成 SymbolGlyph)。
+         key 用 icon.id(Resource.id 是必填 number,每个章节的符号资源 id 唯一)。 */
+      .visualEffect(pressLightEffect(this.litKey === `sec:${icon.id}`, false))
+      .onTouch((event: TouchEvent) => {
+        if (event.type === TouchType.Down) {
+          this.litKey = `sec:${icon.id}`;
+        } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+          this.litKey = '';
+        }
+      })
+      .onClick(onToggle)
+      if (sectionId.length > 0) {
+        Text($r('app.string.settings_restore_defaults'))
+          .fontSize(11)
+          .fontColor($r('app.color.primary'))
+          .padding({ top: 14, bottom: 6, left: 4, right: 2 })
+          .onClick(() => {
+            this.restoreSectionDefaults(sectionId);
+          })
+      }
+    }
+    .width('100%')
+    .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
   }
 
   build() {
+    Stack({ alignContent: Alignment.Bottom }) {
     Column() {
       Row() {
         /* 标题与抽屉入口都在壳层的 HDS 顶栏里;这里只保留本页自己的动作(保存) */
@@ -447,6 +689,18 @@ export struct SettingsPage {
       }
       .width('100%')
       .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 6, bottom: 8 })
+      /* 搜索(仅加载成功时显示;§12.1)。2026-10-24 真机用户反馈:应用/稍后/放弃待应用条已撤,
+         保存(右上按钮)即保存并自动走应用事务 */
+      if (!this.loading && this.loadError.length === 0) {
+        this.settingsSearchRow()
+        if (this.settingsQuery.trim().length > 0) {
+          Scroll() {
+            this.searchResultsPanel()
+          }
+          .constraintSize({ maxHeight: 280 })
+          .align(Alignment.Top)
+        }
+      }
       if (this.loading) {
         Column({ space: 10 }) {
           LoadingProgress()
@@ -488,7 +742,7 @@ export struct SettingsPage {
       Scroll() {
         Column({ space: 14 }) {
           // 常规(对齐 Android General 组)
-          this.sectionHeader($r('sys.symbol.gearshape'), $r('app.string.settings_general'), this.generalExpanded, () => { this.generalExpanded = !this.generalExpanded; })
+          this.sectionHeader($r('sys.symbol.gearshape'), $r('app.string.settings_general'), this.generalExpanded, () => { this.generalExpanded = !this.generalExpanded; }, '')
           if (this.generalExpanded) {
           Column({ space: 8 }) {
             Row() {
@@ -545,7 +799,9 @@ export struct SettingsPage {
                 .type(InputType.Number).width('100%').height(40)
                 .onChange((v: string) => {
                   const n = parseInt(v);
-                  this.s.testConcurrent = isNaN(n) ? 10 : Math.max(1, Math.min(32, n));
+                  // 默认 5 对齐 Android DataStore.connectionTestConcurrent(DataStore.kt:159,
+                  // Android 无此设置 UI,这里是鸿蒙超集);钳制 1..32 防呆
+                  this.s.testConcurrent = isNaN(n) ? 5 : Math.max(1, Math.min(32, n));
                   this.markDirty();
                 })
             }.alignItems(HorizontalAlign.Start).width('100%')
@@ -583,15 +839,8 @@ export struct SettingsPage {
                 })
             }.width('100%')
 
-            Row() {
-              Text($r('app.string.settings_notification_group')).fontSize(14).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.notificationGroup })
-                .onChange((v: boolean) => {
-                  this.s.notificationGroup = v;
-                  this.markDirty();
-                })
-            }.width('100%')
-
+            /* 「通知显示分组名」开关已移除(2026-10-23 用户要求通知栏只显示速率+运行时长,
+               不再出现节点/分组名)—— AppSettings.notificationGroup 字段保留仅为旧备份兼容 */
             Row() {
               Column({ space: 2 }) {
                 Text($r('app.string.settings_speed_interval')).fontSize(14).width('100%')
@@ -637,7 +886,7 @@ export struct SettingsPage {
           }
 
           // 路由
-          this.sectionHeader($r('sys.symbol.arrow_up_left_and_arrow_down_right'), $r('app.string.settings_route'), this.networkExpanded, () => { this.networkExpanded = !this.networkExpanded; })
+          this.sectionHeader($r('sys.symbol.arrow_up_left_and_arrow_down_right'), $r('app.string.settings_route'), this.networkExpanded, () => { this.networkExpanded = !this.networkExpanded; }, 'mode')
           if (this.networkExpanded) {
           if (this.s.mode === 'rule') {
             Column() {
@@ -826,7 +1075,7 @@ export struct SettingsPage {
           }
 
           // DNS(对齐 Android DNS 组)
-          this.sectionHeader($r('sys.symbol.cloud'), $r('app.string.settings_dns'), this.dnsExpanded, () => { this.dnsExpanded = !this.dnsExpanded; })
+          this.sectionHeader($r('sys.symbol.cloud'), $r('app.string.settings_dns'), this.dnsExpanded, () => { this.dnsExpanded = !this.dnsExpanded; }, 'dns')
           if (this.dnsExpanded) {
           Column({ space: 8 }) {
             Column() {
@@ -916,7 +1165,7 @@ export struct SettingsPage {
           }
 
           // 入站(对齐 Android Inbound 组)
-          this.sectionHeader($r('sys.symbol.square_and_arrow_down'), $r('app.string.settings_inbound'), this.inboundExpanded, () => { this.inboundExpanded = !this.inboundExpanded; })
+          this.sectionHeader($r('sys.symbol.square_and_arrow_down'), $r('app.string.settings_inbound'), this.inboundExpanded, () => { this.inboundExpanded = !this.inboundExpanded; }, 'inbound')
           if (this.inboundExpanded) {
           Column({ space: 8 }) {
             Column() {
@@ -950,7 +1199,7 @@ export struct SettingsPage {
           }
 
           // 外观与交互
-          this.sectionHeader($r('sys.symbol.brightness'), $r('app.string.appearance_and_interaction'), this.appearanceExpanded, () => { this.appearanceExpanded = !this.appearanceExpanded; })
+          this.sectionHeader($r('sys.symbol.brightness'), $r('app.string.appearance_and_interaction'), this.appearanceExpanded, () => { this.appearanceExpanded = !this.appearanceExpanded; }, 'appearance')
           if (this.appearanceExpanded) {
           Column({ space: 8 }) {
             Row({ space: 8 }) {
@@ -1056,7 +1305,7 @@ export struct SettingsPage {
           }
 
           // Clash API 连接统计
-          this.sectionHeader($r('sys.symbol.arrow_2_circlepath'), $r('app.string.clash_api_settings'), this.apiExpanded, () => { this.apiExpanded = !this.apiExpanded; })
+          this.sectionHeader($r('sys.symbol.arrow_2_circlepath'), $r('app.string.clash_api_settings'), this.apiExpanded, () => { this.apiExpanded = !this.apiExpanded; }, 'advanced')
           if (this.apiExpanded) {
           Column({ space: 8 }) {
             Row() {
@@ -1100,170 +1349,6 @@ export struct SettingsPage {
 
           }
 
-          // 分应用代理
-          this.sectionHeader($r('sys.symbol.dot_grid_2x2'), $r('app.string.per_app_proxy'), this.perAppExpanded, () => { this.perAppExpanded = !this.perAppExpanded; })
-          if (this.perAppExpanded) {
-          Column({ space: 8 }) {
-            Row({ space: 8 }) {
-              ForEach(APP_MODES, (m: string, idx: number) => {
-                Button(APP_MODE_LABELS[idx])
-                  .layoutWeight(1)
-                  .backgroundColor(this.s.perAppMode === m ? $r('app.color.primary') : $r('app.color.surface'))
-                  .fontColor(this.s.perAppMode === m ? $r('app.color.surface') : $r('app.color.text_primary'))
-                  .visualEffect(pressLightEffect(this.litKey === `perapp:${m}`, true))
-                  .onTouch((event: TouchEvent) => {
-                    if (event.type === TouchType.Down) {
-                      this.litKey = `perapp:${m}`;
-                    } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-                      this.litKey = '';
-                    }
-                  })
-                  .onClick(async () => {
-                    this.s.perAppMode = m;
-                    this.markDirty();
-                    await this.save(true);
-                    const running: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
-                    const profileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
-                    if (running && profileId.length > 0) {
-                      LogStore.addLog('[ui] 分应用代理模式已变更，自动重启 VPN 使配置生效');
-                      await VpnService.switchTo(this.context, profileId);
-                    }
-                  })
-              }, (m: string) => m)
-            }.width('100%')
-            if (this.s.perAppMode !== 'off') {
-              Row({ space: 8 }) {
-                TextInput({ text: this.appSearch, placeholder: $r('app.string.search_apps') })
-                  .layoutWeight(1).height(40)
-                  .onChange((value: string) => { this.appSearch = value; })
-                Button(this.appListLoading ? $r('app.string.reading_apps') : $r('app.string.read_apps'))
-                  .enabled(!this.appListLoading)
-                  .visualEffect(pressLightEffect(this.litKey === 'perapp:load', true))
-                  .onTouch((event: TouchEvent) => {
-                    if (event.type === TouchType.Down) {
-        this.litKey = 'perapp:load';
-      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.litKey = '';
-      }
-                  })
-                  .onClick(() => this.loadInstalledApps())
-              }.width('100%')
-
-              Row({ space: 8 }) {
-                Button($r('app.string.invert_selections'))
-                  .layoutWeight(1).height(UiSpec.BTN_HEIGHT)
-                  .enabled(this.installedApps.length > 0 && !this.appListLoading)
-                  .backgroundColor($r('app.color.surface'))
-                  .fontColor($r('app.color.text_primary'))
-                  .visualEffect(pressLightEffect(this.litKey === 'perapp:invert', true))
-                  .onTouch((event: TouchEvent) => {
-                    if (event.type === TouchType.Down) {
-        this.litKey = 'perapp:invert';
-      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.litKey = '';
-      }
-                  })
-                  .onClick(() => this.invertAppSelections())
-                Button($r('app.string.clear_selections'))
-                  .layoutWeight(1).height(UiSpec.BTN_HEIGHT)
-                  .enabled(this.s.perAppList.length > 0)
-                  .backgroundColor($r('app.color.surface'))
-                  .fontColor($r('app.color.text_primary'))
-                  .visualEffect(pressLightEffect(this.litKey === 'perapp:clear', true))
-                  .onTouch((event: TouchEvent) => {
-                    if (event.type === TouchType.Down) {
-        this.litKey = 'perapp:clear';
-      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.litKey = '';
-      }
-                  })
-                  .onClick(() => this.clearAppSelections())
-              }.width('100%')
-
-              // 包名列表剪贴板导出/导入(对齐安卓 per_app_proxy_menu 的 export/import clipboard)
-              Row({ space: 8 }) {
-                Button($r('app.string.export_selections_clipboard'))
-                  .layoutWeight(1).height(UiSpec.BTN_HEIGHT)
-                  .enabled(this.s.perAppList.length > 0)
-                  .backgroundColor($r('app.color.surface'))
-                  .fontColor($r('app.color.text_primary'))
-                  .visualEffect(pressLightEffect(this.litKey === 'perapp:export', true))
-                  .onTouch((event: TouchEvent) => {
-                    if (event.type === TouchType.Down) {
-        this.litKey = 'perapp:export';
-      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.litKey = '';
-      }
-                  })
-                  .onClick(() => { void this.exportAppListToClipboard(); })
-                Button($r('app.string.import_selections_clipboard'))
-                  .layoutWeight(1).height(UiSpec.BTN_HEIGHT)
-                  .backgroundColor($r('app.color.surface'))
-                  .fontColor($r('app.color.text_primary'))
-                  .visualEffect(pressLightEffect(this.litKey === 'perapp:import', true))
-                  .onTouch((event: TouchEvent) => {
-                    if (event.type === TouchType.Down) {
-        this.litKey = 'perapp:import';
-      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.litKey = '';
-      }
-                  })
-                  .onClick(() => { void this.importAppListFromClipboard(); })
-              }.width('100%')
-
-              if (this.appListError !== '') {
-                Text(this.appListError)
-                  .fontSize(11).fontColor($r('app.color.error')).width('100%')
-              }
-
-              if (this.installedApps.length > 0) {
-                List({ space: 4 }) {
-                  ForEach(this.filteredInstalledApps(), (item: InstalledAppItem) => {
-                    ListItem() {
-                      Row({ space: 8 }) {
-                        Column({ space: 2 }) {
-                          Text(item.label).fontSize(14).width('100%')
-                          Text(item.bundleName)
-                            .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-                        }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-                        Toggle({ type: ToggleType.Checkbox, isOn: this.isAppSelected(item.bundleName) })
-                          .onChange((selected: boolean) => {
-                            this.toggleInstalledApp(item.bundleName, selected);
-                          })
-                      }.width('100%').padding({ top: 6, bottom: 6 })
-                    }
-                  }, (item: InstalledAppItem) => item.bundleName)
-                }.width('100%').height(240)
-              }
-
-              TextInput({
-                text: this.s.perAppList,
-                placeholder: this.s.perAppMode === 'exclude'
-                  ? $r('app.string.settings_per_app_hint_exclude')
-                  : $r('app.string.settings_per_app_hint_include')
-              })
-                .width('100%').height(40)
-                .onChange((value: string) => {
-                  this.s.perAppList = value;
-                  this.markDirty();
-                })
-                .onSubmit(async () => {
-                  await this.save(true);
-                  const running: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
-                  const profileId: string = AppStorage.get<string>('vpnRunningProfileId') ?? '';
-                  if (running && profileId.length > 0) {
-                    LogStore.addLog('[ui] 分应用代理列表已保存，自动重启 VPN 使配置生效');
-                    await VpnService.switchTo(this.context, profileId);
-                  }
-                })
-              Text($r('app.string.settings_per_app_manual_note'))
-                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-            }
-          }.alignItems(HorizontalAlign.Start).width('100%')
-
-          Blank().height(2)
-
-          }
 
         }
         .width('100%')
@@ -1275,5 +1360,10 @@ export struct SettingsPage {
     }
     .width('100%')
     .height('100%')
+      /* P4/W16-A:变更列表(底部 sheet 覆盖层;§12.2) */
+    }
+    .width('100%')
+    .height('100%')
   }
 }
+

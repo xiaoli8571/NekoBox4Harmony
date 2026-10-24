@@ -24,6 +24,34 @@ test('selector has current-group members only and selected default',()=>{const c
 test('recursive chains preserve physical order and do not reapply hop groups',()=>{const inner=p('inner',{type:'chain',chainIds:'a,b'}),outer=p('outer',{type:'chain',chainIds:'f,inner',groupId:'g2'});const c=build(outer,[outer,inner,a,b,f,l],[...groups,group('g2',{landingProxy:'l'})]);check(c);assert.deepEqual(pathFrom(c,'proxy'),['landing.test','b.test','a.test','front.test']);});
 test('missing/cyclic chain fails instead of silently shortening path',()=>{const x=p('x',{type:'chain',chainIds:'missing'});assert.throws(()=>build(x,[x]),/missing|不存在/);x.chainIds='x';assert.throws(()=>build(x,[x]),/cycle|循环/);});
 test('missing rule reference is skipped rather than silently sent through proxy',()=>{const c=build(a,[a,f,l],groups,[rule('missing')]);check(c);assert.ok(!c.route.rules.some(x=>x.domain?.includes('target.test')));});
+const groupRule=id=>({enabled:true,outbound:'group:'+id,domains:'full:target.test',ip:'',source:'',port:'',sourcePort:'',network:'',protocol:'',packages:'',config:''});
+test('W15: non-selected policy groups get stable tags and rule can target them',()=>{
+ const g1=p('g1',{groupId:'s1',server:'g1.test'}),g2=p('g2',{groupId:'s1',server:'g2.test'}),g3=p('g3',{groupId:'s2',server:'g3.test'});
+ const c=build(g3,[g1,g2,g3,f,l],[group('s1',{isSelector:true}),group('s2',{isSelector:true})],[groupRule('s1')]);
+ check(c);
+ const sel=c.outbounds.find(x=>x.tag==='group-s1');
+ assert.ok(sel,'stable group tag group-<id> must be emitted');
+ assert.equal(sel.type,'selector');
+ assert.deepEqual([...sel.outbounds].sort(),['profile-g1','profile-g2']);
+ const r=c.route.rules.find(x=>x.domain?.includes('target.test'));
+ assert.equal(r.outbound,'group-s1');
+ assert.ok(c.outbounds.some(x=>x.tag==='proxy'&&x.type==='selector'),'selected group keeps proxy tag');
+});
+test('W15: non-selected urltest group uses current defaults and shared members emitted once',()=>{
+ const g1=p('g1',{groupId:'s1',server:'g1.test'}),sel=p('sel',{groupId:'s2',server:'sel.test'});
+ const c=build(sel,[g1,sel],[group('s1',{autoSelect:true}),group('s2',{isSelector:true})],[]);
+ check(c);
+ const ut=c.outbounds.find(x=>x.tag==='group-s1');
+ assert.ok(ut&&ut.type==='urltest');
+ assert.equal(ut.interval,'10m');assert.equal(ut.tolerance,50);assert.equal(ut.interrupt_exist_connections,false);
+ assert.deepEqual([...ut.outbounds],['profile-g1']);
+});
+test('W15: empty group is not emitted and rule targeting it is skipped, not silently proxied',()=>{
+ const c=build(a,[a,f,l],[group('g',{isSelector:true}),group('empty',{isSelector:true})],[groupRule('empty')]);
+ check(c);
+ assert.ok(!c.outbounds.some(x=>x.tag==='group-empty'));
+ assert.ok(!c.route.rules.some(x=>x.domain?.includes('target.test')));
+});
 test('latency graph retains wrappers but excludes selector and resolves server hostnames',()=>{
  const result=builder.buildLatencyTestConfig([a],[a,f,l],settings,'',[group('g',{isSelector:true,frontProxy:'f',landingProxy:'l'})]);
  const c=JSON.parse(result.json);

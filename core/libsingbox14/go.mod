@@ -5,6 +5,7 @@ go 1.24.5
 require (
 	github.com/sagernet/sing v0.9.2
 	github.com/sagernet/sing-box v1.14.0
+	nekobox/sessionstate v0.0.0
 )
 
 require (
@@ -92,6 +93,9 @@ require (
 	lukechampine.com/blake3 v1.3.0 // indirect
 )
 
-replace github.com/sagernet/sing-box => C:/Users/xiaoli/Downloads/Agent-WorkerSpaces/NekoBox4Harmony/core/sing-box-1.14
+replace github.com/sagernet/sing-box => C:/Worker/NekoBox4Harmony/core/sing-box-1.14
 
-replace github.com/sagernet/sing-tun => C:/Users/xiaoli/Downloads/Agent-WorkerSpaces/NekoBox4Harmony/core/build/libsingbox-ohos/sing-tun-patched
+// K2 会话状态机:零依赖本地模块,主机测试(tests/hostprobe)直接 import 同一份代码。
+replace nekobox/sessionstate => ./sessionstate
+
+replace github.com/sagernet/sing-tun => C:/Worker/NekoBox4Harmony/core/build/libsingbox-ohos/sing-tun-patched

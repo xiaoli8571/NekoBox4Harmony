@@ -11,6 +11,14 @@ import { exportBackup, importBackup, BackupRestoreResult } from '../core/Backup'
 import { VpnService } from '../core/VpnService';
 import { getClipboardText } from '../utils/ClipboardHelper';
 import { stunTest, StunResult } from '../utils/StunTester';
+import bundleManager from '@ohos.bundle.bundleManager';
+import deviceInfo from '@ohos.deviceInfo';
+import { setClipboardText } from '../utils/ClipboardHelper';
+import { DiagnosticsInput, buildDiagnosticsPackage } from '../core/Diagnostics';
+import { ConfigRepository } from '../core/ConfigRepository';
+import { RuleSetRepository } from '../core/RuleSetRepository';
+import { listSubs, SubInfo } from '../core/Subscriptions';
+import { loadProfiles } from '../model/Store';
 
 /**
  * 工具页(对齐 NekoBoxForAndroid ToolsFragment):
@@ -247,6 +255,69 @@ export struct ToolsPage {
     }
   }
 
+  /** W20(§10.5):收集诊断信息 → 预览 → 用户选择复制(不自动上传)。 */
+  private async generateDiagnostics(): Promise<void> {
+    try {
+      const input = new DiagnosticsInput();
+      try {
+        const info = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
+        input.appVersion = info.versionName;
+        input.versionCode = info.versionCode;
+      } catch (e) {
+        // 版本读取失败:保持「未知」
+      }
+      input.sdkApiLevel = deviceInfo.sdkApiVersion ?? 0;
+      input.kernelVersion = 'sing-box 1.14.0 (OHOS c-shared)';
+      input.kernelCapability = RuleSetRepository.describeCapability();
+      input.savedRevision = ConfigRepository.getActiveRevision();
+      input.runningRevision = AppStorage.get<number>('vpnAppliedRevision') ?? 0;
+      input.applyState = `saved=${input.savedRevision} running=${input.runningRevision}`;
+      input.errorCategory = '未知';
+      try {
+        const subs = await listSubs();
+        input.subscriptionCount = subs.length;
+        const lastFailed = subs.find((x: SubInfo) => x.lastError.length > 0);
+        if (lastFailed !== undefined) {
+          input.errorCategory = 'subscription';
+        }
+      } catch (e) {
+        // 计数失败保持 0
+      }
+      try {
+        const profiles = await loadProfiles();
+        input.profileCount = profiles.length;
+      } catch (e) {
+        // 同上
+      }
+      input.probeParams = `url=${this.diagnosticProbeUrl()} timeout/test concurrency 由设置提供`;
+      input.probeSummary = '见日志尾部检测记录';
+      const lines = LogStore.getLines();
+      const tailText = lines.slice(Math.max(0, lines.length - 80)).join(String.fromCharCode(10));
+      input.logTail = tailText;
+      const text = buildDiagnosticsPackage(input, Date.now());
+      const previewText = `${text.substring(0, 400)}${String.fromCharCode(10)}…(共 ${text.length} 字符,已脱敏)`;
+      AlertDialog.show({
+        title: '诊断包已生成',
+        message: previewText,
+        autoCancel: true,
+        primaryButton: { value: '取消', action: () => {} },
+        secondaryButton: {
+          value: '复制',
+          action: () => {
+            void setClipboardText(text);
+            promptAction.showToast({ message: '诊断包已复制(脱敏)' });
+          }
+        }
+      });
+    } catch (e) {
+      promptAction.showToast({ message: `生成诊断包失败: ${e instanceof Error ? e.message : `${e}`}` });
+    }
+  }
+
+  private diagnosticProbeUrl(): string {
+    return 'http://cp.cloudflare.com/';
+  }
+
   build() {
     Column() {
       /* 标题与抽屉入口都在壳层的 HDS 顶栏里(Index.shellTitleBar),这里不再自带页头 */
@@ -399,6 +470,34 @@ export struct ToolsPage {
                   }
                 })
             }.width('100%')
+          }
+          .alignItems(HorizontalAlign.Start)
+          .width('100%')
+          .padding(UiSpec.GAP_MD)
+          .borderRadius(UiSpec.CARD_RADIUS)
+          .backgroundColor($r('app.color.surface'))
+
+          // W20:诊断包(版本/内核能力/revision/错误类别/脱敏日志;不自动上传)
+          Column({ space: 10 }) {
+            Text('诊断包')
+              .fontSize(14.5).fontWeight(700).fontColor($r('app.color.text_1')).width('100%')
+            Text('生成含版本、内核能力、配置修订与脱敏日志的诊断文本;不包含节点密钥与订阅地址,生成后由你选择复制或取消,不会自动上传。')
+              .fontSize(11.5).fontColor($r('app.color.text_secondary')).width('100%')
+            Button('生成诊断包')
+              .height(UiSpec.BTN_HEIGHT)
+              .backgroundColor($r('app.color.primary'))
+              .fontColor($r('app.color.surface'))
+              .visualEffect(pressLightEffect(this.litKey === 'tools:diag', true))
+              .onTouch((event: TouchEvent) => {
+                if (event.type === TouchType.Down) {
+                  this.litKey = 'tools:diag';
+                } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                  this.litKey = '';
+                }
+              })
+              .onClick(() => {
+                void this.generateDiagnostics();
+              })
           }
           .alignItems(HorizontalAlign.Start)
           .width('100%')

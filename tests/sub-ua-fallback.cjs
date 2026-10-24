@@ -7,7 +7,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const sub = fs.readFileSync(path.join(root, 'entry/src/main/ets/utils/Subscription.ets'), 'utf8');
-const core = fs.readFileSync(path.join(root, 'entry/src/main/ets/core/Subscriptions.ets'), 'utf8');
+// W17 起回退循环随更新事务搬至 core/SubscriptionRepository.ets(Subscriptions.updateSubscription 只做委托);
+// 断言文本与原实现逐字一致。
+const core = fs.readFileSync(path.join(root, 'entry/src/main/ets/core/SubscriptionRepository.ets'), 'utf8');
 
 let pass = 0, fail = 0;
 function check(name, cond, detail) {

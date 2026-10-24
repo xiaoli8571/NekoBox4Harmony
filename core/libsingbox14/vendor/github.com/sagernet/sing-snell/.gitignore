@@ -1,0 +1,7 @@
+/.idea/
+/vendor/
+.DS_Store
+/CLAUDE.md
+/AGENT.md
+/.claude/
+/testenv/

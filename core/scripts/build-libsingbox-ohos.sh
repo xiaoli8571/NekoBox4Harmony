@@ -244,6 +244,14 @@ cat > "$EXPORTS_FILE" <<'MAP'
     # NAPI 侧回退到 legacy,状态码判定与测速绕隧道就都没了,而且不报错。
     CGoTestStartSingBoxV2;
     CGoTestProxySingBoxV2;
+    CGoCheckConfigV1;
+    CGoValidateSRSFileV1;
+    # K2 会话化测速(V3,带 sessionId;同样的白名单陷阱 —— 漏列即静默回退 unsupported)
+    CGoTestStartSingBoxV3;
+    CGoTestProxySingBoxV3;
+    CGoTestStopSingBoxV3;
+    CGoTestSessionInfoV3;
+    CGoTestActiveSessionsV3;
     _cgoexp_*;
     crosscall2;
     runtime.*;

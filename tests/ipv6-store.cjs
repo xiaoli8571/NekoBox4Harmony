@@ -14,12 +14,14 @@ function load(file, imports={}) {
  return exports;
 }
 const model=load('entry/src/main/ets/model/Profile.ets');
+const perApp=load('entry/src/main/ets/model/PerApp.ets');
 const data=new Map();
 const prefs={get:async(k,d)=>data.has(k)?data.get(k):d,put:async(k,v)=>data.set(k,v),flush:async()=>{}};
 const store=load('entry/src/main/ets/model/Store.ets',{
  './Profile':model,
+ './PerApp':perApp,
  '@ohos.data.preferences':{default:{getPreferences:async()=>prefs}},
- '@ohos.events.emitter':{default:{emit:()=>{}}}
+ '@ohos.events.emitter':{default:{emit:()=>{},EventPriority:{LOW:0}}}
 });
 (async()=>{
  await store.initStore({});

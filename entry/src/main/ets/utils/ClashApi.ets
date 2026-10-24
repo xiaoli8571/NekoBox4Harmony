@@ -7,10 +7,15 @@ import { clashApiHeaders, clashApiErrorMessage } from './ClashAuth';
  * URL Test 直接查它的真实转发延迟(完整走一遍代理隧道 + 目标 204 探测)。
  */
 
-// 与 Clash/mihomo 同口径的 HTTP 204 探测(HTTPS 会多算到目标站的 TLS 握手)
-export const URL_TEST_TARGET: string = 'http://www.gstatic.com/generate_204';
+// 连接测试网址的兜底值,1:1 对齐 Android(Constants.kt:3 CONNECTION_TEST_URL)。
+// 调用方通常显式传 settings.testUrl;这里的默认值只给"未初始化设置"的调用兜底。
+export const URL_TEST_TARGET: string = 'http://cp.cloudflare.com/';
 
-/** 查询当前激活出站('proxy')经隧道的真实延迟(ms);非 200 或缺 delay 抛异常 */
+/**
+ * 查询当前激活出站('proxy')经隧道的真实延迟(ms);非 200 或缺 delay 抛异常。
+ * timeoutMs 由调用方决定:连接中测当前节点用 **3000**(对齐 Android
+ * BaseService.kt:147 `Libcore.urlTest(..., 3000)`),批量 URL Test 用 5000。
+ */
 export async function fetchCurrentProxyDelay(timeoutMs: number = 5000,
   port: number = CLASH_API_PORT, testUrl: string = URL_TEST_TARGET,
   secret: string = ''): Promise<number> {
@@ -29,11 +34,11 @@ export async function fetchCurrentProxyDelay(timeoutMs: number = 5000,
       throw new Error(clashApiErrorMessage(resp.responseCode, 'URL Test 失败'));
     }
     const obj = JSON.parse(`${resp.result}`) as Record<string, Object>;
-    const delay = Number(obj['delay']);
-    if (isNaN(delay)) {
-      throw new Error('URL Test 响应缺少 delay 字段');
+    const delay = obj['delay'];
+    if (typeof delay !== 'number' || !Number.isFinite(delay) || delay < 0) {
+      throw new Error('URL Test 响应缺少有效 delay 字段');
     }
-    return delay;
+    return delay as number;
   } finally {
     client.destroy();
   }

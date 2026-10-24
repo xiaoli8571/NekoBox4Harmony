@@ -13,7 +13,16 @@ import { parseYaml, hasTopLevelKey, YamlNode } from './ClashYaml';
  *  - 带 ETag/Last-Modified 的订阅走条件请求,服务端回 304 时不重复下载正文
  */
 
-export const SUB_UA = 'clash.meta/1.19.0';
+/**
+ * 默认 User-Agent — 逐字对齐 Android `ktx/Nets.kt:66`:
+ *   `USER_AGENT = "NekoBox/Android/" + BuildConfig.VERSION_NAME + " (Prefer ClashMeta Format)"`
+ * nb4a 1.4.2 的 VERSION_NAME=1.4.2(nb4a.properties:2),故字面值为下方字符串。
+ *
+ * 这是**刻意逐字一致**而非笔误:机场按 UA 决定返回哪种订阅格式
+ * (Clash YAML / base64 / sing-box JSON),UA 不同 → 正文不同 → 解析结果天然不同。
+ * 用户自定义 UA(`subscription.customUserAgent`)仍然覆盖默认值(RawUpdater.kt:70)。
+ */
+export const SUB_UA = 'NekoBox/Android/1.4.2 (Prefer ClashMeta Format)';
 
 /**
  * 解析不出节点时依次尝试的备用 User-Agent。
@@ -35,6 +44,9 @@ export interface SubFetchResult {
   userinfo: string;
   etag: string;
   lastModified: string;
+  // content-disposition 原始值:Android RawUpdater.kt:79-87 仅在组名以
+  // "Subscription #" 开头时用它(经 Util.decodeFilename)改名
+  contentDisposition: string;
   // true = 服务端回 304,content 为空,调用方应保留既有节点
   notModified: boolean;
 }
@@ -49,6 +61,72 @@ export interface SubUserInfo {
 export interface UnwrappedSubscriptionLink {
   url: string;
   name: string;
+}
+
+/**
+ * 节点类型 -> Android bean 的 `javaClass.toString()` 字面量。
+ *
+ * Android `Protocols.Deduplication.hash()`(Protocols.kt:20-39)是:
+ *   if (bean is ConfigBean) return bean.config
+ *   return bean.serverAddress + bean.serverPort + type
+ * 其中 `type` 由调用侧传入 `_proxy.javaClass.toString()`(RawUpdater.kt:114),
+ * 形如 "class io.nekohasekai.sagernet.fmt.shadowsocks.ShadowsocksBean"。
+ * 这里直接给出同一批字面量,使去重键字符串与 Android 完全一致。
+ *
+ * 注意两个 Android 原样怪癖(逐字复刻,已列入偏差清单):
+ *  1. vmess 与 vless 在 Android 共用一个 VMessBean(alterId=-1 表 VLESS),
+ *     所以两者 type 相同 —— 同 server+port 的 vmess/vless 会被判成重复;
+ *  2. 拼接**不带任何分隔符**,因此 "a:23" + "1" 与 "a:2" + "31" 会撞键。
+ */
+function dedupTypeToken(type: string): string {
+  if (type === ProfileType.SHADOWSOCKS) {
+    return 'class io.nekohasekai.sagernet.fmt.shadowsocks.ShadowsocksBean';
+  }
+  if (type === ProfileType.VMESS || type === ProfileType.VLESS) {
+    // Android: vless 也是 VMessBean(RawUpdater.kt:310-313)
+    return 'class io.nekohasekai.sagernet.fmt.v2ray.VMessBean';
+  }
+  if (type === ProfileType.TROJAN) {
+    return 'class io.nekohasekai.sagernet.fmt.trojan.TrojanBean';
+  }
+  if (type === ProfileType.HTTP) {
+    return 'class io.nekohasekai.sagernet.fmt.http.HttpBean';
+  }
+  if (type === ProfileType.SOCKS) {
+    return 'class io.nekohasekai.sagernet.fmt.socks.SOCKSBean';
+  }
+  if (type === ProfileType.HYSTERIA || type === ProfileType.HYSTERIA2) {
+    // Android 两代 hysteria 同为 HysteriaBean(protocolVersion 区分)
+    return 'class io.nekohasekai.sagernet.fmt.hysteria.HysteriaBean';
+  }
+  if (type === ProfileType.TUIC) {
+    return 'class io.nekohasekai.sagernet.fmt.tuic.TuicBean';
+  }
+  if (type === ProfileType.WIREGUARD) {
+    return 'class io.nekohasekai.sagernet.fmt.wireguard.WireGuardBean';
+  }
+  if (type === ProfileType.SSH) {
+    return 'class io.nekohasekai.sagernet.fmt.ssh.SSHBean';
+  }
+  if (type === ProfileType.ANYTLS) {
+    return 'class moe.matsuri.nb4a.proxy.anytls.AnyTLSBean';
+  }
+  // snell / shadowtls / chain 在 Android 1.4.2 的订阅链路里没有对应 bean,
+  // 用 ProfileType 自身作 token(不影响与 Android 共同支持的协议)
+  return type;
+}
+
+/**
+ * 订阅去重键 — 逐字对齐安卓 Protocols.Deduplication.hash(Protocols.kt:20-39):
+ * 自定义出站(Android ConfigBean)用整份 config 字符串;其余用
+ * `serverAddress + serverPort + type` 直接相加(无分隔符、此顺序)。
+ */
+export function dedupKeyOf(p: Profile): string {
+  if (p.type === ProfileType.CUSTOM) {
+    // Android ConfigBean.hash() 返回 bean.config(整份 JSON)
+    return p.customOutbound;
+  }
+  return `${p.server}${p.serverPort}${dedupTypeToken(p.type)}`;
 }
 
 const CLASH_CONTAINER_PREFIX = 'clash://install-config?';
@@ -77,6 +155,24 @@ export function unwrapSubscriptionLink(text: string): UnwrappedSubscriptionLink 
 export function isSagerNetSubscriptionContainer(text: string): boolean {
   const trimmed = text === undefined || text === null ? '' : text.trim();
   return trimmed.toLowerCase().startsWith('sn://');
+}
+
+/**
+ * content-disposition 里的 RFC 5987 文件名解码 — 逐字对齐 Android `Util.decodeFilename`
+ * (Util.kt:194-199):用正则 `filename\*=[^']*''(.+)` 取编码串,再 URLDecoder(UTF-8)。
+ * 取不到/解码失败 → 空串(Android 同样回落空串,调用方据此不改名)。
+ */
+export function decodeFilename(headerValue: string): string {
+  const match = /filename\*=[^']*''(.+)/.exec(headerValue);
+  const encoded = match !== null && match.length > 1 ? match[1] : '';
+  if (encoded.length === 0) {
+    return '';
+  }
+  try {
+    return decodeURIComponent(encoded);
+  } catch (e) {
+    return '';
+  }
 }
 
 function parseContainerQuery(query: string): Record<string, string> {
@@ -185,11 +281,14 @@ async function doFetchSubscription(url: string, withInfo: boolean, allowInsecure
         userinfo: withInfo ? headerOf(respHeaders, 'subscription-userinfo') : '',
         etag: headerOf(respHeaders, 'etag'),
         lastModified: headerOf(respHeaders, 'last-modified'),
+        contentDisposition: withInfo ? headerOf(respHeaders, 'content-disposition') : '',
         notModified: true
       };
       return res304;
     }
-    if (resp.responseCode < 200 || resp.responseCode >= 300) {
+    // 逐字对齐 Android libcore/http.go:219-226:Execute() 只在 StatusCode == 200 时
+    // 返回正文,其余(含 204/206/3xx/4xx/5xx)一律当错误抛出,绝不把错误页当正文解析。
+    if (resp.responseCode !== 200) {
       let snippet = '';
       const rb = resp.result;
       if (typeof rb === 'string' && rb.length > 0) {
@@ -205,6 +304,7 @@ async function doFetchSubscription(url: string, withInfo: boolean, allowInsecure
       userinfo: responseUserinfo,
       etag: headerOf(respHeaders, 'etag'),
       lastModified: headerOf(respHeaders, 'last-modified'),
+      contentDisposition: withInfo ? headerOf(respHeaders, 'content-disposition') : '',
       notModified: false
     };
     return result;
@@ -282,6 +382,9 @@ export function parseClashProxies(yaml: string): ClashParseResult {
     result.note = 'clash_yaml_parse_failed';
     return result;
   }
+  // Android RawUpdater.kt:241 读取 global-client-fingerprint:REALITY 节点未显式
+  // 指纹时回退到它(仍为空再回退 chrome)。
+  const globalFp = yStr(root, 'global-client-fingerprint');
   const proxies = root.get('proxies');
   if (proxies === null || !proxies.isSeq()) {
     result.note = root.get('proxy-providers') !== null
@@ -290,7 +393,7 @@ export function parseClashProxies(yaml: string): ClashParseResult {
     return result;
   }
   for (const item of proxies.items) {
-    const p = profileFromClash(item);
+    const p = profileFromClash(item, globalFp);
     if (p === null) {
       result.skipped++;
       const nm = item.isMap() ? yStr(item, 'name', '') : '';
@@ -368,6 +471,64 @@ function yBool(m: YamlNode | null, key: string): boolean {
   return yBoolOf(yNode(m, key));
 }
 
+/** 缺键时返回 dflt(Android 用 `?: dflt`,与"取到 0"必须区分)。 */
+function yNumOr(n: YamlNode | null, dflt: number): number {
+  const s = yStrOf(n, '');
+  if (s.length === 0) {
+    return dflt;
+  }
+  const x = Number(s);
+  return isNaN(x) ? dflt : x;
+}
+
+/**
+ * Android 的 `opt.key.replace("_", "-")` 归一化(RawUpdater.kt:498/525/578/611):
+ * 先按原键取,再按下划线→连字符取,最后按连字符→下划线兜底。
+ */
+function yNorm(m: YamlNode | null, key: string): YamlNode | null {
+  const direct = yNode(m, key);
+  if (direct !== null) {
+    return direct;
+  }
+  const dashed = yNode(m, key.split('_').join('-'));
+  if (dashed !== null) {
+    return dashed;
+  }
+  return yNode(m, key.split('-').join('_'));
+}
+
+function yStrNorm(m: YamlNode | null, key: string, dflt: string = ''): string {
+  return yStrOf(yNorm(m, key), dflt);
+}
+
+/**
+ * Android `String.isIpAddress()`(ktx/Nets.kt:27-29,NGUtil.isIpv4Address||isIpv6Address)。
+ * 用于 "Fix ent" 的 SNI 回填与 tuic ip 分支。
+ */
+export function isIpLiteral(host: string): boolean {
+  const h = host.trim();
+  if (h.length === 0) {
+    return false;
+  }
+  if (h.indexOf(':') >= 0) {
+    return true; // IPv6 字面量
+  }
+  const parts = h.split('.');
+  if (parts.length !== 4) {
+    return false;
+  }
+  for (const part of parts) {
+    if (!/^\d{1,3}$/.test(part)) {
+      return false;
+    }
+    const n = parseInt(part, 10);
+    if (n < 0 || n > 255) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /** 列表值:既接受 YAML 序列 [a, b],也接受逗号分隔字符串 "a,b"。 */
 function yList(m: YamlNode | null, key: string): Array<string> {
   const n = yNode(m, key);
@@ -423,75 +584,165 @@ function yHeader(oo: YamlNode | null, keys: Array<string>): string {
   return '';
 }
 
+/**
+ * Clash 传输层 -> Profile 字段。
+ * 逐字对齐 Android RawUpdater.kt:386-464:
+ *  - `network`:只有 h2/http 映射为 http、ws/grpc 原样;其它取值(含 tcp/none/未知)
+ *    一律保持默认(Android 的 VMessBean.type 默认 "tcp",不认识的取值不写回);
+ *  - ws-opts / h2-opts / http-opts / grpc-opts 各自独立生效,与 network 取值无关;
+ *  - List 型字段用 "\n" join(Android joinToString("\n"))。
+ */
+function joinLines(n: YamlNode | null): string {
+  if (n === null) {
+    return '';
+  }
+  if (n.isSeq()) {
+    const parts: Array<string> = [];
+    for (const it of n.items) {
+      parts.push(yStrOf(it, ''));
+    }
+    return parts.join('\n');
+  }
+  return yStrOf(n, '');
+}
+
 function applyClashTransport(p: Profile, m: YamlNode): void {
   const net = yStr(m, 'network');
-  // Clash 的 h2 对应 sing-box 的 http 传输
-  p.transport = (net === '' || net === 'tcp' || net === 'none') ? '' : (net === 'h2' ? 'http' : net);
-  const oo = yNode(m, `${net}-opts`);
-  if (net === 'ws') {
-    if (oo === null || !oo.isMap()) {
-      return;
-    }
-    p.path = yStr(oo, 'path');
-    p.host = yHeader(oo, ['Host', 'host']);
-    p.wsEarlyData = yNum(oo, 'max-early-data');
-    p.wsEarlyDataHeaderName = yStr(oo, 'early-data-header-name');
-    // v2ray-http-upgrade = Clash 的 WS 分离模式,对应 sing-box 的 httpupgrade 传输。
-    // 分离模式下早期数据走独立的 HTTP/1.1 请求,不再复用 ws 的 early data 字段。
-    if (yBool(oo, 'v2ray-http-upgrade')) {
+  // Android: "h2","http" -> "http"; "ws","grpc" -> 原值; 其余不动
+  if (net === 'h2' || net === 'http') {
+    p.transport = 'http';
+  } else if (net === 'ws' || net === 'grpc') {
+    p.transport = net;
+  }
+  const ws = yNode(m, 'ws-opts');
+  if (ws !== null && ws.isMap()) {
+    p.path = yStr(ws, 'path');
+    p.host = yHeader(ws, ['Host', 'host']);
+    p.wsEarlyData = yNum(ws, 'max-early-data');
+    p.wsEarlyDataHeaderName = yStr(ws, 'early-data-header-name');
+    // Android 不清理已写入的 early-data(v2ray-http-upgrade 只改 type)
+    if (yBool(ws, 'v2ray-http-upgrade')) {
       p.transport = 'httpupgrade';
-      p.wsEarlyData = 0;
-      p.wsEarlyDataHeaderName = '';
     }
-  } else if (net === 'grpc') {
-    if (oo !== null && oo.isMap()) {
-      // Clash 键名为 grpc-service-name(兼容部分订阅的 serviceName)
-      p.serviceName = yStrAny(oo, ['grpc-service-name', 'serviceName']);
-    }
-    if (p.serviceName.length === 0) {
-      p.serviceName = yStr(m, 'service-name');
-    }
-  } else if (net === 'h2' || net === 'http') {
-    if (oo === null || !oo.isMap()) {
-      return;
-    }
-    p.path = yStr(oo, 'path');
-    p.host = yHeader(oo, ['host', 'Host']);
+  }
+  const h2 = yNode(m, 'h2-opts');
+  if (h2 !== null && h2.isMap()) {
+    p.path = yStr(h2, 'path');
+    p.host = joinLines(yNode(h2, 'host'));
+  }
+  const httpOpts = yNode(m, 'http-opts');
+  if (httpOpts !== null && httpOpts.isMap()) {
+    p.path = joinLines(yNode(httpOpts, 'path'));
+    p.host = joinLines(yHeaderNode(httpOpts, ['Host', 'host']));
+  }
+  const grpc = yNode(m, 'grpc-opts');
+  if (grpc !== null && grpc.isMap()) {
+    // Android: grpc-service-name -> bean.path(鸿蒙用独立的 serviceName 字段承载,
+    // 字段映射差异,生成配置时语义等价)
+    p.serviceName = yStr(grpc, 'grpc-service-name');
   }
 }
 
-function applyClashReality(p: Profile, m: YamlNode): void {
+/** headers.<key> 取出节点本身(供 "\n" join 的 List 形态)。 */
+function yHeaderNode(oo: YamlNode, keys: Array<string>): YamlNode | null {
+  const h = yNode(oo, 'headers');
+  if (h === null || !h.isMap()) {
+    return null;
+  }
+  for (const k of keys) {
+    const v = h.get(k);
+    if (v !== null) {
+      return v;
+    }
+  }
+  return null;
+}
+
+function applyClashReality(p: Profile, m: YamlNode, globalFp: string = ''): void {
   const r = yNode(m, 'reality-opts');
   if (r === null || !r.isMap()) {
     return;
   }
   p.realityPublicKey = yStrAny(r, ['public-key', 'publicKey']);
   p.realityShortId = yStr(r, 'short-id');
+  // Android: reality-opts 的每个子键都会把 security 置为 "tls"(RawUpdater.kt:372-384)
   p.tls = true;
-  if (p.fingerprint.length === 0) {
-    p.fingerprint = yStr(m, 'client-fingerprint', 'chrome');
+  // 对齐安卓 RawUpdater.kt:669-672:REALITY 节点**有 pubkey** 且无显式指纹时,
+  // 先回退 global-client-fingerprint,仍为空再回退 chrome。
+  if (p.realityPublicKey.length > 0 && p.fingerprint.length === 0) {
+    p.fingerprint = globalFp.length > 0 ? globalFp : 'chrome';
   }
 }
 
+/**
+ * Android RawUpdater.kt:660-674 "Fix ent" 第 1 条(仅 StandardV2RayBean:vmess/vless/trojan):
+ * `isTLS() && sni.isNullOrBlank() && host 非空 && host 不是 IP` → `sni = host`。
+ * (第 2 条 REALITY 指纹回退在 applyClashReality 内,同样逐字。)
+ */
+function applyClashFixEnt(p: Profile): void {
+  if (p.tls && p.sni.trim().length === 0 && p.host.trim().length > 0 && !isIpLiteral(p.host)) {
+    p.sni = p.host;
+  }
+}
+
+/**
+ * Clash smux -> multiplex 字段。
+ * 逐字对齐 Android RawUpdater.kt:466-479:三个子键各自独立生效,
+ * `enabled` 直接把开关**写成**其字面值(给 false 就是关),`max-streams` 用 toInt。
+ */
 function applyClashMux(p: Profile, m: YamlNode): void {
   const mu = yNode(m, 'smux');
   if (mu === null || !mu.isMap()) {
     return;
   }
-  p.mux = true;
-  p.muxProtocol = yStr(mu, 'protocol', yStr(mu, 'type', 'h2mux'));
-  const streams = yNum(mu, 'max-streams');
-  p.muxMaxStreams = streams > 0 ? streams : 8;
-  p.muxPadding = mu.has('padding') ? yBool(mu, 'padding') : true;
+  const enabled = yNode(mu, 'enabled');
+  if (enabled !== null) {
+    p.mux = yStrOf(enabled) === 'true';
+  }
+  const streams = yNode(mu, 'max-streams');
+  if (streams !== null) {
+    const n = Number(yStrOf(streams));
+    if (!isNaN(n)) {
+      p.muxMaxStreams = n;
+    }
+  }
+  const padding = yNode(mu, 'padding');
+  if (padding !== null) {
+    p.muxPadding = yStrOf(padding) === 'true';
+  }
 }
 
-/** Clash 的带宽字段可能是 "30" 或 "30 Mbps" */
+/** Clash ech-opts.enable -> ECH 开关(Android RawUpdater.kt:481-488)。 */
+function applyClashEch(p: Profile, m: YamlNode): void {
+  const eo = yNode(m, 'ech-opts');
+  if (eo === null || !eo.isMap()) {
+    return;
+  }
+  const enable = yNode(eo, 'enable');
+  if (enable !== null) {
+    p.ech = yStrOf(enable) === 'true';
+  }
+}
+
+/** Clash 的带宽字段可能是 "30" 或 "30 Mbps"(Android: substringBefore(" ").toIntOrNull()) */
 function parseBandwidth(raw: string): number {
   const n = parseInt(raw.trim());
   return isNaN(n) ? 0 : n;
 }
 
-function profileFromClash(m: YamlNode | null): Profile | null {
+/** 同上,但取不到/解析失败时返回 dflt(Android 的 `?: dflt`)。 */
+function yBandwidthOr(n: YamlNode | null, dflt: number): number {
+  const s = yStrOf(n, '');
+  if (s.length === 0) {
+    return dflt;
+  }
+  const spaced = s.trim().indexOf(' ');
+  const token = spaced >= 0 ? s.trim().substring(0, spaced) : s.trim();
+  const x = parseInt(token);
+  return isNaN(x) ? dflt : x;
+}
+
+function profileFromClash(m: YamlNode | null, globalFp: string = ''): Profile | null {
   if (m === null || !m.isMap()) {
     return null;
   }
@@ -522,92 +773,220 @@ function profileFromClash(m: YamlNode | null): Profile | null {
       p.type = ProfileType.SHADOWSOCKS;
       p.method = yStr(m, 'cipher', yStr(m, 'method'));
       p.password = yStr(m, 'password');
+      {
+        // 对齐安卓 RawUpdater.kt:272-305:Clash 的 ss 节点可携带
+        // plugin/plugin-opts(obfs / v2ray-plugin)。此前整段丢弃,
+        // 带插件的 ss 节点导入后必然握手失败。
+        const pluginNode = yNode(m, 'plugin');
+        if (pluginNode !== null && pluginNode.isScalar() && yStrOf(pluginNode, '').length > 0) {
+          const oo = yNode(m, 'plugin-opts');
+          const parts: Array<string> = [];
+          if (yStrOf(pluginNode, '') === 'obfs') {
+            // Android RawUpdater.kt:277-283
+            parts.push('obfs-local');
+            parts.push('obfs=' + (oo !== null && oo.isMap() ? yStr(oo, 'mode') : ''));
+            parts.push('obfs-host=' + (oo !== null && oo.isMap() ? yStr(oo, 'host') : ''));
+          } else if (yStrOf(pluginNode, '') === 'v2ray-plugin') {
+            // 逐字复刻安卓 RawUpdater.kt:285-294(含其上游怪癖:
+            // tls 只在 mode 字面等于 "true" 时追加,与 opts.tls 无关)。
+            const optsMode = oo !== null && oo.isMap() ? yStr(oo, 'mode') : '';
+            const optsMux = oo !== null && oo.isMap() ? yStr(oo, 'mux') : '';
+            parts.push('v2ray-plugin');
+            parts.push('mode=' + optsMode);
+            if (optsMode === 'true') {
+              parts.push('tls');
+            }
+            parts.push('host=' + (oo !== null && oo.isMap() ? yStr(oo, 'host') : ''));
+            parts.push('path=' + (oo !== null && oo.isMap() ? yStr(oo, 'path') : ''));
+            if (optsMux === 'true') {
+              parts.push('mux=8');
+            }
+          }
+          if (parts.length > 0) {
+            p.ssPlugin = parts[0];
+            if (parts.length > 1) {
+              p.ssPluginOpts = parts.slice(1).join(';');
+            }
+          }
+        }
+      }
       break;
     case 'vmess':
       p.type = ProfileType.VMESS;
       p.uuid = yStr(m, 'uuid');
-      p.alterId = yNum(m, 'alterId');
+      // Android: alterId -> toIntOrNull();取不到时保持 bean 默认
+      p.alterId = yNumOr(yNode(m, 'alterId'), p.alterId);
+      // Android: cipher -> encryption(仅非 VLESS)
       p.security = yStr(m, 'cipher', 'auto');
+      // Android: tls 键 -> security = "tls"/""
       p.tls = yBool(m, 'tls');
       p.packetEncoding = yStr(m, 'packet-encoding');
       applyClashMux(p, m);
       applyClashTransport(p, m);
+      applyClashEch(p, m);
+      applyClashFixEnt(p);
       break;
     case 'vless':
       p.type = ProfileType.VLESS;
+      // Android: alterId = -1 表 VLESS(RawUpdater.kt:310-313)
+      p.alterId = -1;
       p.uuid = yStr(m, 'uuid');
-      p.flow = yStr(m, 'flow');
-      p.tls = yBool(m, 'tls') || p.sni.length > 0 || yNode(m, 'reality-opts') !== null;
+      // Android RawUpdater.kt:340-346:flow 只有含 "xtls-rprx-vision" 才写 encryption
+      if (yStrNorm(m, 'flow').indexOf('xtls-rprx-vision') >= 0) {
+        p.flow = 'xtls-rprx-vision';
+      }
+      // Android: packet-encoding 分支对 VMessBean 全族生效(含 VLESS)
       p.packetEncoding = yStr(m, 'packet-encoding');
-      applyClashReality(p, m);
+      p.tls = yBool(m, 'tls');
+      applyClashReality(p, m, globalFp);
       applyClashMux(p, m);
       applyClashTransport(p, m);
+      applyClashEch(p, m);
+      applyClashFixEnt(p);
       break;
     case 'trojan':
       p.type = ProfileType.TROJAN;
       p.password = yStr(m, 'password');
-      p.tls = true;
-      applyClashReality(p, m);
+      // Android: TrojanBean 构造时 security="tls";但 tls 键会覆盖它(RawUpdater.kt:356-359)
+      p.tls = yNode(m, 'tls') !== null ? yBool(m, 'tls') : true;
+      applyClashReality(p, m, globalFp);
       applyClashMux(p, m);
       applyClashTransport(p, m);
+      applyClashEch(p, m);
+      applyClashFixEnt(p);
       break;
     case 'hysteria':
       p.type = ProfileType.HYSTERIA;
-      p.password = yStrAny(m, ['auth-str', 'auth_str', 'auth']);
-      // 带宽可能是 "30 Mbps" 这类带单位的值(yNumAny → Number("30 Mbps") = NaN → 0),
-      // 与 hysteria2 分支一样走 parseBandwidth 剥单位。
-      p.upMbps = parseBandwidth(yStrAny(m, ['up', 'upmbps']));
-      p.downMbps = parseBandwidth(yStrAny(m, ['down', 'downmbps']));
-      p.obfs = yStr(m, 'obfs');
+      // Android RawUpdater.kt:533-536:只有 auth-str 才把 authPayloadType 设为 STRING;
+      // auth 键(1.x 的 base64 档)在 Profile 里同样落到 password。
+      p.password = yStrNorm(m, 'auth-str');
+      if (p.password.length === 0) {
+        p.password = yStrNorm(m, 'auth');
+      }
+      // Android: up/down = value.substringBefore(" ").toIntOrNull() ?: 100;
+      // 键缺失时不赋值,交给 HysteriaBean.initializeDefaultValues(protocolVersion=1 → 10/50)。
+      {
+        const upNode = yNorm(m, 'up');
+        const downNode = yNorm(m, 'down');
+        p.upMbps = upNode === null ? 10 : yBandwidthOr(upNode, 100);
+        p.downMbps = downNode === null ? 50 : yBandwidthOr(downNode, 100);
+      }
+      p.obfs = yStrNorm(m, 'obfs');
       p.tls = true;
-      if (p.alpn.length === 0) {
-        p.alpn = 'h3';
+      // Android: alpn 仅在键存在时处理(List join "\n",非 List 则 "h3");缺键保持默认 ""
+      {
+        const h1Alpn = yNode(m, 'alpn');
+        if (h1Alpn === null) {
+          p.alpn = '';
+        } else if (h1Alpn.isSeq()) {
+          p.alpn = joinLines(h1Alpn).split('\n').join(',');
+        } else {
+          p.alpn = 'h3';
+        }
+      }
+      // 对齐安卓 RawUpdater.kt:528-529,566-568:hysteria1 的 port 字段直接进
+      // serverPorts(可带 "443" 单值),ports 键(端口跳跃列表)覆盖之。
+      // (Profile 内部以 '-' 表示区间,ConfigBuilder.normalizeServerPorts 再还原成 ':'。)
+      {
+        const p1Port = yStr(m, 'port');
+        const p1Hop = yStr(m, 'ports');
+        if (p1Hop.length > 0) {
+          p.serverPorts = p1Hop.replace(/:/g, '-');
+        } else if (p1Port.length > 0) {
+          p.serverPorts = p1Port.replace(/:/g, '-');
+        }
       }
       break;
     case 'hysteria2':
     case 'hy2':
       p.type = ProfileType.HYSTERIA2;
-      p.password = yStrAny(m, ['password', 'auth']);
+      p.password = yStrNorm(m, 'password');
       p.tls = true;
-      p.obfs = yStrAny(m, ['obfs-password', 'obfspwd', 'obfs']);
-      p.upMbps = parseBandwidth(yStrAny(m, ['up', 'upmbps']));
-      p.downMbps = parseBandwidth(yStrAny(m, ['down', 'downmbps']));
+      p.obfs = yStrNorm(m, 'obfs-password');
+      // Android: hysteria2 的 up/down 兜底是 0(RawUpdater.kt:593-597),
+      // 与 hysteria1 的 100 不同。
+      p.upMbps = yBandwidthOr(yNorm(m, 'up'), 0);
+      p.downMbps = yBandwidthOr(yNorm(m, 'down'), 0);
+      // Android 的 hysteria2 分支不处理 alpn(RawUpdater.kt:572-604)
+      p.alpn = '';
       // 端口跳跃:Clash 的 ports 既可能是标量("1000-2000"),也可能是 YAML 序列
-      // ([1000-2000, 3000])。此前用只读标量的 yStr,序列形态整段丢失 → 跳跃失效。
-      const portsNode = yNode(m, 'ports');
-      if (portsNode !== null && portsNode.isSeq()) {
-        const parts: Array<string> = [];
-        for (const it of portsNode.items) {
-          const seg = yStrOf(it, '').trim().replace(/:/g, '-');
-          if (seg.length > 0) {
-            parts.push(seg);
+      // ([1000-2000, 3000])。序列形态是鸿蒙超集(Android toString() 会得到
+      // "[1000-2000, 3000]" 这种不可用字符串),已列入偏差清单。
+      {
+        const portsNode = yNode(m, 'ports');
+        if (portsNode !== null && portsNode.isSeq()) {
+          const parts: Array<string> = [];
+          for (const it of portsNode.items) {
+            const seg = yStrOf(it, '').trim().replace(/:/g, '-');
+            if (seg.length > 0) {
+              parts.push(seg);
+            }
           }
+          p.serverPorts = parts.join(',');
+        } else {
+          p.serverPorts = yStr(m, 'ports').replace(/:/g, '-');
         }
-        p.serverPorts = parts.join(',');
-      } else {
-        p.serverPorts = yStr(m, 'ports').replace(/:/g, '-');
       }
-      const hop = yNum(m, 'hop-interval');
-      if (hop > 0) {
-        p.hopInterval = hop;
+      // Android 不处理 hop-interval(鸿蒙超集,见偏差清单)
+      {
+        const hop = yNum(m, 'hop-interval');
+        if (hop > 0) {
+          p.hopInterval = hop;
+        }
       }
       break;
     case 'tuic':
       p.type = ProfileType.TUIC;
       p.uuid = yStr(m, 'uuid');
-      p.password = yStrAny(m, ['password', 'token']);
+      // Android RawUpdater.kt:617-624:token 键把 protocolVersion 置 4 并写 token;
+      // password 键写的是 token 字段(Profile 无 token 字段,统一落 password)。
+      {
+        const tuicToken = yStrNorm(m, 'token');
+        const tuicPass = yStrNorm(m, 'password');
+        p.password = tuicToken.length > 0 ? tuicToken : tuicPass;
+      }
       p.tls = true;
-      p.congestionControl = yStrAny(m, ['congestion-controller', 'congestion-control'], 'bbr');
-      p.udpRelayMode = yStr(m, 'udp-relay-mode', 'native');
+      // Android: TuicBean.initializeDefaultValues 的 congestionController 默认是 "cubic"(非 bbr)
+      p.congestionControl = yStrNorm(m, 'congestion-controller', 'cubic');
+      p.udpRelayMode = yStrNorm(m, 'udp-relay-mode', 'native');
       p.reduceRtt = yBool(m, 'reduce-rtt');
       p.disableSni = yBool(m, 'disable-sni');
-      if (p.alpn.length === 0) {
-        p.alpn = 'h3';
+      // Android tuic 的 alpn:键存在才处理(List join "\n"),缺键保持默认 ""
+      {
+        const tAlpn = yNode(m, 'alpn');
+        p.alpn = (tAlpn !== null && tAlpn.isSeq()) ? joinLines(tAlpn).split('\n').join(',') : '';
+      }
+      // Android RawUpdater.kt:649-654 **字面复刻**(含其上游 bug):
+      //   serverAddress 先被覆盖成 ip,随后判断的是 `!serverAddress.isIpAddress()`,
+      //   由于 ip 本身就是 IP 字面量,该条件永假 → **实际上不会回填 SNI**。
+      //   鸿蒙此前用「原域名」回填 sni(修复意图),为 1:1 已删除。
+      {
+        const tuicIp = yStr(m, 'ip');
+        if (tuicIp.length > 0) {
+          p.server = tuicIp;
+          if (p.sni.trim().length === 0 && !isIpLiteral(p.server)) {
+            p.sni = p.server;
+          }
+        }
       }
       break;
     case 'anytls':
       p.type = ProfileType.ANYTLS;
-      p.password = yStr(m, 'password');
+      // Android RawUpdater.kt:494-517:逐键 `replace("_","-")` 归一化
+      p.password = yStrNorm(m, 'password');
+      {
+        const anytlsFp = yStrNorm(m, 'client-fingerprint');
+        if (anytlsFp.length > 0) {
+          p.fingerprint = anytlsFp;
+        }
+        if (yBoolOf(yNorm(m, 'skip-cert-verify'))) {
+          p.allowInsecure = true;
+        }
+        const anytlsAlpn = yNode(m, 'alpn');
+        if (anytlsAlpn !== null && anytlsAlpn.isSeq()) {
+          p.alpn = joinLines(anytlsAlpn).split('\n').join(',');
+        }
+      }
       p.tls = true;
       break;
     case 'snell': {
@@ -822,9 +1201,6 @@ function profileFromSingBoxOutbound(o: Record<string, Object>): Profile | null {
   p.name = sbStr(o, 'tag');
   p.server = sbStr(o, 'server');
   p.serverPort = sbNum(o, 'server_port');
-  if (p.server.length === 0 || p.serverPort <= 0) {
-    return null;
-  }
   switch (type) {
     case 'shadowsocks':
       p.type = ProfileType.SHADOWSOCKS;
@@ -923,9 +1299,29 @@ function profileFromSingBoxOutbound(o: Record<string, Object>): Profile | null {
       p.obfs = sbStr(o, 'obfs_mode');
       p.host = sbStr(o, 'name');
       break;
-    default:
-      // selector/urltest/direct/block/dns 等非节点出站跳过
-      return null;
+    default: {
+      // 对齐安卓 RawUpdater.parseJSON:除 selector/urltest/direct/block/dns 外的
+      // 出站一律按 ConfigBean(自定义出站)原样保留整份 JSON,而不是跳过。
+      // 已知类型仍映射为结构化节点,但原始出站 JSON 存入 extra,
+      // buildOutbound 的深合并会把内核支持而模型未覆盖的字段原样带回。
+      // 与 Android RawUpdater.kt:772-776 的过滤名单逐字一致:
+      // 只跳过 空 type / dns / block / direct / selector / urltest。
+      // **group 与 wireguard 不跳过**(降级协议与 WG 出站都按 ConfigBean 原样保留)。
+      const skipTypes: Array<string> = ['dns', 'block', 'direct', 'selector', 'urltest'];
+      if (skipTypes.indexOf(type) >= 0) {
+        return null;
+      }
+      if (Object.keys(o).length === 0) {
+        return null;
+      }
+      p.type = ProfileType.CUSTOM;
+      p.customOutbound = JSON.stringify(o);
+      return p;
+    }
+  }
+  // 已知协议分支仍要求 server/port 有效(CUSTOM 分支已提前 return)
+  if (p.server.length === 0 || p.serverPort <= 0) {
+    return null;
   }
   const tlsObj = o['tls'];
   if (tlsObj !== undefined && tlsObj !== null) {
@@ -940,6 +1336,10 @@ function profileFromSingBoxOutbound(o: Record<string, Object>): Profile | null {
   if (detour.length > 0) {
     p.dialerProxyName = detour;
   }
+  // 对齐安卓 ConfigBean 语义:原始出站 JSON 存入 extra,buildOutbound 深合并时
+  // 内核支持而 Profile 模型未覆盖的字段(如 tcp_fast_open、domain_strategy 等)
+  // 原样保留。tag/detour 由出站图管理,buildProfileGraph 在合并后会覆写。
+  p.extra = JSON.stringify(o);
   return p;
 }
 
@@ -989,37 +1389,290 @@ function profileFromSingBoxEndpoint(ep: Record<string, Object>): Profile | null 
   return p;
 }
 
+/** Android `JSONObject.has(k)`:键存在即为真(值可为空/非字符串)。 */
+function hasKey(o: Record<string, Object>, k: string): boolean {
+  return o[k] !== undefined;
+}
+
+/**
+ * Android `ktx/Formats.kt:51-64 isJsonObjectValid`:
+ * 对象/数组直接为真;字符串尝试按 JSON 解析(解析出对象/数组即为真)。
+ */
+function isJsonObjectValid(j: Object): boolean {
+  if (j === null || j === undefined) {
+    return false;
+  }
+  if (typeof j === 'object') {
+    return true;
+  }
+  if (typeof j === 'string') {
+    try {
+      const parsed = JSON.parse(j as string) as Object;
+      return parsed !== null && typeof parsed === 'object';
+    } catch (e) {
+      return false;
+    }
+  }
+  return false;
+}
+
+interface JsonParseOutcome {
+  matched: boolean;
+  profiles: Array<Profile>;
+  skipped: number;
+}
+
+function emptyJsonOutcome(): JsonParseOutcome {
+  return { matched: false, profiles: [], skipped: 0 };
+}
+
+/**
+ * 逐字对齐 Android `RawUpdater.parseJSON`(RawUpdater.kt:751-808):
+ *  - JSONObject 走 `when {...}` —— **只命中第一个分支**;
+ *  - JSONArray 逐元素 `isJsonObjectValid` 后递归;
+ *  - 出站过滤:type 为空 或 dns/block/direct/selector/urltest → 丢弃,
+ *    其余(含 group / wireguard)**全部保留**(Android 用 ConfigBean 原样存整份 JSON)。
+ */
+function parseJsonValue(json: Object): JsonParseOutcome {
+  const out: JsonParseOutcome = emptyJsonOutcome();
+  if (json === null || json === undefined) {
+    return out;
+  }
+  if (Array.isArray(json)) {
+    // Android RawUpdater.kt:797-804
+    for (const item of json as Array<Object>) {
+      if (!isJsonObjectValid(item)) {
+        out.skipped++;
+        continue;
+      }
+      let child: Object = item;
+      if (typeof item === 'string') {
+        try {
+          child = JSON.parse(item as string) as Object;
+        } catch (e) {
+          out.skipped++;
+          continue;
+        }
+      }
+      const sub = parseJsonValue(child);
+      for (const p of sub.profiles) {
+        out.profiles.push(p);
+      }
+      out.skipped += sub.skipped;
+      if (sub.matched) {
+        out.matched = true;
+      }
+    }
+    return out;
+  }
+  if (typeof json !== 'object') {
+    return out;
+  }
+  const o = json as Record<string, Object>;
+  // 1) server + up/up_mbps → hysteria1(RawUpdater.kt:756-758)
+  if (hasKey(o, 'server') && (hasKey(o, 'up') || hasKey(o, 'up_mbps'))) {
+    out.matched = true;
+    const h1 = profileFromHysteria1Json(o);
+    if (h1 === null) {
+      out.skipped++;
+    } else {
+      out.profiles.push(h1);
+    }
+    return out;
+  }
+  // 2) method → shadowsocks(RawUpdater.kt:760-762)
+  if (hasKey(o, 'method')) {
+    out.matched = true;
+    const ss = profileFromShadowsocksJson(o);
+    if (ss === null) {
+      out.skipped++;
+    } else {
+      out.profiles.push(ss);
+    }
+    return out;
+  }
+  // 3) remote_addr → trojan-go(RawUpdater.kt:764-766)
+  if (hasKey(o, 'remote_addr')) {
+    out.matched = true;
+    const tg = profileFromTrojanGoJson(o);
+    if (tg === null) {
+      out.skipped++;
+    } else {
+      out.profiles.push(tg);
+    }
+    return out;
+  }
+  // 4) outbounds → 逐出站(RawUpdater.kt:768-788)
+  if (hasKey(o, 'outbounds')) {
+    out.matched = true;
+    const list = o['outbounds'];
+    if (!Array.isArray(list)) {
+      out.skipped++;
+      return out;
+    }
+    for (const item of list as Array<Object>) {
+      // Android: filterIsInstance<JSONObject>() —— 非对象元素直接忽略
+      if (item === null || typeof item !== 'object' || Array.isArray(item)) {
+        continue;
+      }
+      const ob = item as Record<string, Object>;
+      const ty = sbStr(ob, 'type');
+      if (ty.length === 0 || ty === 'dns' || ty === 'block' || ty === 'direct'
+        || ty === 'selector' || ty === 'urltest') {
+        out.skipped++;
+        continue;
+      }
+      const p = profileFromSingBoxOutbound(ob);
+      if (p === null) {
+        out.skipped++;
+      } else {
+        out.profiles.push(p);
+      }
+    }
+    return out;
+  }
+  // 5) server + server_port → 单个自定义出站(RawUpdater.kt:790-795)
+  if (hasKey(o, 'server') && hasKey(o, 'server_port')) {
+    out.matched = true;
+    const p = new Profile();
+    p.type = ProfileType.CUSTOM;
+    p.name = sbStr(o, 'tag', sbStr(o, 'remarks', ''));
+    p.server = sbStr(o, 'server');
+    p.serverPort = sbNum(o, 'server_port');
+    // Android ConfigBean.config = it.toStringPretty()(整份 JSON,gson 两空格缩进)
+    p.customOutbound = o === undefined ? '' : JSON.stringify(o, null, 2);
+    out.profiles.push(p);
+    return out;
+  }
+  return out;
+}
+
 export function parseSingBoxConfig(text: string): ClashParseResult {
   const result: ClashParseResult = emptyClashParseResult();
-  let obj: Record<string, Object>;
+  let obj: Object;
   try {
-    obj = JSON.parse(text) as Record<string, Object>;
+    obj = JSON.parse(text) as Object;
   } catch (e) {
     return result;
   }
-  const endpoints = obj['endpoints'];
-  if (endpoints !== undefined && endpoints !== null) {
-    for (const ep of endpoints as Array<Record<string, Object>>) {
-      const p = profileFromSingBoxEndpoint(ep);
-      if (p === null) {
-        result.skipped++;
-      } else {
-        result.profiles.push(p);
-      }
-    }
+  const outcome = parseJsonValue(obj);
+  for (const p of outcome.profiles) {
+    result.profiles.push(p);
   }
-  const outbounds = obj['outbounds'];
-  if (outbounds !== undefined && outbounds !== null) {
-    for (const o of outbounds as Array<Record<string, Object>>) {
-      const p = profileFromSingBoxOutbound(o);
-      if (p === null) {
-        result.skipped++;
-      } else {
-        result.profiles.push(p);
+  result.skipped += outcome.skipped;
+  // 鸿蒙超集:sing-box 1.11+ 的 endpoints(WireGuard 端点)。
+  // Android 1.4.2 只认 outbounds;为不改变「有 outbounds 时的结果」,
+  // 仅在 Android 的五个分支都没命中时才处理 endpoints(见偏差清单)。
+  if (!outcome.matched && obj !== null && typeof obj === 'object' && !Array.isArray(obj)) {
+    const root = obj as Record<string, Object>;
+    const endpoints = root['endpoints'];
+    if (endpoints !== undefined && endpoints !== null && Array.isArray(endpoints)) {
+      for (const ep of endpoints as Array<Record<string, Object>>) {
+        const p = profileFromSingBoxEndpoint(ep);
+        if (p === null) {
+          result.skipped++;
+        } else {
+          result.profiles.push(p);
+        }
       }
     }
   }
   return result;
+}
+
+/** 裸 shadowsocks JSON(Android `JSONObject.parseShadowsocks`,ShadowsocksFmt.kt:95-108)。 */
+function profileFromShadowsocksJson(o: Record<string, Object>): Profile | null {
+  const server = sbStr(o, 'server');
+  if (server.length === 0) {
+    return null;
+  }
+  const p = new Profile();
+  p.type = ProfileType.SHADOWSOCKS;
+  p.server = server;
+  p.serverPort = sbNum(o, 'server_port');
+  p.password = sbStr(o, 'password');
+  p.method = sbStr(o, 'method');
+  // Android: name = optString("remarks", "") —— 缺键时为空串(不回落 tag)
+  p.name = sbStr(o, 'remarks');
+  // Android: plugin = plugin + ";" + plugin_opts(仅 plugin 非空时)
+  const pluginId = sbStr(o, 'plugin');
+  if (pluginId.length > 0) {
+    const opts = sbStr(o, 'plugin_opts');
+    p.ssPlugin = pluginId;
+    p.ssPluginOpts = opts;
+  }
+  return p;
+}
+
+/**
+ * trojan-go JSON(Android `JSONObject.parseTrojanGo`,TrojanGoFmt.kt:134-162)。
+ *
+ * 逐字复刻的一个要点:Android 用 `optJSONArray("ssl")` / `optJSONArray("websocket")` /
+ * `optJSONArray("shadowsocks")` 去取**对象**字段 —— org.json 的 optJSONArray 对
+ * JSONObject 返回 null,所以那三段是死代码。实际生效的只有
+ * remote_addr / remote_port / password 三项(已写入"已知怪癖")。
+ *
+ * 模型限制:Profile 没有 trojan-go 类型(sing-box 无 trojan-go 出站),
+ * 这里映射为 trojan 节点并置 tls(见偏差清单)。
+ */
+function profileFromTrojanGoJson(o: Record<string, Object>): Profile | null {
+  const addr = sbStr(o, 'remote_addr');
+  if (addr.length === 0) {
+    return null;
+  }
+  const p = new Profile();
+  p.type = ProfileType.TROJAN;
+  p.server = addr;
+  p.serverPort = sbNum(o, 'remote_port') > 0 ? sbNum(o, 'remote_port') : 443;
+  const pass = o['password'];
+  if (typeof pass === 'string') {
+    p.password = pass;
+  } else if (Array.isArray(pass) && (pass as Array<Object>).length > 0) {
+    p.password = `${(pass as Array<Object>)[0]}`;
+  }
+  p.tls = true;
+  return p;
+}
+
+/**
+ * 裸 hysteria1 JSON — 逐字对齐 Android `JSONObject.parseHysteria1Json`
+ * (HysteriaFmt.kt:167-203):
+ *  - `server` 是 "host:port" 一体串,用 substringBeforeLast/AfterLast(":") 拆;
+ *  - `up_mbps`/`down_mbps` 取不到时保留 HysteriaBean 默认(protocolVersion=1 → 10/50);
+ *  - `auth` → BASE64 档、`auth_str` → STRING 档,后者覆盖前者;
+ *  - `alpn` 只认字符串(getStr 对 List 返回 null);
+ *  - recv_window_conn / recv_window / disable_mtu_discovery 在 Profile 无对应字段
+ *    (见偏差清单)。
+ */
+function profileFromHysteria1Json(o: Record<string, Object>): Profile | null {
+  const server = sbStr(o, 'server');
+  if (server.length === 0) {
+    return null;
+  }
+  const p = new Profile();
+  p.type = ProfileType.HYSTERIA;
+  // HysteriaFmt.kt:171-172 字面 split(无冒号时两段都等于整串)
+  const colon = server.lastIndexOf(':');
+  if (colon >= 0) {
+    p.server = server.substring(0, colon);
+    p.serverPorts = server.substring(colon + 1);
+  } else {
+    p.server = server;
+    p.serverPorts = server;
+  }
+  const pn = Number(p.serverPorts);
+  p.serverPort = !isNaN(pn) && pn > 0 ? pn : 443;
+  p.name = sbStr(o, 'tag', sbStr(o, 'remarks', ''));
+  // getIntNya ?: bean 默认(protocolVersion=1 → up=10/down=50)
+  p.upMbps = hasKey(o, 'up_mbps') ? sbNum(o, 'up_mbps') : 10;
+  p.downMbps = hasKey(o, 'down_mbps') ? sbNum(o, 'down_mbps') : 50;
+  p.obfs = sbStr(o, 'obfs');
+  const authStr = sbStr(o, 'auth_str');
+  p.password = authStr.length > 0 ? authStr : sbStr(o, 'auth');
+  p.sni = sbStr(o, 'server_name');
+  p.alpn = sbStr(o, 'alpn');
+  p.allowInsecure = sbBool(o, 'insecure');
+  return p;
 }
 
 /**

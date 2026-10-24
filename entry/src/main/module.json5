@@ -21,6 +21,15 @@
         "startWindowIcon": "$media:icon",
         "startWindowBackground": "$color:start_window_background",
         "exported": true,
+        // 后台保活(2026-10-23 定稿,依据 docs/REA-FLCLASH-KEEPALIVE.md):
+        // ① VPN **会话**不申请长时任务 —— TASK_KEEPING 在 phone/tablet 上必需受限 ACL
+        //    KEEP_BACKGROUND_RUNNING_SYSTEM(个人开发者拿不到);会话存活靠 VpnExtensionAbility
+        //    (系统托管)+ 常驻通知 + 被杀自愈。
+        // ② 传输期(订阅更新/Geo 下载)申请 DATA_TRANSFER —— 该类型只需 normal 级
+        //    KEEP_BACKGROUND_RUNNING,但**必须**在这里声明 backgroundModes 才放行:
+        //    真机实测(2026-10-23,2100011)删掉本声明后 startBackgroundRunning 直接校验失败
+        //    (日志 "DATA_TRANSFER 长时任务申请失败"),加回即通过。
+        //    声明与用途一致(真实下载),AGC 用途审核可解释。
         "backgroundModes": ["dataTransfer"],
         "skills": [
           {
@@ -47,6 +56,11 @@
       { "name": "ohos.permission.GET_BUNDLE_INFO" },
       // 智感握姿(交互手/握持手):system_grant + normal,API 20 起,装上即用、无运行时弹窗
       { "name": "ohos.permission.DETECT_GESTURE" },
+      // 剪贴板导入(user_grant):2026-10-23 AGC 审核退回「隐私政策声明的 user_grant 权限与软件包不一致,
+      // 只在隐私政策中:READ_PASTEBOARD」——政策里一直保留该权限(2.1.10 及以前包内也声明),
+      // 而本轮保活整改把它删了,导致包与政策不一致。现已按 2.1.10 原样恢复:
+      // 发布 profile 的 acls.allowed-acls 里本来就放行了它(AGC 已授予 ACL),声明后「从剪贴板导入」
+      // 可静默读取;删掉则每次都会弹系统「允许粘贴」确认框。改这里必须同步 docs/PRIVACY-POLICY.md。
       {
         "name": "ohos.permission.READ_PASTEBOARD",
         "reason": "$string:permission_read_pasteboard_reason",
@@ -55,6 +69,9 @@
           "when": "inuse"
         }
       }
+      // 2026-10-23 权限审计(docs/REA-FLCLASH-KEEPALIVE.md):
+      //  - KEEP_BACKGROUND_RUNNING_SYSTEM / USE_FRAUD_APP_PICKER / KEEP_BACKGROUND_RUNNING_SPECIAL_SCENARIO
+      //    均为 system_basic 受限,个人开发者不可自助使用,一律不申请。
       // 若系统提示缺少 VPN 权限,按 SDK 文档追加(可能属于受限 ACL,需在 AGC 申请):
       // { "name": "ohos.permission.MANAGE_VPN" }
     ]

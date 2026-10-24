@@ -19,7 +19,7 @@ typedef struct { const char *p; ptrdiff_t n; } _GoString_;
 /* Start of preamble from import "C" comments.  */
 
 
-#line 14 "main.go"
+#line 21 "main.go"
 
 #include <stdlib.h>
 
@@ -97,6 +97,42 @@ extern char* CGoTestProxySingBox(char* tag, char* testURL, int timeoutMs);
 // expectStatus: "any" 时不校验状态码,否则仅 2xx 判定通过(防"假绿")。
 extern char* CGoTestProxySingBoxV2(char* tag, char* testURL, int timeoutMs, char* expectStatus);
 extern char* CGoTestStopSingBox();
+
+// 配置 schema 校验:与 CGoStartSingBox 的解析步骤同款(leanContext +
+// json.UnmarshalExtendedContext),把它抽成独立导出,批量检测前即可逐节点
+// 拦下 schema 类型错误(如 server_port:"invalid")。不启动任何实例。
+extern char* CGoCheckConfigV1(char* configPath);
+
+// SRS 规则集内容校验:读本地文件 → srs.Read(recover=false) 纯解析,
+// 校验魔数、版本与完整规则(比"只认 SR 魔数"强)。不写文件、不联网。
+extern char* CGoValidateSRSFileV1(char* path);
+
+// 以 sessionId 建立测试会话。成功返回 "";同 sessionId 已 active/starting →
+// "session <id> already active";其他会话在跑 → "another test session <id> is
+// active"(串行语义);有会话正在关闭 → "session <id> is stopping";该 id 已被
+// stop 过(墓碑)→ "session <id> cancelled during start";stop 在创建期间到达 →
+// 新实例创建成功后立即关闭,返回同样的 cancelled 文本。
+extern char* CGoTestStartSingBoxV3(char* sessionId, char* configPath, char* bindIfname);
+
+// 只在该会话内探测。会话不存在/已关闭/正在停止 → "session <id> not found";
+// 正在启动 → "session <id> is starting"。返回延迟毫秒数字字符串或 "err:..."
+// (与 V2 同构)。stop 会取消会话 context,进行中的探测尽快以错误返回。
+extern char* CGoTestProxySingBoxV3(char* sessionId, char* tag, char* testURL, int timeoutMs, char* expectStatus);
+
+// 停止并关闭该会话;返回 "" 时实例必已关闭(确认语义)。未知/已停止的
+// sessionId 返回 ""(幂等)并记为墓碑 —— 迟到的同 id start 会被拒绝。
+// 进行中的探测会因会话 context 被取消而尽快返回错误。
+extern char* CGoTestStopSingBoxV3(char* sessionId);
+
+// 返回会话快照 JSON:
+//   {"sessionId","state":"starting|active|stopping|closed","startedAt":0,
+//    "probes":0,"lastTag":"","tombstone":true|false}
+// 未知会话返回 ""(与错误区分:空串=未知)。已关闭(含墓碑)的 id 仍返回
+// closed+tombstone 快照,便于诊断。
+extern char* CGoTestSessionInfoV3(char* sessionId);
+
+// 返回当前 active 的 sessionId(逗号分隔;串行语义下最多一个)。诊断/测试断言用。
+extern char* CGoTestActiveSessionsV3();
 extern char* CGoSingBoxVersion();
 
 #ifdef __cplusplus

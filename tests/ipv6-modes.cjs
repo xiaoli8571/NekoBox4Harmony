@@ -70,8 +70,8 @@ test('legacy boolean ipv6 maps: true=enable, false=disable, never persisted conf
   assert.equal(c2.dns.strategy, 'ipv4_only');
 });
 test('settings page offers the four Android modes', () => {
-  // 2.1.7 路由合并:IPv6 四档选择器随「路由」区块搬进抽屉路由页(RouteRulesPage.ets)
-  const page = fs.readFileSync(path.join(root, 'entry/src/main/ets/pages/RouteRulesPage.ets'), 'utf8');
+  // Current settings page owns the IPv6 selector.
+  const page = fs.readFileSync(path.join(root, 'entry/src/main/ets/pages/SettingsPage.ets'), 'utf8');
   assert.match(page, /ipv6Mode/);
   assert.match(page, /IPV6_MODES/); // four-mode selector present
   const base = JSON.parse(fs.readFileSync(path.join(root, 'entry/src/main/resources/base/element/string.json'), 'utf8')).string;

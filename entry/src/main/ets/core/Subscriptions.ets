@@ -1,10 +1,11 @@
 import common from '@ohos.app.ability.common';
 import connection from '@ohos.net.connection';
-import { Profile } from '../model/Profile';
-import { initStore, loadProfiles, saveProfiles, mutateProfiles, loadSettings, readPrefString, writePrefString, ensureGroupByName, loadGroups, saveGroups, LogStore } from '../model/Store';
-import { fetchSubscriptionConditional, fetchTextUrl, parseSubUserInfo, looksLikeClashYaml, looksLikeSingBoxJson, parseSingBoxConfig, ClashParseResult, subFailureText, subFailureBaseText, SUB_UA, SUB_UA_FALLBACKS } from '../utils/Subscription';
-import { parseClashProxiesWithProviders, parseClashGroups, ClashGroupDef } from '../utils/ClashProviders';
+import { Profile, ProfileType } from '../model/Profile';
+import { initStore, loadProfiles, saveProfiles, mutateProfiles, loadGroups, saveGroups, ensureGroupByName, readPrefString, writePrefString, LogStore } from '../model/Store';
+import { parseSubUserInfo, looksLikeClashYaml, looksLikeSingBoxJson, parseSingBoxConfig, subFailureText, subFailureBaseText, dedupKeyOf, isIpLiteral, ClashParseResult } from '../utils/Subscription';
+import { parseClashProxiesWithProviders, ClashGroupDef } from '../utils/ClashProviders';
 import { parseShareText, ShareSkipReport } from '../utils/LinkParser';
+import { SubscriptionRepository } from './SubscriptionRepository';
 
 // 解析失败文案定义在 utils/Subscription.ets(与 note 常量同处,供手动导入路径复用);
 // 从这里再导出一次,保持既有 import 点不变。
@@ -13,7 +14,20 @@ export { subFailureText, subFailureBaseText };
 /** 订阅管理:记录订阅来源、更新节点(按 subUrl 原子替换)。 */
 
 const KEY_SUBS = 'subscriptions';
+/** Android SubscriptionBean.autoUpdateDelay 默认 1440(分钟 = 24h,SubscriptionBean.java:114) */
+const DEFAULT_INTERVAL_MINUTES = 1440;
+/** Android SubscriptionUpdater.kt:36 的下限钳制,无上限(W17 起订阅事务也用) */
+export const MIN_INTERVAL_MINUTES = 15;
 const AUTO_UPDATE_INTERVAL = 12 * 3600 * 1000; // 12h
+
+/** 间隔归一化:非正数/非法 → 默认 1440;低于 15 分钟抬到 15(与 Android 一致,不设上限)。 */
+function normalizeIntervalMinutes(raw: number): number {
+  if (isNaN(raw) || !(raw > 0)) {
+    return DEFAULT_INTERVAL_MINUTES;
+  }
+  const m = Math.floor(raw);
+  return m < MIN_INTERVAL_MINUTES ? MIN_INTERVAL_MINUTES : m;
+}
 
 export class SubInfo {
   url: string = '';
@@ -24,7 +38,14 @@ export class SubInfo {
   download: number = 0;
   total: number = 0;
   expire: number = 0;
-  updateIntervalHours: number = 12;
+  // 自动更新间隔 — 逐字对齐 Android SubscriptionBean.autoUpdateDelay:
+  // 单位**分钟**、默认 **1440**(24h,group_preferences.xml default 1440;
+  // SubscriptionUpdater.kt:43 以 TimeUnit.MINUTES 使用)。下限 15
+  // (SubscriptionUpdater.kt:36 `if (minDelay < 15) minDelay = 15`),无上限。
+  updateIntervalMinutes: number = 1440;
+  // 旧版字段(小时粒度)只用于备份/升级兼容:listSubs 读不到分钟值时按 *60 迁移,
+  // saveSubs 时同步写回,使旧备份仍可还原。
+  updateIntervalHours: number = 24;
   nextUpdateAt: number = 0;
   lastAttemptAt: number = 0;
   lastError: string = '';
@@ -32,9 +53,10 @@ export class SubInfo {
   failCount: number = 0;
   // 订阅级设置(对齐安卓 group_preferences.xml)
   userAgent: string = '';                    // 自定义 User-Agent,空 = 默认
-  autoUpdate: boolean = true;                // 本订阅是否参与自动更新
+  // Android SubscriptionBean.autoUpdate 默认 **false**(SubscriptionBean.java:113)
+  autoUpdate: boolean = false;               // 本订阅是否参与自动更新
   updateWhenConnectedOnly: boolean = false;  // 仅 VPN 已连接时自动更新
-  deduplication: boolean = false;            // 更新时按 类型+服务器+端口+UUID 去重(对齐安卓,默认关闭)
+  deduplication: boolean = false;            // 更新时去重(对齐安卓 subscriptionDeduplication,默认关闭)
   forceResolve: boolean = false;             // 更新时把节点服务器域名解析为 IP(对齐安卓 subscriptionForceResolve)
   // HTTP 条件请求校验器:下次更新带上,服务端回 304 即跳过正文下载
   etag: string = '';
@@ -52,6 +74,14 @@ export interface SubUpdateResult {
   skippedNames: Array<string>;
   // 整体性说明键(非空表示订阅不可用或需提示),见 Subscription.ets 的 note 取值
   note: string;
+  // ---- 对齐 Android GroupManager.Interface.onUpdateSuccess 的五个参数 ----
+  // changed = deleted.size + added + updated(RawUpdater.kt:159,168,190)
+  changed: number;
+  addedNames: Array<string>;
+  // name -> name(Android 里 key==value,UI 只在不等时打印 "old => new")
+  updatedNames: Array<string>;
+  deletedNames: Array<string>;
+  duplicateNames: Array<string>;
 }
 
 export async function listSubs(): Promise<Array<SubInfo>> {
@@ -69,15 +99,24 @@ export async function listSubs(): Promise<Array<SubInfo>> {
       item.download = Number(source.download) || 0;
       item.total = Number(source.total) || 0;
       item.expire = Number(source.expire) || 0;
-      const rawHours = Number(source.updateIntervalHours);
-      item.updateIntervalHours = !(rawHours > 0) ? 12 : Math.max(1, Math.min(720, Math.floor(rawHours)));
+      // 间隔迁移:优先读分钟值;只有旧数据(小时)时 *60。
+      const rawMinutes = Number(source.updateIntervalMinutes);
+      let minutes = rawMinutes > 0 ? Math.floor(rawMinutes) : 0;
+      if (minutes <= 0) {
+        const legacyHours = Number(source.updateIntervalHours);
+        if (legacyHours > 0) {
+          minutes = Math.floor(legacyHours) * 60;
+        }
+      }
+      item.updateIntervalMinutes = minutes > 0 ? minutes : DEFAULT_INTERVAL_MINUTES;
+      item.updateIntervalHours = Math.round(item.updateIntervalMinutes / 60);
       item.nextUpdateAt = Number(source.nextUpdateAt)
-        || item.lastUpdate + item.updateIntervalHours * 3600 * 1000;
+        || item.lastUpdate + item.updateIntervalMinutes * 60 * 1000;
       item.lastAttemptAt = Number(source.lastAttemptAt) || 0;
       item.lastError = source.lastError ?? '';
       item.failCount = Number(source.failCount) || 0;
       item.userAgent = source.userAgent ?? '';
-      item.autoUpdate = source.autoUpdate !== false;
+      item.autoUpdate = source.autoUpdate === true;
       item.updateWhenConnectedOnly = source.updateWhenConnectedOnly === true;
       item.deduplication = source.deduplication === true;
       item.forceResolve = source.forceResolve === true;
@@ -156,15 +195,9 @@ export async function removeSub(url: string): Promise<void> {
   await saveSubs(list.filter(x => x.url !== url));
 }
 
-async function touchSub(url: string): Promise<void> {
-  const list = await listSubs();
-  for (const s of list) {
-    if (s.url === url) {
-      s.lastUpdate = Date.now();
-      s.nextUpdateAt = s.lastUpdate + Math.max(1, s.updateIntervalHours) * 3600 * 1000;
-    }
-  }
-  await saveSubs(list);
+/** W17:订阅事务(SubscriptionRepository)惰性初始化原始层存储用。 */
+export function appContextOrNull(): common.Context | null {
+  return appContext;
 }
 
 export async function needAutoUpdate(): Promise<Array<SubInfo>> {
@@ -178,7 +211,7 @@ export async function needAutoUpdate(): Promise<Array<SubInfo>> {
   // 连续失败 ≥3 次的订阅跳过自动更新(手动更新成功后由 markSubSuccess 清零恢复)
   return subs.filter(s => s.autoUpdate
     && !(s.updateWhenConnectedOnly && !connected)
-    && now >= (s.nextUpdateAt || s.lastUpdate + Math.max(1, s.updateIntervalHours) * 3600 * 1000)
+    && now >= (s.nextUpdateAt || s.lastUpdate + Math.max(MIN_INTERVAL_MINUTES, s.updateIntervalMinutes) * 60 * 1000)
     && !(Number(s.failCount) >= 3));
 }
 
@@ -212,11 +245,13 @@ export async function saveSubSettings(url: string, changes: Record<string, Objec
     if (changes['forceResolve'] !== undefined) {
       s.forceResolve = changes['forceResolve'] === true;
     }
-    if (changes['updateIntervalHours'] !== undefined) {
-      // 非正数/非数字一律视为非法,回落默认 12(与 listSubs 同一规则)
-      const raw = Number(changes['updateIntervalHours']);
-      const hours = !(raw > 0) ? 12 : Math.min(720, Math.floor(raw));
-      s.updateIntervalHours = Math.max(1, hours);
+    if (changes['updateIntervalMinutes'] !== undefined) {
+      s.updateIntervalMinutes = normalizeIntervalMinutes(Number(changes['updateIntervalMinutes']));
+      s.updateIntervalHours = Math.round(s.updateIntervalMinutes / 60);
+    } else if (changes['updateIntervalHours'] !== undefined) {
+      // 旧调用点(小时):按 *60 迁移
+      s.updateIntervalMinutes = normalizeIntervalMinutes(Number(changes['updateIntervalHours']) * 60);
+      s.updateIntervalHours = Math.round(s.updateIntervalMinutes / 60);
     }
   }
   if (target !== null) {
@@ -257,7 +292,7 @@ function profileIdentity(p: Profile, url: string): string {
     p.path, p.host, p.serviceName, p.sni].join('\u001f');
 }
 
-function stableProfileId(p: Profile, url: string): string {
+export function stableProfileId(p: Profile, url: string): string {
   const value = profileIdentity(p, url);
   let hash = 2166136261;
   for (let i = 0; i < value.length; i++) {
@@ -267,255 +302,223 @@ function stableProfileId(p: Profile, url: string): string {
   return `sub_${(hash >>> 0).toString(16)}`;
 }
 
-function isIpAddress(host: string): boolean {
-  if (host.length === 0) {
-    return true;
-  }
-  if (host.indexOf(':') >= 0) {
-    return true; // IPv6 字面量
-  }
-  const parts = host.split('.');
-  if (parts.length !== 4) {
-    return false;
-  }
-  for (const part of parts) {
-    if (!/^\d{1,3}$/.test(part)) {
-      return false;
-    }
-    const n = parseInt(part, 10);
-    if (n < 0 || n > 255) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/** 解析单个节点服务器域名并改写为 IP(对齐安卓 rewriteAddress);失败保留原域名 */
-async function resolveOneProfile(p: Profile): Promise<void> {
+/**
+ * 单个节点强制解析 + 地址改写 — 逐字对齐 Android `GroupUpdater.rewriteAddress`(:92-120):
+ *  - 选中地址后**总是**把 serverAddress 换成 IP(所有类型都换);
+ *  - SNI 回填按 bean 类型分支:Http 仅 isTLS() 时、V2Ray(vmess/vless)仅 security=="tls" 时、
+ *    Trojan/TrojanGo/Hysteria 无条件;Tuic/AnyTLS/SOCKS/SSH 等**不回填**;
+ *  - 失败只写日志、保留域名(GroupUpdater.kt:78-80)。
+ */
+async function resolveOneProfile(p: Profile, ipv6First: boolean): Promise<void> {
   const host = p.server.trim();
-  if (isIpAddress(host)) {
+  if (host.length === 0 || isIpLiteral(host)) {
     return;
   }
   try {
     const addrs = await connection.getAddressesByName(host);
-    let v4 = '';
-    let v6 = '';
+    const v4: Array<string> = [];
+    const v6: Array<string> = [];
     for (const a of addrs) {
       const addr = a.address;
       if (addr.indexOf(':') < 0) {
-        if (v4.length === 0) {
-          v4 = addr;
-        }
-      } else if (v6.length === 0) {
-        v6 = addr;
+        v4.push(addr);
+      } else {
+        v6.push(addr);
       }
     }
-    const chosen = v4.length > 0 ? v4 : v6;
-    if (chosen.length === 0) {
-      return;
-    }
-    if (p.tls && p.sni.trim().length === 0) {
-      p.sni = host; // 保留原域名作 TLS SNI
-    }
-    p.server = chosen;
+    applyRewriteAddress(p, v4.concat(v6), ipv6First);
   } catch (e) {
     LogStore.addLog(`[sub] 强制解析 ${host} 失败,保留域名: ${e}`);
   }
 }
 
-/** 批量强制解析(对齐安卓 forceResolve 的 5 并发查询池) */
-async function applyForceResolve(list: Array<Profile>): Promise<void> {
+/**
+ * 地址改写(纯函数,便于测试)— Android `GroupUpdater.rewriteAddress`(:92-120):
+ * `addresses.sortedBy { (it is Inet4Address) xor ipv6First }[0].hostAddress`,
+ * SNI 回填按类型(Http 仅 isTLS、V2Ray 仅 security=="tls"、Trojan/TrojanGo/Hysteria
+ * 无条件、其余不回填),最后 serverAddress = address。
+ */
+export function applyRewriteAddress(p: Profile, addresses: Array<string>, ipv6First: boolean): void {
+  if (addresses.length === 0) {
+    return;
+  }
+  const v4: Array<string> = [];
+  const v6: Array<string> = [];
+  for (const a of addresses) {
+    if (a.indexOf(':') < 0) {
+      v4.push(a);
+    } else {
+      v6.push(a);
+    }
+  }
+  // Android: sortedBy { (it is Inet4Address) xor ipv6First }[0]
+  //  - ipv6First=false → v4 优先;true → v6 优先;选不到时保留原域名。
+  let chosen = '';
+  if (ipv6First) {
+    chosen = v6.length > 0 ? v6[0] : (v4.length > 0 ? v4[0] : '');
+  } else {
+    chosen = v4.length > 0 ? v4[0] : (v6.length > 0 ? v6[0] : '');
+  }
+  if (chosen.length === 0) {
+    return;
+  }
+  if (p.sni.trim().length === 0) {
+    if (p.type === ProfileType.HTTP) {
+      if (p.tls) {
+        p.sni = p.server;
+      }
+    } else if (p.type === ProfileType.VMESS || p.type === ProfileType.VLESS) {
+      // Android: security == "tls" 才回填(鸿蒙以 tls 布尔承载同一语义)
+      if (p.tls) {
+        p.sni = p.server;
+      }
+    } else if (p.type === ProfileType.TROJAN
+      || p.type === ProfileType.HYSTERIA || p.type === ProfileType.HYSTERIA2) {
+      p.sni = p.server;
+    }
+  }
+  p.server = chosen;
+}
+
+/** 批量强制解析 — Android 用 5 线程 fixed pool(GroupUpdater.kt:43),这里用 5 并发分批等价。 */
+export async function applyForceResolve(list: Array<Profile>, ipv6First: boolean): Promise<void> {
   const BATCH = 5;
   for (let i = 0; i < list.length; i += BATCH) {
     const batch = list.slice(i, i + BATCH);
-    await Promise.all(batch.map((p: Profile): Promise<void> => resolveOneProfile(p)));
+    await Promise.all(batch.map((p: Profile): Promise<void> => resolveOneProfile(p, ipv6First)));
   }
 }
 
-/** 更新单个订阅:条件下载 → 解析 → 原子替换该订阅的节点(保留运行中节点);同时记录流量/到期 */
+/** 逐字对齐 Android RawUpdater.kt:90-103 的重名改名算法(纯函数,便于测试)。 */
+export function renameCollisions(list: Array<Profile>): void {
+  const usedNames = new Set<string>();
+  for (const p of list) {
+    let name = p.name;
+    let idx = 0;
+    while (usedNames.has(name)) {
+      idx++;
+      name = name.split(` (${idx - 1})`).join('');
+      name = `${name} (${idx})`;
+      p.name = name;
+    }
+    usedNames.add(p.name);
+  }
+}
+
+interface DedupOutcome {
+  profiles: Array<Profile>;
+  duplicates: Array<string>;
+}
+
+/**
+ * 去重 — 逐字对齐 Android RawUpdater.doUpdate:109-131 + Protocols.kt:20-39:
+ *  - `LinkedHashSet<Deduplication>`:每个键**保留首次出现**、顺序即首次出现顺序;
+ *  - 重复项按 `首次出现的名字去旧后缀 + " ($index)"` 记入 duplicate,
+ *    同一键的原始名只记一次(`uniqueNames[proxy]=""` 之后不再记),
+ *    随后再记重复项自身的 `displayName + " ($index)"`;
+ *  - `retainAll(uniqueNames.keys)` 恒为 no-op(每个键都写入过 value)。
+ */
+export function dedupProfiles(list: Array<Profile>): DedupOutcome {
+  const order: Array<Profile> = [];
+  const names = new Map<string, string>();
+  const keys: Array<string> = [];
+  const duplicates: Array<string> = [];
+  for (const proxy of list) {
+    const key = dedupKeyOf(proxy);
+    if (keys.indexOf(key) < 0) {
+      keys.push(key);
+      order.push(proxy);
+      names.set(key, proxy.name);
+      continue;
+    }
+    const index = keys.indexOf(key);
+    const firstName = names.get(key) !== undefined ? names.get(key) as string : '';
+    if (firstName.length > 0) {
+      const base = firstName.split(` (${index})`).join('');
+      if (base.length > 0) {
+        duplicates.push(`${base} (${index})`);
+        names.set(key, '');
+      }
+    }
+    duplicates.push(`${proxy.name} (${index})`);
+  }
+  const outcome: DedupOutcome = { profiles: order, duplicates: duplicates };
+  return outcome;
+}
+
+/**
+ * Diff 正文的四段 — 对齐 Android `GroupInterfaceAdapter.kt:47-68`:
+ *  - 每段正文 = 段内 `\n` join(段头与段间空行由 UI 的文案键与组件排版提供);
+ *  - Updated 段:key 与 value 不同时打 `"old => new"`,相同时只打 key
+ *    (RawUpdater 里 key 恒等于 value,所以现实中恒只打一次);
+ *  - 空段正文为空串,UI 据此整段省略(「空段省略」)。
+ */
+export interface SubDiffBodies {
+  added: string;
+  updated: string;
+  deleted: string;
+  duplicate: string;
+}
+
+export function subUpdateDiffBodies(addedNames: Array<string>, updatedNames: Array<string>,
+  deletedNames: Array<string>, duplicateNames: Array<string>): SubDiffBodies {
+  const bodies: SubDiffBodies = {
+    added: addedNames.join('\n'),
+    updated: updatedNames.join('\n'),
+    deleted: deletedNames.join('\n'),
+    duplicate: duplicateNames.join('\n')
+  };
+  return bodies;
+}
+
+/**
+ * 完整 Diff 正文(Android 字面英文段头,段间空行,末尾 trim)。
+ * 用于日志与测试;界面用四个文案键 + `subUpdateDiffBodies` 分段渲染,
+ * 避免把英文段头硬编码进 UI。
+ */
+export function subUpdateFeedbackText(res: SubUpdateResult): string {
+  const bodies = subUpdateDiffBodies(res.addedNames, res.updatedNames, res.deletedNames, res.duplicateNames);
+  const lines: Array<string> = [];
+  lines.push(`Added:\n${bodies.added}\n\n`);
+  lines.push(`Updated:\n${bodies.updated}\n\n`);
+  lines.push(`Deleted:\n${bodies.deleted}\n\n`);
+  lines.push(`Duplicate:\n${bodies.duplicate}\n\n`);
+  return lines.join('').trim();
+}
+
+/**
+ * 手动更新前的直连确认 — 逐字对齐 Android `GroupUpdater.kt:142-148`:
+ * `byUser && (url.startsWith("http://") || subscription.updateWhenConnectedOnly) && !connected`
+ * 时先弹确认框,取消则整次不更新。`byUser` 由调用方保证(只有手动更新才调用本函数)。
+ */
+export function needDirectUpdateConfirm(url: string, sub: SubInfo | null, connected: boolean): boolean {
+  if (connected) {
+    return false;
+  }
+  if (url.startsWith('http://')) {
+    return true;
+  }
+  return sub !== null && sub.updateWhenConnectedOnly === true;
+}
+
+/**
+ * 更新结果的提示种类 — 对齐 `GroupInterfaceAdapter.kt:38-45`:
+ * `changed == 0 && duplicate 为空` → 「没有变化」;否则「已更新 N 个代理」。
+ */
+export function subUpdateHasChanges(res: SubUpdateResult): boolean {
+  return res.changed !== 0 || res.duplicateNames.length > 0;
+}
+
+/**
+ * 更新单个订阅 —— W17 起委托 `SubscriptionRepository.runUpdate`(三层模型事务:
+ * 锁外下载解析、提交前基线 revision 比对、304 只推进成功检查时间、身份键合并保留
+ * 用户覆盖)。本函数保留原签名,所有既有调用点不变。
+ */
 export async function updateSubscription(url: string): Promise<SubUpdateResult> {
   // 必须最先 initStore:listSubs/saveSubs 依赖 preferences,未初始化时
   // listSubs 会吞掉异常并返回空数组,导致 ETag 校验器永远存不下去。
   await initStore(globalContext());
-  const settings = await loadSettings();
-  const subsForGroup = await listSubs();
-  const subForGroup = subsForGroup.find((item: SubInfo) => item.url === url);
-  const customUA = subForGroup !== undefined ? subForGroup.userAgent : '';
-  // 去重开关(对齐安卓 subscriptionDeduplication,默认关闭:保留订阅返回的全部节点)
-  const dedupEnabled = subForGroup !== undefined && subForGroup.deduplication;
-  const knownEtag = subForGroup !== undefined ? subForGroup.etag : '';
-  const knownLastMod = subForGroup !== undefined ? subForGroup.lastModified : '';
-  const existing = await loadProfiles();
-  // 本订阅当前已入库的节点数:304 分支的兜底判据。
-  const ownedBefore = existing.filter(p => p.subUrl === url).length;
-  let fetched = await fetchSubscriptionConditional(url, settings.subAllowInsecure,
-    customUA, knownEtag, knownLastMod);
-  // 304 兜底:一个节点都没有却收到 304,说明上次落库的校验器对应的是一份
-  // 「解析失败但已记下 ETag」的响应(机场错误页/限流/劫持)。此时复用 304 会让
-  // 本订阅永远停在 0 节点、且 UI 一直显示「更新成功」。强制脱掉校验器重下一次。
-  if (fetched.notModified && ownedBefore === 0 && (knownEtag.length > 0 || knownLastMod.length > 0)) {
-    fetched = await fetchSubscriptionConditional(url, settings.subAllowInsecure,
-      customUA, '', '');
-  }
-  // 304:内容未变,保留全部节点,只推进更新时刻
-  if (fetched.notModified) {
-    await touchSub(url);
-    if (fetched.userinfo.length > 0) {
-      await applySubUserInfo(url, fetched.userinfo);
-    }
-    const res304: SubUpdateResult = {
-      added: 0, removed: 0, total: existing.length,
-      notModified: true, skipped: 0, skippedNames: [], note: ''
-    };
-    return res304;
-  }
-  let content = fetched.content;
-  // HTML 前置闸:机场/中间层返回错误页时,正文里可能恰好含 "proxies:" 一行,
-  // 会被 hasTopLevelKey 误判成 Clash YAML,最后报「没有 proxies 节点列表」——
-  // 与真实原因(返回了网页)完全不符。先把这种情况挑明。
-  if (/^\s*(<!DOCTYPE\s+html|<html[\s>])/i.test(content)) {
-    throw new Error('订阅服务器返回了 HTML 页面而不是节点列表,请检查订阅地址是否正确、或该地址是否需要鉴权');
-  }
-  let r = await parseSubscriptionBody(content, settings.subAllowInsecure, customUA);
-  let parsed = r.profiles;
-  let skipped = r.skipped;
-  let skippedNames = r.skippedNames;
-  let note = r.note;
-  let usedUa = customUA.trim().length > 0 ? customUA.trim() : SUB_UA;
-
-  // UA 回退:不少机场按 User-Agent 分流不同格式(只认 clash.meta 的返回 YAML、
-  // 只认 v2rayN/sing-box 的返回 base64 或 JSON)。单个 UA 解析不出节点时换几个
-  // 常见 UA 再试一轮,避免用户只能去订阅设置里手工试错。
-  // 仅在正文「看起来确实是订阅但没解析出节点」时触发(纯文本提示/HTML 已在上游挡掉),
-  // 且每轮最多 2 次额外请求,避免把失败路径变成压测。
-  if (parsed.length === 0 && note !== 'clash_provider_only') {
-    for (const ua of SUB_UA_FALLBACKS) {
-      if (ua === usedUa) {
-        continue;
-      }
-      let altContent = '';
-      try {
-        altContent = await fetchTextUrl(url, settings.subAllowInsecure, ua);
-      } catch (e) {
-        continue;
-      }
-      if (altContent.trim().length === 0 || altContent === content) {
-        continue;
-      }
-      const alt = await parseSubscriptionBody(altContent, settings.subAllowInsecure, ua);
-      if (alt.profiles.length > 0) {
-        LogStore.addLog(`[sub] ${url} 用默认 User-Agent 解析不到节点,改用 ${ua} 后成功`);
-        content = altContent;
-        fetched.content = altContent;
-        r = alt;
-        parsed = alt.profiles;
-        skipped = alt.skipped;
-        skippedNames = alt.skippedNames;
-        note = alt.note;
-        usedUa = ua;
-        break;
-      }
-    }
-  }
-  if (parsed.length === 0) {
-    // note 优先:只有 proxy-providers / YAML 解析失败这类"格式没认出来"的情况
-    // 才给出可操作提示,否则维持通用文案。
-    // 关键:此处**不**落盘 ETag/Last-Modified。若在解析前就记下校验器,一次
-    // 「正文是错误页」的响应就会把校验器钉死;下次请求带 If-None-Match 拿到 304,
-    // 于是永远走「内容未变」分支、永远 0 节点、永远显示更新成功(见上方 304 兜底)。
-    const detail = note.length > 0 ? '' : `(已尝试的 User-Agent:${usedUa})`;
-    throw new Error(subFailureText(note, content, skipped, skippedNames) + detail);
-  }
-  // 只在正文确实解析出节点后才记校验器:此时 ETag 对应的是一份可用的订阅内容,
-  // 后续 304 复用才是正确的「无变化」语义。服务端不给校验器(空串)时清掉,
-  // 下次退化为全量请求。
-  await saveSubValidators(url, fetched.etag, fetched.lastModified);
-  // Clash 订阅自带的 proxy-groups(仅 Clash YAML 有;分享链接/JSON 无分组概念)
-  const clashGroups: Array<ClashGroupDef> = looksLikeClashYaml(content)
-    ? parseClashGroups(content) : [];
-  // 强制解析(对齐安卓 subscriptionForceResolve):把节点服务器域名解析为 IP,
-  // 原域名保留到 sni,避免服务器换 IP 后 TLS/SNI 断裂
-  if (subForGroup !== undefined && subForGroup.forceResolve) {
-    await applyForceResolve(parsed);
-  }
-  const profiles = existing;
-  // 一订阅一分组:新节点自动归入订阅对应分组(优先订阅分组名,其次订阅名,再次域名)
-  let groupName = subNameOf(url);
-  if (subForGroup !== undefined) {
-    if (subForGroup.group.trim().length > 0) {
-      groupName = subForGroup.group.trim();
-    } else if (subForGroup.name.trim().length > 0) {
-      groupName = subForGroup.name.trim();
-    }
-  }
-  const subGroupId = await ensureGroupByName(groupName);
-  await markGroupFromSubscription(subGroupId);
-  const runningId = AppStorage.get<string>('vpnRunningProfileId') ?? '';
-  const selectedId = await readPrefString('selected_profile_id', '');
-  const selectedProfile = profiles.find((item: Profile) => item.id === selectedId);
-  const selectedIdentity = selectedProfile !== undefined && selectedProfile.subUrl === url
-    ? profileIdentity(selectedProfile, url) : '';
-  let migratedSelectedId = '';
-
-  const kept: Array<Profile> = [];
-  let removed = 0;
-  for (const p of profiles) {
-    if (p.subUrl === url && p.id !== runningId) {
-      removed++;
-      continue;
-    }
-    // 升级迁移:该订阅遗留的未分组节点归入订阅分组(用户手动分过组的不动)
-    if (p.subUrl === url && p.groupId.length === 0) {
-      p.groupId = subGroupId;
-    }
-    kept.push(p);
-  }
-  let added = 0;
-  for (const p of parsed) {
-    // 开启去重时:类型+服务器+端口+UUID 相同视为重复,跳过(对齐安卓)
-    if (dedupEnabled) {
-      const dup = kept.find(x => x.type === p.type && x.server === p.server
-        && x.serverPort === p.serverPort && x.uuid === p.uuid);
-      if (dup !== undefined) {
-        continue;
-      }
-    }
-    p.subUrl = url;
-    p.groupId = subGroupId;
-    p.id = stableProfileId(p, url);
-    if (kept.some((item: Profile) => item.id === p.id)) {
-      p.id = `${p.id}_${added}`;
-    }
-    p.updatedAt = Date.now();
-    kept.push(p);
-    if (selectedIdentity.length > 0 && profileIdentity(p, url) === selectedIdentity) {
-      migratedSelectedId = p.id;
-    }
-    added++;
-  }
-  resolveDialerProxies(parsed, kept);
-  await saveProfiles(kept);
-  // Clash proxy-groups -> ProfileGroup(必须放在节点 id 分配之后:组按成员名匹配节点)
-  if (clashGroups.length > 0) {
-    await applyClashGroups(clashGroups, kept);
-  }
-  if (migratedSelectedId.length > 0 && migratedSelectedId !== selectedId) {
-    await writePrefString('selected_profile_id', migratedSelectedId);
-  } else if (selectedProfile !== undefined && selectedProfile.subUrl === url
-    && !kept.some((item: Profile) => item.id === selectedId)) {
-    const replacement = kept.find((item: Profile) => item.subUrl === url);
-    await writePrefString('selected_profile_id', replacement === undefined ? '' : replacement.id);
-  }
-  await touchSub(url);
-  // 记录订阅流量/到期信息(响应头 subscription-userinfo)
-  if (fetched.userinfo.length > 0) {
-    await applySubUserInfo(url, fetched.userinfo);
-  }
-  const result: SubUpdateResult = {
-    added: added, removed: removed, total: kept.length,
-    notModified: false, skipped: skipped, skippedNames: skippedNames, note: note
-  };
-  return result;
+  return await SubscriptionRepository.runUpdate(url);
 }
 
 /**
@@ -533,7 +536,7 @@ export async function updateSubscription(url: string): Promise<SubUpdateResult> 
  * 给订阅导入创建/占用的分组打 fromSubscription 标记。
  * 已存在的组(老版本导入、没打过标记)在下次订阅更新走到这里时也会补上 —— 分组页的旧子分组随之消失。
  */
-async function markGroupFromSubscription(groupId: string): Promise<void> {
+export async function markGroupFromSubscription(groupId: string): Promise<void> {
   if (groupId.length === 0) {
     return;
   }
@@ -546,7 +549,7 @@ async function markGroupFromSubscription(groupId: string): Promise<void> {
   }
 }
 
-async function applyClashGroups(groups: Array<ClashGroupDef>, allProfiles: Array<Profile>): Promise<void> {
+export async function applyClashGroups(groups: Array<ClashGroupDef>, allProfiles: Array<Profile>): Promise<void> {
   for (const def of groups) {
     const memberNames = def.members;
     // 成员名 -> 本订阅节点 id(只认本次导入范围内的节点)
@@ -596,7 +599,7 @@ async function applyClashGroups(groups: Array<ClashGroupDef>, allProfiles: Array
  * 按内容形态分派解析:Clash YAML(跟进 proxy-providers)/ sing-box JSON / 分享链接。
  * 抽成函数是为了让主流程的「首次解析」与「UA 回退重试」走完全相同的判定逻辑。
  */
-async function parseSubscriptionBody(content: string, allowInsecure: boolean,
+export async function parseSubscriptionBody(content: string, allowInsecure: boolean,
   userAgent: string): Promise<ClashParseResult> {
   if (looksLikeClashYaml(content)) {
     // 跟进 proxy-providers 远程节点集(provider-only 的 Clash 订阅靠这条路径出节点)
@@ -604,6 +607,16 @@ async function parseSubscriptionBody(content: string, allowInsecure: boolean,
   }
   if (looksLikeSingBoxJson(content)) {
     return parseSingBoxConfig(content);
+  }
+  // 裸 JSON 形态兜底(顶层数组 / 裸 ss / 裸 hysteria1 / server+server_port):
+  // looksLikeSingBoxJson 只认 outbounds/endpoints 结构,Android RawUpdater.parseJSON
+  // 对这些形态都能出节点,这里在分享链接分支之前先试一次,解析出节点即采用。
+  const t = content.trim();
+  if (t.startsWith('{') || t.startsWith('[')) {
+    const bare = parseSingBoxConfig(content);
+    if (bare.profiles.length > 0) {
+      return bare;
+    }
   }
   // 分享链接分支:上报跳过项,否则「整份订阅都是 ssr://」这类情况
   // 只会显示笼统的「没有可用节点」,用户无从判断原因。
@@ -613,7 +626,7 @@ async function parseSubscriptionBody(content: string, allowInsecure: boolean,
 }
 
 /** 把 Clash 的 dialer-proxy / sing-box detour 的"名称引用"解析成节点 id。 */
-function resolveDialerProxies(parsed: Array<Profile>, kept: Array<Profile>): void {
+export function resolveDialerProxies(parsed: Array<Profile>, kept: Array<Profile>): void {
   for (const p of parsed) {
     if (p.dialerProxyName.trim().length === 0) {
       continue;
@@ -634,22 +647,7 @@ function resolveDialerProxies(parsed: Array<Profile>, kept: Array<Profile>): voi
   }
 }
 
-async function saveSubValidators(url: string, etag: string, lastModified: string): Promise<void> {
-  const subs = await listSubs();
-  let changed = false;
-  for (const s of subs) {
-    if (s.url === url && (s.etag !== etag || s.lastModified !== lastModified)) {
-      s.etag = etag;
-      s.lastModified = lastModified;
-      changed = true;
-    }
-  }
-  if (changed) {
-    await saveSubs(subs);
-  }
-}
-
-async function applySubUserInfo(url: string, userinfo: string): Promise<void> {
+export async function applySubUserInfo(url: string, userinfo: string): Promise<void> {
   const info = parseSubUserInfo(userinfo);
   if (info === null) {
     return;

@@ -37,6 +37,26 @@ test('protocol list keeps HTTP and TLS within one AND rule', () => {
   assert.equal(result.outbound, 'direct');
 });
 
+test('multiline domain/IP/source fields retain separate match entries', () => {
+  const result = plain(builder.buildCustomRule(rule({
+    domains: 'full:a.example\r\ndomain:b.example,keyword:cdn',
+    ip: '192.0.2.0/24\n198.51.100.0/24', source: '10.0.0.0/8\n172.16.0.0/12'
+  })));
+  assert.deepEqual(result.domain, ['a.example']);
+  assert.deepEqual(result.domain_suffix, ['b.example']);
+  assert.deepEqual(result.domain_keyword, ['cdn']);
+  assert.deepEqual(result.ip_cidr, ['192.0.2.0/24', '198.51.100.0/24']);
+  assert.deepEqual(result.source_ip_cidr, ['10.0.0.0/8', '172.16.0.0/12']);
+});
+
+test('regex case and escape classes survive route and DNS generation', () => {
+  const expression = '^CDN\\D+\\.example$';
+  const r = rule({ domains: 'regexp:' + expression });
+  assert.deepEqual(plain(builder.buildCustomRule(r)).domain_regex, [expression]);
+  const c = config({}, [r]);
+  assert.deepEqual(c.dns.rules.find(x => x.domain_regex).domain_regex, [expression]);
+});
+
 // CORE-07: deep merge semantics from Android Util.kt:129-158.
 test('rule config deep-merges nested objects and supports +key/key+ lists', () => {
   const result = plain(builder.buildCustomRule(rule({
@@ -80,7 +100,9 @@ test('showBottomBar default and backup validation', () => {
 test('StatsBar and FAB consume the persistent setting', () => {
   const index = fs.readFileSync(path.join(root, 'entry/src/main/ets/pages/Index.ets'), 'utf8');
   assert.match(index, /if \(this.isRunning && \(this.activeTab === 0 \|\| this.settings.showBottomBar\)\)/);
-  assert.match(index, /if \(this.activeTab === 0 \|\| this.settings.showBottomBar\) \{\s*this.fabButton\(\)/);
+  assert.match(index, /if \(this.activeTab === 0 \|\| this.settings.showBottomBar\) \{\s*this.fabLayer\(\)/);
+  assert.match(index, /this\.fabButton\(TransitionEdge\.START\)/);
+  assert.match(index, /this\.fabButton\(TransitionEdge\.END\)/);
 });
 test('resource keys are unique and bilingual', () => {
   const keys = locale => JSON.parse(fs.readFileSync(path.join(root, `entry/src/main/resources/${locale}/element/string.json`), 'utf8')).string.map(x => x.name);
@@ -98,17 +120,24 @@ test('user route precedes private bypass and multicast rejection', () => {
   const rules = c.route.rules;
   const user = rules.findIndex(r => r.ip_cidr?.includes('192.168.1.0/24'));
   const lan = rules.findIndex(r => r.ip_is_private === true && r.outbound === 'direct');
-  const multicast = rules.findIndex(r => r.action === 'reject' && r.ip_cidr?.includes('224.0.0.0/3'));
+  const multicast = rules.findIndex(r => r.action === 'reject' && r.type === 'logical' && r.mode === 'or'
+    && (r.rules || []).some(sub => sub.ip_cidr?.includes('224.0.0.0/3')));
   assert.ok(user >= 0 && lan > user && multicast > lan, JSON.stringify(rules,null,2));
-  // Android's two address fields are AND, not an invented source/destination OR.
-  assert.deepEqual(rules[multicast].ip_cidr, ['224.0.0.0/3','ff00::/8']);
-  assert.deepEqual(rules[multicast].source_ip_cidr, ['224.0.0.0/3','ff00::/8']);
+  // 方案 §7.4/C7(2026-10-24 行为变更,升级说明素材):旧行为 ip_cidr+source_ip_cidr 同字段 AND
+  // 几乎永不匹配(组播实际未被拒);现改为 logical OR——源**或**目的命中即拒绝。
+  assert.equal(rules[multicast].type, 'logical');
+  assert.equal(rules[multicast].mode, 'or');
+  assert.deepEqual(rules[multicast].rules[0].ip_cidr, ['224.0.0.0/3','ff00::/8']);
+  assert.deepEqual(rules[multicast].rules[1].source_ip_cidr, ['224.0.0.0/3','ff00::/8']);
   assert.equal(rules[multicast].outbound, undefined);
 });
-test('multicast rejection is independent of private bypass toggle', () => {
+test('multicast rejection is independent of private bypass toggle (logical OR, §7.4/C7)', () => {
   const rules = config({mode:'rule',bypassLan:false}).route.rules;
   assert.ok(!rules.some(r => r.ip_is_private));
-  assert.ok(rules.some(r => r.action === 'reject' && r.ip_cidr?.includes('224.0.0.0/3')));
+  const mcast = rules.find(r => r.action === 'reject' && r.type === 'logical' && r.mode === 'or');
+  assert.ok(mcast, 'logical OR multicast rule must exist');
+  assert.ok(mcast.rules.some(sub => sub.ip_cidr?.includes('224.0.0.0/3')));
+  assert.ok(mcast.rules.some(sub => sub.source_ip_cidr?.includes('224.0.0.0/3')));
 });
 test('auto DNS never reaches the core as auto', () => {
   const c = config({ remoteDnsStrategy: 'auto', directDnsStrategy: 'auto', serverDnsStrategy: 'auto' });
@@ -165,10 +194,16 @@ test('geoip:cn reference gets a same-tag local definition', () => {
 });
 test('geosite:cn and geoip:cn map to distinct asset files', () => {
   const c = config({}, [rule({ domains: 'geosite:cn' }), rule({ ip: 'geoip:cn' })]);
-  const byTag = Object.fromEntries(c.route.rule_set.map(d => [d.tag, d.path]));
-  assert.notEqual(byTag['geosite:cn'], byTag['geoip:cn']);
-  assert.equal(byTag['geosite:cn'], '/test/site.srs');
-  assert.equal(byTag['geoip:cn'], '/test/ip.srs');
+  // 2026-10-24:geo 规则集改 remote+initial_path(local 的 fswatch 在 OHOS 存储别名上
+  // permission denied 刷红字;remote 启动顺序 = cache → initial_path 本地文件 → 才网络)
+  const defs = Object.fromEntries(c.route.rule_set.map(d => [d.tag, d]));
+  assert.equal(defs['geosite:cn'].type, 'remote');
+  assert.equal(defs['geoip:cn'].type, 'remote');
+  assert.equal(defs['geosite:cn'].initial_path, '/test/site.srs');
+  assert.equal(defs['geoip:cn'].initial_path, '/test/ip.srs');
+  assert.notEqual(defs['geosite:cn'].initial_path, defs['geoip:cn'].initial_path);
+  assert.ok(defs['geosite:cn'].url.includes('geosite'), 'URL 指向 geosite 源');
+  assert.ok(defs['geoip:cn'].url.includes('geoip'), 'URL 指向 geoip 源');
 });
 test('unsupported region reference is rejected, not silently dangling', () => {
   const p = new model.Profile(); p.server = 'example.invalid';
@@ -203,12 +238,13 @@ test('proxy user rule resolves through remote DNS', () => {
   assert.ok(dnsRule, 'expected a DNS rule carrying the user domain');
   assert.equal(dnsRule.server, 'remote');
 });
-test('reject user rule yields NXDOMAIN predefined action', () => {
+test('reject user rule yields predefined empty-success action (Android rcode://success)', () => {
   const c = config({}, [rule({ domains: 'full:blocked.example.org', outbound: 'reject' })]);
   const dnsRule = c.dns.rules.find(x => Array.isArray(x.domain) && x.domain.includes('blocked.example.org'));
   assert.ok(dnsRule, 'expected a DNS rule carrying the user domain');
   assert.equal(dnsRule.action, 'predefined');
-  assert.equal(dnsRule.rcode, 3);
+  // Android rcode://success:不写 rcode,内核默认 RcodeSuccess + 空记录
+  assert.equal(dnsRule.rcode, undefined);
 });
 test('FakeIP fallback is restricted to tun-in and ordered after user rules', () => {
   const c = config({ fakeDns: true }, [rule({ domains: 'full:fake.example.org', outbound: 'proxy' })]);

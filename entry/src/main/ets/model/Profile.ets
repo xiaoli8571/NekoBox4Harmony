@@ -126,7 +126,17 @@ export class Profile {
   groupId: string = '';
   sortOrder: number = 0;
 
-  // 最近一次延迟测试结果。-1 表示失败，0 表示尚未测试。
+  // 最近一次测试结果。对齐 Android ProxyEntity 的 status/ping/error 三件套
+  // (database/ProxyEntity.kt；写入见 ConfigurationFragment.kt:757-793、:854-862)：
+  //   status 0 = 尚未测试 / 1 = 可用 / 2 = 已知失败(域名解析/拒连/不可达/超时)
+  //   status 3 = 其它异常(error 存内核原文，展示时再走 genFriendlyMsg 映射)
+  // error: status 2 存机器 token(timeout/refused/unreachable/domain_not_found，
+  // 展示期映射到 connection_test_* 资源，保证中英双语)；status 3 存原文。
+  status: number = 0;
+  ping: number = 0;
+  error: string = '';
+  // 兼容派生值(排序/组头徽标/通知仍在用)：status==1 → ping；status>=2 → -1；
+  // status==0 → 0。由测试写入方同步维护，旧数据由 Store.loadProfiles 迁移。
   latencyMs: number = 0;
   latencyTestedAt: number = 0;
 
@@ -182,20 +192,22 @@ export class AppSettings {
   allowInsecureAll: boolean = false;   // 全局放行不安全 TLS
   subAllowInsecure: boolean = false;   // 订阅请求放行不安全 TLS
   logLevel: string = 'info';           // trace/debug/info/warn/error
-  // 默认 HTTP(非 HTTPS)204 探测,与 Clash/mihomo 口径一致:只计到目标站的
-  // 一次 HTTP 往返;HTTPS 会额外包含到目标站的 TLS 握手,数值天然高 1~2 个 RTT。
-  testUrl: string = 'http://www.gstatic.com/generate_204';
-  testConcurrent: number = 10;         // 测速并发数(2.1.8 起:5 并发测大订阅太慢,翻倍;上限 32)
+  // 连接测试网址。默认值 1:1 对齐 Android(Constants.kt:3 CONNECTION_TEST_URL 与
+  // global_preferences.xml:211 的 defaultValue 都是 http://cp.cloudflare.com/)。
+  // 存量装机不迁移:用户已存的 gstatic 网址继续沿用(Store.loadSettings 不做改写)。
+  testUrl: string = 'http://cp.cloudflare.com/';
+  testConcurrent: number = 5;          // 测速并发数,对齐 Android DataStore.connectionTestConcurrent 默认 5
   latencyTestMode: string = 'url';     // url(真连接测试,经内核 URLTest) / tcp(TCPing 握手计时)
-  // 单节点超时(毫秒)。此前硬编码 5000,跨境节点偏紧、局域网偏长,开放为可配。
+  // URL Test 单节点超时(毫秒)。Android UrlTest.kt:9 是私有常量 5000 且无设置项;
+  // 这里默认 5000 对齐,同时保留可配(鸿蒙超集)。TCPing 不吃这个值,固定 3000。
   testTimeoutMs: number = 5000;
-  // 失败重试次数(0=不重试)。单次探测会被首次 TLS 握手偏慢或偶发丢包误杀。
-  testRetries: number = 1;
-  // 每节点取样次数(1=单点值,>1 取平均)。单点值看不出抖动。
+  // 失败重试次数,默认 0 = 不重试,对齐 Android(ConfigurationFragment.kt:854 单次探测)。
+  testRetries: number = 0;
+  // 每节点取样次数(1=单点值,>1 取平均)。Android 无取样,默认 1。
   testSamples: number = 1;
-  // URL Test 的「期望状态」判定:mihomo 风格。'2xx' = 仅接受 2xx(默认,防假绿);
-  // 'any' = 任意响应码都算通(适合只关心 TCP/TLS 可达的自定义探测地址)。
-  testExpectStatus: string = '2xx';
+  // URL Test 的「期望状态」判定。默认 'any' 对齐 Android:libneko speedtest 完全不看
+  // HTTP 状态码(403/500 也返回耗时)。'2xx' 保留给需要"防假绿"的用户(鸿蒙超集)。
+  testExpectStatus: string = 'any';
   // 测速时把出站绑定物理网卡(SO_BINDTODEVICE),让测速流量绕开正在运行的隧道。
   // 关掉时测的是"节点套当前节点",连着 VPN 会把全组延迟抬高、结论带偏。
   // 绑定若导致全组失败,会自动去掉绑定重测一次。
@@ -233,7 +245,12 @@ export class AppSettings {
   profileTrafficStatistics: boolean = true;
   liquidGlass: boolean = true;
   perAppMode: string = 'off';          // off / exclude(排除这些应用) / include(仅这些应用走代理)
-  perAppList: string = '';             // 应用包名,逗号分隔(如 com.huawei.hmos.browser)
+  perAppList: string = '';             // 生效包名,逗号分隔(由 perAppEntries 派生,保持旧契约)
+  // 分应用条目(权威数据):JSON 数组 [{bundleName,label,enabled}]。空串=尚未初始化
+  // (首次载入时由预置应用 + 旧 perAppList 迁移生成);'[]'=用户确实清空了名单。
+  // 用 JSON 存条目而非给 perAppList 加花活,是为了让"应用名"永远只是显示字段,
+  // 不参与下发内核/VpnConfig 的包名列表。
+  perAppEntries: string = '';
   globalCustomConfig: string = '';     // 全局自定义配置 JSON(与根对象浅合并)
   // 2.0.2 共存修复一次性迁移标记:loadSettings 首次读到 false 时执行迁移并置 true
   // 落盘;此后不再重复迁移,用户在设置页重新打开的开关一律保留。

@@ -1,4 +1,5 @@
 import common from '@ohos.app.ability.common';
+import { statusBarTopVp } from '../common/PageTopInset';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import image from '@ohos.multimedia.image';
@@ -7,7 +8,11 @@ import { UiSpec } from '../common/UiSpec';
 import { pressLightEffect } from '../common/Effects';
 import { initStore, loadProfiles, saveProfiles, loadGroups, ensureGroupByName, LogStore } from '../model/Store';
 import { ProfileGroup } from '../model/Profile';
-import { SubInfo, listSubs, saveSubs, removeSub, updateSubscription, markSubSuccess, markSubFailure, saveSubSettings } from '../core/Subscriptions';
+import { SubInfo, listSubs, saveSubs, removeSub, updateSubscription, markSubSuccess, markSubFailure, saveSubSettings,
+  SubUpdateResult, subUpdateHasChanges, needDirectUpdateConfirm } from '../core/Subscriptions';
+import { SubDiffDialog } from './SubUpdateFeedback';
+import { SubscriptionRepository } from '../core/SubscriptionRepository';
+import { UserOverride } from '../model/SubscriptionLayers';
 import { subErrorText } from '../utils/Subscription';
 import { formatBytes } from '../utils/TrafficStats';
 import { setClipboardText } from '../utils/ClipboardHelper';
@@ -16,6 +21,8 @@ import { setClipboardText } from '../utils/ClipboardHelper';
 @Component
 struct SubDetailPage {
   @State sub: SubInfo = new SubInfo();
+  /** 顶部让位:运行时状态栏高度(2026-10-24 用户要求所有页面不得与状态栏重叠) */
+  @State topPadVp: number = 44;
   @State profileCount: number = 0;
   @State updating: boolean = false;
   @State loading: boolean = true;
@@ -26,6 +33,8 @@ struct SubDetailPage {
   @State groupDraft: string = '';
   @State intervalDraft: string = '';
   @State allGroups: Array<ProfileGroup> = [];
+  /** W17/W18:远端已删除节点的墓碑覆盖(可转手动;§11.4 不悄悄保留成订阅可用项) */
+  @State tombstones: Array<UserOverride> = [];
   /** HDS 点按光效:记录"当前被按下的那一个"的 key,松手/取消即清空(按下那一刻才亮) */
   @State litKey: string = '';
   private groupDialog: CustomDialogController = new CustomDialogController({
@@ -89,6 +98,9 @@ struct SubDetailPage {
   }
 
   aboutToAppear(): void {
+    void statusBarTopVp(getContext(this) as common.UIAbilityContext).then((v: number): void => {
+      this.topPadVp = v;
+    });
     this.load();
   }
 
@@ -111,10 +123,11 @@ struct SubDetailPage {
         return;
       }
       this.sub = found;
-      this.intervalDraft = `${found.updateIntervalHours}`;
+      this.intervalDraft = `${found.updateIntervalMinutes}`;
       const profiles = await loadProfiles();
       this.profileCount = profiles.filter(p => p.subUrl === url).length;
       this.allGroups = await loadGroups();
+      this.tombstones = SubscriptionRepository.tombstonesOf(url);
     } catch (e) {
       this.loadError = e instanceof Error ? e.message : `${e}`;
     } finally {
@@ -157,15 +170,70 @@ struct SubDetailPage {
     }
   }
 
+  /** 带参资源 → string(toast message 需要 string;getStringSync 不展开 %1$s,手动替换) */
+  private resFormat(name: string): string {
+    return this.context.resourceManager.getStringSync($r('app.string.sub_tombstone_converted'))
+      .split('%1$s').join(name);
+  }
+
+  /** W18:墓碑「转为手动节点」—— 从最近原始层还原传输字段,覆盖随迁(§11.4) */
+  async convertToManual(identityKey: string): Promise<void> {
+    try {
+      const name = await SubscriptionRepository.convertTombstoneToManual(this.sub.url, identityKey);
+      promptAction.showToast({ message: this.resFormat(name) });
+      await this.load();
+    } catch (e) {
+      promptAction.showToast({ message: e instanceof Error ? e.message : `${e}` });
+    }
+  }
+
   async updateNow(): Promise<void> {
     if (this.updating || this.sub.url.length === 0) {
       return;
     }
+    // Android GroupUpdater.kt:142-148:未连接且(http:// 或 仅连接时更新)先确认
+    const connected: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
+    if (needDirectUpdateConfirm(this.sub.url, this.sub, connected)) {
+      AlertDialog.show({
+        message: $r('app.string.update_subscription_warning'),
+        primaryButton: { value: $r('app.string.cancel'), action: () => {} },
+        secondaryButton: {
+          value: $r('app.string.confirm'),
+          action: () => {
+            this.doUpdateNow();
+          }
+        }
+      });
+      return;
+    }
+    await this.doUpdateNow();
+  }
+
+  /** Diff 对话框控制器(每次按当次结果新建) */
+  private subDiffDialog: CustomDialogController | undefined = undefined;
+
+  /** 更新结果反馈(对齐 Android GroupInterfaceAdapter.kt:29-82) */
+  private showSubUpdateFeedback(name: string, res: SubUpdateResult): void {
+    if (!subUpdateHasChanges(res)) {
+      promptAction.showToast({ message: $r('app.string.group_no_difference', name) });
+      return;
+    }
+    promptAction.showToast({ message: $r('app.string.group_updated', name, res.changed) });
+    setTimeout(() => {
+      this.subDiffDialog = new CustomDialogController({
+        builder: SubDiffDialog({ groupName: name, res: res }),
+        autoCancel: true
+      });
+      this.subDiffDialog.open();
+    }, 1000);
+  }
+
+  private async doUpdateNow(): Promise<void> {
     this.updating = true;
     try {
       const result = await updateSubscription(this.sub.url);
       await markSubSuccess(this.sub.url);
-      promptAction.showToast({ message: $r('app.string.sub_update_result', result.added, result.removed) });
+      this.showSubUpdateFeedback(this.sub.name, result);
     } catch (e) {
       await markSubFailure(this.sub.url);
       const message = subErrorText(e as Object);
@@ -287,6 +355,37 @@ struct SubDetailPage {
               }
               Text($r('app.string.profile_count_value', this.profileCount))
                 .fontSize(13).width('100%')
+              if (this.tombstones.length > 0) {
+                /* W17/W18:远端已移除的节点(墓碑)—— 原样列出,可显式转手动,不悄悄保留 */
+                Column({ space: 6 }) {
+                  Text($r('app.string.sub_tombstone_header', this.tombstones.length))
+                    .fontSize(12).fontWeight(600).fontColor($r('app.color.warning')).width('100%')
+                  ForEach(this.tombstones, (t: UserOverride, idx: number) => {
+                    Row({ space: 8 }) {
+                      Column({ space: 1 }) {
+                        Text(t.alias.length > 0 ? t.alias : t.identityKey)
+                          .fontSize(12).fontColor($r('app.color.text_secondary'))
+                          .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+                        Text(t.pinned ? $r('app.string.sub_tombstone_kept') : $r('app.string.sub_tombstone_pending'))
+                          .fontSize(10).fontColor($r('app.color.text_3'))
+                      }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+                      Button($r('app.string.sub_tombstone_convert'))
+                        .height(26)
+                        .backgroundColor($r('app.color.surface'))
+                        .fontColor($r('app.color.primary'))
+                        .responseRegion({ x: -9, y: -9, width: 44, height: 44 })
+                        .accessibilityText($r('app.string.sub_tombstone_convert'))
+                        .onClick(() => {
+                          void this.convertToManual(t.identityKey);
+                        })
+                    }.width('100%')
+                  }, (t: UserOverride, idx: number) => `${t.identityKey}:${t.deletedAt}`)
+                }
+                .width('100%')
+                .padding(8)
+                .borderRadius(UiSpec.CARD_RADIUS)
+                .backgroundColor($r('app.color.surface'))
+              }
               Text($r('app.string.used_traffic_value', formatBytes(this.sub.upload + this.sub.download)))
                 .fontSize(13).width('100%')
               Text(this.sub.total > 0 ? $r('app.string.total_traffic_value', formatBytes(this.sub.total)) : $r('app.string.total_traffic_unknown'))
@@ -363,13 +462,15 @@ struct SubDetailPage {
                 Row() {
                   Text($r('app.string.auto_update_delay'))
                     .fontSize(13.5).fontColor($r('app.color.text_primary')).layoutWeight(1)
-                  TextInput({ text: `${this.sub.updateIntervalHours}` })
+                  // 间隔单位 = 分钟,默认 1440(对齐 Android autoUpdateDelay;下限 15 由
+                  // Subscriptions.saveSubSettings 钳制,此处只做数字输入)
+                  TextInput({ text: `${this.sub.updateIntervalMinutes}` })
                     .type(InputType.Number)
                     .width(90).height(UiSpec.ROW_HEIGHT)
                     .backgroundColor($r('app.color.app_background'))
                     .borderRadius(8)
                     .onChange((v: string) => { this.intervalDraft = v; })
-                    .onSubmit(() => { void this.saveSubSetting('updateIntervalHours', this.intervalDraft); })
+                    .onSubmit(() => { void this.saveSubSetting('updateIntervalMinutes', this.intervalDraft); })
                 }.width('100%')
 
                 Row() {
@@ -428,6 +529,7 @@ struct SubDetailPage {
           .alignItems(HorizontalAlign.Start)
         }.layoutWeight(1).width('100%')
           .edgeEffect(EdgeEffect.Spring)
+          .align(Alignment.Top)
       }
     }
     .width('100%')
@@ -437,7 +539,7 @@ struct SubDetailPage {
     .height('100%')
     .alignItems(HorizontalAlign.Center)
     /* 窗口为 layout-full-screen(内容要钻进状态栏)⇒ 本页自己让出状态栏高度 */
-    .padding({ top: 44 })
+    .padding({ top: this.topPadVp })
     .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
   }
 }

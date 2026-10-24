@@ -1,4 +1,5 @@
 import router from '@ohos.router';
+import { statusBarTopVp } from '../common/PageTopInset';
 import promptAction from '@ohos.promptAction';
 import { UiSpec } from '../common/UiSpec';
 import { pressLightEffect } from '../common/Effects';
@@ -33,6 +34,8 @@ const UTLS_FINGERPRINTS: Array<string> = ['', 'chrome', 'firefox', 'edge', 'safa
 @Component
 struct ProfileEdit {
   @State p: Profile = new Profile();
+  /** 顶部让位:运行时状态栏高度(2026-10-24 用户要求所有页面不得与状态栏重叠) */
+  @State topPadVp: number = 44;
   @State isNew: boolean = true;
   @State pasteText: string = '';
   @State allProfiles: Array<Profile> = [];
@@ -42,6 +45,9 @@ struct ProfileEdit {
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear(): void {
+    void statusBarTopVp(getContext(this) as common.UIAbilityContext).then((v: number): void => {
+      this.topPadVp = v;
+    });
     const id: string = AppStorage.get<string>('editProfileId') ?? '';
     initStore(this.context).then(async () => {
       const profiles = await loadProfiles();
@@ -506,7 +512,7 @@ struct ProfileEdit {
     .height('100%')
     .alignItems(HorizontalAlign.Center)
     /* 窗口为 layout-full-screen(内容要钻进状态栏)⇒ 本页自己让出状态栏高度 */
-    .padding({ top: 44 })
+    .padding({ top: this.topPadVp })
     .backgroundColor($r('app.color.app_background'))
     .width('100%').height('100%').backgroundColor($r('app.color.app_background'))
   }

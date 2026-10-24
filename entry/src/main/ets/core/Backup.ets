@@ -92,8 +92,8 @@ function validateSettings(value: Object): void {
   validateOptionalFields(value,
     ['stack', 'mode', 'directDomains', 'directIpCidrs', 'remoteDns', 'directDns', 'remoteDnsStrategy',
       'directDnsStrategy', 'serverDnsStrategy', 'sniffMode', 'logLevel', 'testUrl', 'latencyTestMode', 'appearance',
-      'profileSortMode', 'navLayout', 'clashApiSecret', 'perAppMode', 'perAppList', 'globalCustomConfig', 'ipv6Mode',
-      'testExpectStatus'],
+      'profileSortMode', 'navLayout', 'clashApiSecret', 'perAppMode', 'perAppList', 'perAppEntries',
+      'globalCustomConfig', 'ipv6Mode', 'testExpectStatus'],
     ['mtu', 'mixedPort', 'testConcurrent', 'subscriptionUpdateIntervalHours', 'clashApiPort', 'speedIntervalMs',
       'testTimeoutMs', 'testRetries', 'testSamples', 'latencyStaleMs'],
     ['dnsRouting', 'fakeDns', 'ipv6', 'bypassLan', 'resolveDestination', 'allowAccess', 'allowInsecureAll',
@@ -139,7 +139,10 @@ function validateSubscription(value: Object): void {
   }
   requireString(value, 'url');
   validateOptionalFields(value, ['name', 'group', 'lastError', 'etag', 'lastModified'],
-    ['lastUpdate', 'upload', 'download', 'total', 'expire', 'updateIntervalHours', 'nextUpdateAt',
+    ['lastUpdate', 'upload', 'download', 'total', 'expire',
+      // 间隔:新字段以分钟为单位(默认 1440,对齐 Android autoUpdateDelay);
+      // 旧备份只有 updateIntervalHours 时,listSubs 按 ×60 迁移,两字段并存兼容。
+      'updateIntervalMinutes', 'updateIntervalHours', 'nextUpdateAt',
       'lastAttemptAt', 'failCount'], []);
 }
 

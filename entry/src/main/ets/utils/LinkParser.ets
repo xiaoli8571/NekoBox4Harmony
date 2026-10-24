@@ -75,37 +75,78 @@ export function parseShareText(text: string, report?: ShareSkipReport): Array<Pr
       }
     }
   }
-  const lines = content.split(/[\r\n]+/);
-  for (const line of lines) {
+  // ---- 双份解析 — 逐字对齐 Android `ktx/Formats.kt:107-108,230-239` ----
+  //  Android 同时构造两份链接表:
+  //    links       = text.split('\n').flatMap { it.trim().split(' ') }  // 行内再按空格切
+  //    linksByLine = text.split('\n').map { it.trim() }                 // 只按行
+  //  各自解析后 **返回数量多的那份**(相等时返回按行那份)。
+  //  这样「一行里塞了多个链接」的订阅能全部导入,而「链接里带空格的名字」
+  //  不会被切坏(按行那份数量不会更少)。
+  const lines: Array<string> = [];
+  for (const line of content.split(/[\r\n]+/)) {
     const t = line.trim();
-    if (t.length === 0) {
-      continue;
+    if (t.length > 0) {
+      lines.push(t);
     }
+  }
+  const spaceTokens: Array<string> = [];
+  for (const line of lines) {
+    for (const token of line.split(' ')) {
+      const t = token.trim();
+      if (t.length > 0) {
+        spaceTokens.push(t);
+      }
+    }
+  }
+  const bySpace = parseLinkBatch(spaceTokens);
+  const byLine = parseLinkBatch(lines);
+  const chosen = bySpace.profiles.length > byLine.profiles.length ? bySpace : byLine;
+  if (report !== undefined) {
+    report.skipped += chosen.skipped;
+    for (const name of chosen.names) {
+      if (report.names.length >= 20) {
+        break;
+      }
+      report.names.push(name);
+    }
+  }
+  return chosen.profiles;
+}
+
+interface ParseBatch {
+  profiles: Array<Profile>;
+  skipped: number;
+  names: Array<string>;
+}
+
+/** 逐条解析一批链接;跳过项单独记账,由调用方按 Android 的「取数量多的那份」合并。 */
+function parseLinkBatch(tokens: Array<string>): ParseBatch {
+  const batch: ParseBatch = { profiles: [], skipped: 0, names: [] };
+  for (const t of tokens) {
     try {
       const p = parseOne(t);
       if (p !== null) {
-        result.push(p);
-      } else if (report !== undefined) {
-        // 认得 scheme 但内核不支持 / 参数不全 —— 上报,让「全被跳过」可诊断
-        report.skipped++;
-        if (report.names.length < 20) {
-          report.names.push(shareLineHint(t));
+        batch.profiles.push(p);
+      } else {
+        // 认得 scheme 但内核不支持 / 参数不全 —— 记账,让「全被跳过」可诊断
+        batch.skipped++;
+        if (batch.names.length < 20) {
+          batch.names.push(shareLineHint(t));
         }
       }
     } catch (e) {
       // 解析抛异常(缺字段/编码错误等)同样算跳过,否则用户只看到 0 节点
-      if (report !== undefined) {
-        report.skipped++;
-        if (report.names.length < 20) {
-          report.names.push(shareLineHint(t));
-        }
+      batch.skipped++;
+      if (batch.names.length < 20) {
+        batch.names.push(shareLineHint(t));
       }
     }
   }
-  return result;
+  return batch;
 }
 
-function parseOne(line: string): Profile | null {  if (line.startsWith('ss://')) {
+function parseOne(line: string): Profile | null {
+  if (line.startsWith('ss://')) {
     return parseShadowsocks(line);
   }
   if (line.startsWith('vmess://')) {
@@ -116,6 +157,15 @@ function parseOne(line: string): Profile | null {  if (line.startsWith('ss://'))
   }
   if (line.startsWith('trojan://')) {
     return parseUserinfoLink(line, ProfileType.TROJAN);
+  }
+  if (line.startsWith('trojan-go://')) {
+    return parseTrojanGoLink(line);
+  }
+  if (line.startsWith('naive+')) {
+    // naive 在 Android 由独立插件进程(naive-plugin)执行,见 BoxInstance.kt:70-73,108-140;
+    // 鸿蒙内核(sing-box 1.14)无 naive 出站、沙箱也不允许 exec 插件 → 不可实现,
+    // 返回 null 由调用方上报为「已跳过」(见 docs/PARITY-SUBSCRIPTION.md §15 U2)。
+    return null;
   }
   if (line.startsWith('hysteria://')) {
     return parseUserinfoLink(line, ProfileType.HYSTERIA);
@@ -472,6 +522,64 @@ function parseHysteria2(link: string): Profile | null {
   return p;
 }
 
+/**
+ * `trojan-go://` 分享链接 — 对齐 Android `fmt/trojan_go/TrojanGoFmt.kt:12-44`:
+ * 把 scheme 换成 https 后按 URL 解析 host / port / username(password) / sni /
+ * type(+ws 的 host、path) / encryption / plugin / #name。
+ *
+ * 鸿蒙没有 trojan-go 出站(Android 用独立插件进程 `trojan-go-plugin` 执行,
+ * 见 BoxInstance.kt:60-63,108-121),这里映射到 TROJAN:
+ * 在「无 encryption、无 plugin」的原始形态下 trojan-go 与 trojan 协议完全一致,
+ * ws 传输用 transport=ws 表达;encryption(SS 包裹)与 plugin(obfs)在 sing-box
+ * 无对应字段,属已知偏差(见 docs/PARITY-SUBSCRIPTION.md §14/§15)。
+ */
+function parseTrojanGoLink(link: string): Profile | null {
+  const asUrl = link.replace('trojan-go://', 'https://');
+  const noScheme = asUrl.substring(asUrl.indexOf('://') + 3);
+  const frag = splitFragment(noScheme);
+  const name = frag[1];
+  const qi = frag[0].indexOf('?');
+  const netlocPart = qi < 0 ? frag[0] : frag[0].substring(0, qi);
+  const q = parseQuery(qi < 0 ? '' : frag[0].substring(qi));
+
+  let userinfo = '';
+  let netloc = netlocPart;
+  const at = netlocPart.lastIndexOf('@');
+  if (at >= 0) {
+    userinfo = netlocPart.substring(0, at);
+    netloc = netlocPart.substring(at + 1);
+  }
+  const hp = hostPortOf(netloc, 443);
+  if (hp[0].length === 0 || hp[1] <= 0) {
+    return null;
+  }
+  const p = new Profile();
+  p.type = ProfileType.TROJAN;
+  p.server = hp[0];
+  p.serverPort = hp[1];
+  p.password = decodeURIComponentSafe(userinfo);
+  p.name = newName(name, `${p.server}:${p.serverPort}`);
+  p.tls = true;
+  const sni = qstr(q, 'sni');
+  if (sni.length > 0) {
+    p.sni = sni;
+  }
+  // Android 只在有 type 时处理,且只有 ws 才读 host/path
+  const goType = qstr(q, 'type');
+  if (goType === 'ws') {
+    p.transport = 'ws';
+    const goHost = qstr(q, 'host');
+    if (goHost.length > 0) {
+      p.host = goHost;
+    }
+    const goPath = qstr(q, 'path');
+    if (goPath.length > 0) {
+      p.path = goPath;
+    }
+  }
+  return p;
+}
+
 function parseUserinfoLink(link: string, type: string): Profile | null {
   const noScheme = link.substring(link.indexOf('://') + 3);
   const frag = splitFragment(noScheme);
@@ -626,13 +734,32 @@ function parseWireGuardConf(conf: string): Array<Profile> {
     const key = line.substring(0, i).trim().toLowerCase();
     const val = line.substring(i + 1).trim();
     if (section === 'interface') {
-      iface[key] = val;
+      // Android ini4j 的 getAll("Address") 返回**多行**列表;这里按逗号累积,
+      // 供下面的统一拆分/合并处理(多个 Address 行不会互相覆盖)。
+      if (iface[key] !== undefined && key === 'address') {
+        iface[key] = iface[key] + ',' + val;
+      } else {
+        iface[key] = val;
+      }
     } else if (section === 'peer' && current !== null) {
       current[key] = val;
     }
   }
   const privateKey = iface['privatekey'] !== undefined ? iface['privatekey'] : '';
-  const localAddress = iface['address'] !== undefined ? iface['address'] : '';
+  // Android RawUpdater.kt:726-728:iface.getAll("Address") 取**多行**,逐行按 "," 拆
+  // 后合并(鸿蒙以逗号分隔为内部形式,等价于安卓的 "\n" join)。
+  let localAddress = '';
+  for (const key of ['address']) {
+    if (iface[key] === undefined) {
+      continue;
+    }
+    for (const part of iface[key].split(',')) {
+      const t = part.trim();
+      if (t.length > 0) {
+        localAddress = localAddress.length > 0 ? localAddress + ',' + t : t;
+      }
+    }
+  }
   const mtuRaw = iface['mtu'] !== undefined ? iface['mtu'] : '';
   const mtu = parseInt(mtuRaw);
   const result: Array<Profile> = [];

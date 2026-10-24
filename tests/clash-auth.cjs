@@ -66,6 +66,16 @@ console.log('PASS 401/403 carry an actionable hint while other statuses stay ver
  assert.equal(ok.seen.destroyed, 1, 'http client must be released');
  console.log('PASS URL Test authenticates and returns the core delay');
 
+ for (const result of ['{}', '{"delay":null}', '{"delay":""}', '{"delay":false}', '{"delay":-1}', '{"delay":1e999}']) {
+  const bad = makeHttp({ responseCode: 200, result });
+  const api = load('entry/src/main/ets/utils/ClashApi.ets', {
+   '@ohos.net.http': { default: bad.http }, './TrafficStats': { CLASH_API_PORT: 19290 }, './ClashAuth': auth
+  });
+  await assert.rejects(() => api.fetchCurrentProxyDelay(), /有效 delay/);
+  assert.equal(bad.seen.destroyed, 1);
+ }
+ console.log('PASS invalid/null/negative delays never become a successful 0ms result');
+
  // 4. the exact reported failure stays diagnosable
  const denied = makeHttp({ responseCode: 401, result: '' });
  const clash401 = load('entry/src/main/ets/utils/ClashApi.ets', {
@@ -119,5 +129,24 @@ console.log('PASS 401/403 carry an actionable hint while other statuses stay ver
  assert.equal(await statsDenied.fetchTrafficTotals(19290, 's3cret'), null,
   'traffic polling degrades to null, it must not throw');
  console.log('PASS traffic polling authenticates and degrades safely on 401');
+ // 8. 连接中测当前节点(对齐 Android BaseService.kt:142-153):超时 3000、
+ //    URL 用 connectionTestURL(默认 http://cp.cloudflare.com/)、仍带 Bearer 鉴权。
+ //    批量 URL Test 才是 5000(UrlTest.kt:9);两者的超时口径必须分别锁死。
+ assert.equal(clash.URL_TEST_TARGET, 'http://cp.cloudflare.com/',
+  'default probe URL must equal Constants.kt:3 CONNECTION_TEST_URL');
+ const current = makeHttp({ responseCode: 200, result: '{"delay":31}' });
+ const clashCurrent = load('entry/src/main/ets/utils/ClashApi.ets', {
+  '@ohos.net.http': { default: current.http },
+  './TrafficStats': { CLASH_API_PORT: 19290 },
+  './ClashAuth': auth
+ });
+ assert.equal(await clashCurrent.fetchCurrentProxyDelay(3000, 19290, clashCurrent.URL_TEST_TARGET, 's3cret'), 31);
+ assert.equal(current.seen.url, 'http://127.0.0.1:19290/proxies/proxy/delay'
+  + '?url=http%3A%2F%2Fcp.cloudflare.com%2F&timeout=3000',
+  'connection-time test must use timeout=3000 (BaseService.kt:147)');
+ assert.equal(current.seen.opts.header['Authorization'], 'Bearer s3cret',
+  'connection-time test keeps the 2.1.6 auth fix');
+ assert.equal(current.seen.opts.connectTimeout, 6000, 'socket timeouts leave headroom over the probe timeout');
+ console.log('PASS connection-time URL Test uses 3000ms + Android default URL, still authenticated');
  console.log('ALL CLASH-AUTH TESTS PASSED');
 })().catch((e) => { console.error('FAIL', e && e.message ? e.message : e); process.exit(1); });

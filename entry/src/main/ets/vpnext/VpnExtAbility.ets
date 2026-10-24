@@ -9,13 +9,23 @@ import wantAgent from '@ohos.app.ability.wantAgent';
 import commonEventManager from '@ohos.commonEventManager';
 import BusinessError from '@ohos.base';
 import { Profile, ProfileGroup, AppSettings } from '../model/Profile';
-import { initStore, loadProfiles, loadGroups, loadSettings, getPendingProfileId, setPendingProfileId, clearPendingProfileId, setRunningProfileId, mutateProfiles, LogStore } from '../model/Store';
+import { refreshStore, loadProfiles, loadGroups, loadSettings, getPendingProfileId, setPendingProfileId, clearPendingProfileId, setRunningProfileId, mutateProfiles, LogStore } from '../model/Store';
+import { TrafficBaseline, parseBaseline, displayTotals, baselineStale } from '../model/TrafficBaseline';
+import { readPrefString } from '../model/Store';
 import { buildCoreConfig, effectiveIpv6Mode } from '../core/ConfigBuilder';
 import { loadRouteRules, RouteRule, loadRemoteRuleSets, RemoteRuleSet } from '../model/RouteRule';
 import { CoreManager } from '../core/CoreManager';
-import { publishVpnLog, publishVpnStatus, publishVpnTraffic, VPN_EVENT_LATENCY, VPN_EVENT_APP_FOREGROUND } from '../core/VpnIpc';
+import { entriesFromLegacyList, serializeEntries } from '../model/PerApp';
+import { evaluatePerAppPolicy, perAppBlockMessage } from '../model/PerAppPolicy';
+import deviceInfo from '@ohos.deviceInfo';
+import { publishVpnLog, publishVpnStatusEx, publishVpnTraffic, VPN_EVENT_LATENCY, VPN_EVENT_APP_FOREGROUND,
+  subscribeVpnCommands, VpnCommand, VpnEnvelope, publishVpnApplied } from '../core/VpnIpc';
+import { SnapshotStore } from '../core/SnapshotStore';
+import { parseSnapshot, SnapshotParseResult, ConfigSnapshot } from '../model/ConfigSnapshot';
 import { geoReady, geoSitePath as geoSiteFile, geoIpPath as geoIpFile } from '../utils/GeoAssets';
 import { fetchTrafficTotals } from '../utils/TrafficStats';
+import { errText } from '../utils/ErrText';
+import { formatUptimeText } from '../utils/NotifyText';
 
 /**
  * VPN 扩展能力 — 真正的 VPN 生命周期在这里:
@@ -29,6 +39,23 @@ import { fetchTrafficTotals } from '../utils/TrafficStats';
  */
 
 const VPN_TUN_IFNAME = 'vpn-tun';
+
+/**
+ * §8.4:分应用名单上限按系统 API 版本选择(API<23 → 64,API>=23 → 256)。
+ * 读不到 sdkApiVersion 时按 23 处理并写日志注明;与 VpnService.ets 的同名兜底口径一致。
+ */
+function currentSdkApiLevel(): number {
+  try {
+    const level: number = deviceInfo.sdkApiVersion;
+    if (level > 0) {
+      return level;
+    }
+  } catch (e) {
+    // fall through 到兜底
+  }
+  LogStore.addLog('[vpn] 读取 sdkApiVersion 失败,分应用上限按 API 23(256)处理');
+  return 23;
+}
 
 function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -46,6 +73,18 @@ function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<
 }
 
 export default class VpnExtAbility extends VpnExtensionAbility {
+
+  /* geo 资产文件身份(mtime-size):拼进 rule-set URL,内核 remote 缓存按版本失效;
+   * 读取失败给空串 ⇒ URL 不带版本,行为与旧版一致(见 ConfigBuilder.buildGeoRuleSet) */
+  private geoAssetVersion(path: string): string {
+    try {
+      const stat = fs.statSync(path);
+      return `${stat.mtime ?? 0}-${stat.size}`;
+    } catch (e) {
+      return '';
+    }
+  }
+
   private vpnConnection: vpnExtension.VpnConnection | null = null;
   private starting: boolean = false;
   private started: boolean = false;
@@ -58,6 +97,10 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   private restartRequested: boolean = false;
   private latestRequestedProfileId: string = '';
   private forceRestartRequested: boolean = false;
+  /** Want 直达的分应用名单(权威):UI 进程每次启动/重启隧道都会带上当前值。 */
+  private wantPerAppMode: string = '';
+  private wantPerAppList: string = '';
+  private wantPerAppProvided: boolean = false;
   private notificationTrafficTimer: number = -1;
   private notificationGeneration: number = 0;
   private notificationLatencyMs: number = -1;
@@ -66,10 +109,15 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   private notificationLastAt: number = 0;
   private notificationUpSpeed: number = 0;
   private notificationDownSpeed: number = 0;
+  /** W20:显示累计流量基准(与 UI 共用 Preferences 键;重置后通知与 UI 同基准) */
+  private notificationBaseline: TrafficBaseline | null = null;
   private notificationTotalUp: number = 0;
   private notificationTotalDown: number = 0;
   private notificationSettings: AppSettings | null = null;
-  private notificationGroupName: string = '';
+  /** 本次连接建立的时刻:通知栏"运行时长"基准(重启会话/断开时清零) */
+  private notificationStartedAt: number = 0;
+  /** 上一次已发布的通知正文(速率|运行时长),用于"内容变化才记日志"的去重 */
+  private lastNotificationLine: string = '';
   /** 连续通知发布失败计数:通知被关闭时不再按 speedInterval(1s) 无界重试刷日志。 */
   private notificationFailStreak: number = 0;
   // 网络变化重置连接(功能对齐安卓 networkChangeResetConnections,2.0.2 起默认关)
@@ -78,6 +126,23 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   /** 两次网络变化强制重连的最小间隔(ms):即便用户显式打开该开关,也为共存兜底,
    *  防止被其他 VPN 应用建/拆隧道触发的网络事件连环拉进抢槽位互踢环。 */
   private lastForcedResetAt: number = 0;
+
+  // ---- 版本化事件信封(§16.1,docs/p1-design/runtime-protocol.md) ----
+  /** 扩展进程会话标识:进程内懒生成、保持稳定;UI 据此过滤跨会话迟到事件。 */
+  private sessionId: string = '';
+  /** 事件序列号:进程内单调递增,排序/去重依据(时间戳不作排序依据)。 */
+  private eventSequence: number = 0;
+  private cmdSubscribed: boolean = false;
+
+  // ---- 应用事务(§12.3,docs/p4-design/apply-transaction.md) ----
+  /** 正在处理的应用操作 id:同一操作重复投递直接忽略,不重启发起第二次重连。 */
+  private applyingOperationId: string = '';
+  /** 最近一次成功完成的应用操作 id:重复投递时重播结果(幂等)。 */
+  private appliedOperationId: string = '';
+  /** 最近一次确认生效的快照 revision(仅当快照校验通过且本地设置与快照一致时非 0)。 */
+  private lastAppliedRevision: number = 0;
+  /** 最近一次生效的分应用名单摘要(回执给 UI,§12.3-5)。 */
+  private lastPerAppSummary: string = '';
 
   onCreate(want: Want): void {
     this.hookLifecycle('onCreate', want);
@@ -94,6 +159,8 @@ export default class VpnExtAbility extends VpnExtensionAbility {
 
   private hookLifecycle(name: string, want: Want): void {
     LogStore.addLog(`[vpn] 扩展 ${name}`);
+    // P1:命令通道只订阅一次(版本化 IPC,§16.1);失败不影响现有 Want/事件流程
+    this.ensureCommandSubscription();
     // 节点 ID 经 want 参数直达（跨进程 Preferences 缓存不刷新，不可靠）
     if (want !== undefined && want.parameters !== undefined) {
       const params = want.parameters as Record<string, Object>;
@@ -104,6 +171,16 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       }
       if (`${params['forceRestart']}` === 'true') {
         this.forceRestartRequested = true;
+      }
+      // 分应用名单同样经 Want 直达:扩展进程常驻,Preferences 的进程内读缓存不会
+      // 因为 UI 进程刷盘而失效,只靠 loadSettings() 会一直拿到旧名单(真机"填了
+      // 包名却不分流"的根因)。这里只要带上就覆盖,空串也是有效值(= 本次不限制)。
+      const wantPerAppMode = params['perAppMode'];
+      if (wantPerAppMode !== undefined) {
+        this.wantPerAppMode = `${wantPerAppMode}`;
+        const wantPerAppList = params['perAppList'];
+        this.wantPerAppList = wantPerAppList === undefined ? '' : `${wantPerAppList}`;
+        this.wantPerAppProvided = true;
       }
     }
     LogStore.setPublisher((line: string) => {
@@ -215,7 +292,8 @@ export default class VpnExtAbility extends VpnExtensionAbility {
             const latencyMs: number = Number(payload['latencyMs']);
             this.currentNodeName = nodeName;
             this.notificationLatencyMs = latencyMs;
-            void this.showConnectedNotification(nodeName, latencyMs);
+            // 通知栏不再显示节点/延迟(用户 2026-10-23 要求:改成速率 + 运行时长),测速只更新内存态
+            void this.showConnectedNotification();
           } catch (e) {
             // 忽略格式错误的测速事件
           }
@@ -350,7 +428,190 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.started = false;
     this.starting = false;
     if (!silent) {
-      publishVpnStatus('disconnected', false);
+      this.publishStatus('disconnected', false);
+    }
+  }
+
+  /** 懒生成进程会话标识(稳定、可读);新扩展进程=新会话,UI 据此重新拉快照。 */
+  private ensureSession(): void {
+    if (this.sessionId.length === 0) {
+      this.sessionId = `vpn-${Date.now().toString(16)}-${Math.floor(Math.random() * 0xffff).toString(16)}`;
+    }
+  }
+
+  /** 构造事件信封(§16.1):appliedRevision 在 M5(扩展读快照)接入前恒为 0=未知,不得冒充已知。 */
+  private nextEnvelope(operationId: string): VpnEnvelope {
+    this.ensureSession();
+    this.eventSequence = this.eventSequence + 1;
+    const env = new VpnEnvelope();
+    env.sessionId = this.sessionId;
+    env.sequence = this.eventSequence;
+    env.operationId = operationId;
+    env.appliedRevision = 0;
+    env.emittedAt = Date.now();
+    return env;
+  }
+
+  /** 状态发布统一入口:自动附带信封(旧字段不变,新增 env 字段向后兼容)。 */
+  private publishStatus(status: string, running: boolean, profileId: string = '', operationId: string = ''): void {
+    publishVpnStatusEx(status, running, profileId, this.nextEnvelope(operationId));
+  }
+
+  /** 订阅 UI 命令通道(P1 骨架:query 支持;connect/apply 走 Want/system 流程,P4 接入)。 */
+  private ensureCommandSubscription(): void {
+    if (this.cmdSubscribed) {
+      return;
+    }
+    this.cmdSubscribed = true;
+    subscribeVpnCommands((command: VpnCommand): void => {
+      if (command.cmd === 'query') {
+        // 全量运行快照:以当前已知状态回执(appliedRevision 在扩展读快照前为未知,如实填 0)
+        const running = this.started;
+        const name = running ? this.currentNodeName : '';
+        this.publishStatus(running ? `connected:${name}` : 'disconnected', running, this.currentRunId,
+          command.operationId);
+        return;
+      }
+      if (command.cmd === 'apply') {
+        this.handleApplyCommand(command);
+        return;
+      }
+      if (command.cmd === 'queryApplyStatus') {
+        // 查询当前应用事务状态(UI 重启后避免重复投递,§12.3-8)
+        this.publishApplyResult(this.started, command.operationId, this.lastAppliedRevision,
+          this.lastPerAppSummary, this.started ? '' : 'not_running');
+        return;
+      }
+      LogStore.addLog(`[vpn] 命令 ${command.cmd} 暂未支持, operationId=${command.operationId}`);
+    });
+  }
+
+  /**
+   * 应用配置事务(§12.3)：校验目标 revision 快照 → 确认本地设置与快照一致 →
+   * 串行重启内核一次 → 回执 operationId/appliedRevision。
+   *
+   * 只读校验快照文件(不初始化 ConfigRepository：UI 进程才是写者，扩展进程不参与
+   * recover/GC，避免两个进程同时裁决孤儿文件)。
+   * 快照不可用或不一致时**不重启**并如实回执错误——UI 显示"已保存但未生效"。
+   */
+  private async handleApplyCommand(command: VpnCommand): Promise<void> {
+    const opId = command.operationId;
+    if (opId.length > 0 && opId === this.appliedOperationId) {
+      this.publishApplyResult(true, opId, this.lastAppliedRevision, this.lastPerAppSummary, '');
+      return;
+    }
+    if (opId.length > 0 && opId === this.applyingOperationId) {
+      LogStore.addLog(`[vpn] 应用操作 ${opId} 正在处理中，忽略重复投递`);
+      return;
+    }
+    const targetRevision = command.revision;
+    if (targetRevision <= 0) {
+      this.publishApplyResult(false, opId, 0, '', 'invalid_revision');
+      return;
+    }
+    const snapshot = this.readSnapshotForApply(targetRevision);
+    if (snapshot === null) {
+      LogStore.addLog(`[vpn] 应用失败：快照 revision=${targetRevision} 不存在或校验未通过`);
+      this.publishApplyResult(false, opId, 0, '', 'snapshot_unavailable');
+      return;
+    }
+    let currentSettings: AppSettings;
+    try {
+      await refreshStore(this.context);
+      currentSettings = await loadSettings();
+    } catch (e) {
+      this.publishApplyResult(false, opId, 0, '', 'settings_unreadable');
+      return;
+    }
+    const mismatch = this.settingsMismatchWithSnapshot(snapshot, currentSettings);
+    if (mismatch.length > 0) {
+      LogStore.addLog(`[vpn] 应用失败：本地设置与快照不一致(${mismatch})，请先保存设置`);
+      this.publishApplyResult(false, opId, 0, '', `settings_out_of_sync:${mismatch}`);
+      return;
+    }
+    this.applyingOperationId = opId;
+    LogStore.addLog(`[vpn] 收到应用配置请求 revision=${targetRevision} operationId=${opId}`);
+    try {
+      this.publishStatus('switching', this.started, this.currentRunId, opId);
+      this.forceRestartRequested = true;
+      await this.tryStart();
+      const ok = this.started;
+      if (ok) {
+        this.appliedOperationId = opId;
+        this.lastAppliedRevision = targetRevision;
+        LogStore.addLog(`[vpn] 配置应用完成 revision=${targetRevision} operationId=${opId}`);
+      } else {
+        LogStore.addLog(`[vpn] 配置应用失败 revision=${targetRevision} operationId=${opId}`);
+      }
+      this.publishApplyResult(ok, opId, ok ? targetRevision : 0, this.lastPerAppSummary, ok ? '' : 'apply_failed');
+    } finally {
+      this.applyingOperationId = '';
+    }
+  }
+
+  /** 只读读取并校验指定 revision 的快照(checksum 由 parseSnapshot 复核)。 */
+  private readSnapshotForApply(revision: number): ConfigSnapshot | null {
+    try {
+      const dir = SnapshotStore.configDir(this.context);
+      const path = `${dir}/config-snapshot-${revision}.json`;
+      if (!SnapshotStore.exists(path)) {
+        return null;
+      }
+      const text = SnapshotStore.readText(path);
+      const parsed: SnapshotParseResult = parseSnapshot(text);
+      if (!parsed.ok || parsed.snapshot === null) {
+        LogStore.addLog(`[vpn] 快照解析失败 revision=${revision}: ${parsed.error}`);
+        return null;
+      }
+      if (parsed.snapshot.revision !== revision) {
+        LogStore.addLog(`[vpn] 快照 revision 不符: 期望 ${revision} 实际 ${parsed.snapshot.revision}`);
+        return null;
+      }
+      return parsed.snapshot;
+    } catch (e) {
+      LogStore.addLog(`[vpn] 读取快照异常 revision=${revision}: ${errText(e)}`);
+      return null;
+    }
+  }
+
+  /**
+   * 本地(Preferences)设置必须已写入目标快照，否则重启也只会加载旧设置。
+   * 返回空串=一致；否则返回第一个不一致的键(不含值，避免把密码写进日志)。
+   */
+  private settingsMismatchWithSnapshot(snapshot: ConfigSnapshot, current: AppSettings): string {
+    try {
+      const currentRec = JSON.parse(JSON.stringify(current)) as Record<string, Object>;
+      const snapshotRec: Record<string, Object> = snapshot.content.settings;
+      const currentKeys = Object.keys(currentRec);
+      for (let i = 0; i < currentKeys.length; i++) {
+        const key = currentKeys[i];
+        const snapshotHasKey = Object.keys(snapshotRec).indexOf(key) >= 0;
+        if (!snapshotHasKey) {
+          return `settings.${key}(missing_in_snapshot)`;
+        }
+        const a = JSON.stringify(currentRec[key]);
+        const b = JSON.stringify(snapshotRec[key]);
+        if (a !== b) {
+          return `settings.${key}`;
+        }
+      }
+      return '';
+    } catch (e) {
+      return `compare_failed`;
+    }
+  }
+
+  /** 应用事务回执统一入口(信封带 operationId + appliedRevision)。 */
+  private publishApplyResult(ok: boolean, operationId: string, appliedRevision: number,
+    perAppSummary: string, error: string): void {
+    const env = this.nextEnvelope(operationId);
+    if (env !== null) {
+      env.appliedRevision = appliedRevision;
+      env.configHash = '';
+    }
+    publishVpnApplied(ok, perAppSummary, env, error);
+    if (!ok && error.length > 0) {
+      LogStore.addLog(`[vpn] 应用事务未生效: ${error} (operationId=${operationId})`);
     }
   }
 
@@ -367,7 +628,10 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     const generation = ++this.lifecycleGeneration;
     try {
       const context: common.Context = this.context;
-      await initStore(context);
+      // 强制丢弃本进程的 Preferences 读缓存再重新加载:UI 进程改过设置(分应用名单、
+      // 出站模式、DNS 等)后,常驻的扩展进程不刷新就永远读到旧快照。这里每次启动
+      // 都重新从磁盘读,是分应用"改了不生效"的通用兜底。
+      await refreshStore(context);
       const pendingId = this.latestRequestedProfileId.length > 0
         ? this.latestRequestedProfileId : await getPendingProfileId();
       if (this.started) {
@@ -375,19 +639,19 @@ export default class VpnExtAbility extends VpnExtensionAbility {
           // UI 进程可能刚被系统回收重建(AppStorage 已重置),必须重播当前状态,
           // 否则 UI 永远停在「连接中」——这是闲置后无法启动的主要根因。
           LogStore.addLog('[vpn] 已在运行且没有新的启动目标,忽略重复触发并重播已连接状态');
-          publishVpnStatus(`connected:${this.currentNodeName}`, true, this.currentRunId);
+          this.publishStatus(`connected:${this.currentNodeName}`, true, this.currentRunId);
           return;
         }
         if (pendingId === this.currentRunId && !this.forceRestartRequested) {
           LogStore.addLog('[vpn] 已在运行且节点未变化,忽略重复触发并重播已连接状态');
-          publishVpnStatus(`connected:${this.currentNodeName}`, true, this.currentRunId);
+          this.publishStatus(`connected:${this.currentNodeName}`, true, this.currentRunId);
           await clearPendingProfileId();
           return;
         }
         const restartReason: string = pendingId === this.currentRunId ? '模式变更' : '节点切换';
         this.forceRestartRequested = false;
         LogStore.addLog(`[vpn] 检测到${restartReason},串行重启内核…`);
-        publishVpnStatus('switching', true, pendingId);
+        this.publishStatus('switching', true, pendingId);
         await this.teardown(true);
         this.starting = true;
         await this.startVpn(context, pendingId, generation);
@@ -395,13 +659,13 @@ export default class VpnExtAbility extends VpnExtensionAbility {
         await this.startVpn(context, pendingId, generation);
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : `${e}`;
+      const msg = errText(e);
       LogStore.addLog(`[vpn] 启动失败: ${msg}`);
       this.stopNotificationTrafficPoller();
       this.cancelNotification();
       await clearPendingProfileId();
       await this.teardown(true);
-      publishVpnStatus(`connect_failed:${msg}`, false);
+      this.publishStatus(`connect_failed:${msg}`, false);
     } finally {
       this.starting = false;
       if (this.restartRequested) {
@@ -436,18 +700,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     const settings = await loadSettings();
     const groups = await loadGroups();
     this.notificationSettings = settings;
-    // 通知显示分组名(设置开启且节点有分组时)
-    this.notificationGroupName = '';
-    if (settings.notificationGroup && node.groupId.length > 0) {
-      try {
-        const g = groups.find((item: ProfileGroup) => item.id === node.groupId);
-        if (g !== undefined) {
-          this.notificationGroupName = g.name;
-        }
-      } catch (e) {
-        // 分组名缺失不影响连接
-      }
-    }
+    // 通知只显示速率 + 运行时长(用户 2026-10-23 要求去掉节点名/分组名),不再为通知取分组名
     LogStore.addLog(`[vpn] 准备连接: ${node.name} (${node.server}:${node.serverPort}) [mode=${settings.mode} mtu=${settings.mtu} stack=${settings.stack} mixed=${settings.mixedPort}]`);
 
     // ---- 1. 防回环策略 ----
@@ -494,27 +747,51 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       isIPv4Accepted: true,
       isIPv6Accepted: dualStackOrV6Only
     };
-    // ---- 2.5 分应用代理(VPN 框架原生支持) ----
-    const perAppList: Array<string> = settings.perAppList.split(',')
-      .map((s: string) => s.trim())
-      .filter((s: string) => s.length > 0);
-    if (settings.perAppMode === 'exclude' && perAppList.length > 0) {
-      config.blockedApplications = perAppList; // 这些应用不走 VPN
-      LogStore.addLog(`[vpn] 分应用(排除): ${perAppList.join(', ')}`);
-    } else if (settings.perAppMode === 'include' && perAppList.length > 0) {
-      config.trustedApplications = perAppList; // 仅这些应用走 VPN
-      LogStore.addLog(`[vpn] 分应用(仅这些): ${perAppList.join(', ')}`);
+    // ---- 2.5 分应用代理(策略校验 + VPN 框架原生支持) ----
+    // 名单优先级:Want 直达(UI 刚下发的当前值)> 磁盘设置(冷启动/自动连接)。
+    // W07(§8.2):启动前校验必须执行与 UI 侧同一纯策略函数 evaluatePerAppPolicy;
+    // Want 分支只有 CSV,先转成 entries JSON 再评估,保证 Want/读盘两条分支判定同构。
+    // (2026-10-24 整改:旧实现名单为空时静默"全部应用按路由规则处理",include 空名单
+    //  会把全部应用拉进 VPN —— 现改为 blocked,由 tryStart 统一发布 connect_failed。)
+    const perAppMode = this.wantPerAppProvided ? this.wantPerAppMode : settings.perAppMode;
+    const rawPerAppCsv = this.wantPerAppProvided ? this.wantPerAppList : settings.perAppList;
+    const perAppEntriesJson = serializeEntries(entriesFromLegacyList(rawPerAppCsv));
+    const policy = evaluatePerAppPolicy(perAppMode, perAppEntriesJson, currentSdkApiLevel());
+    LogStore.addLog(`[vpn] 分应用: 模式=${policy.mode} 来源=${this.wantPerAppProvided ? 'want' : 'settings'} 有效=${policy.count} 上限=${policy.limit} 过滤=${policy.dropped.length} 个`);
+    if (policy.blocked) {
+      const msg = perAppBlockMessage(policy);
+      LogStore.addLog(`[vpn] 分应用策略未通过(${policy.blockReason}): ${msg}`);
+      // 不建 TUN、不启动内核:抛给 tryStart 统一 teardown 并 publishStatus(connect_failed:…)
+      throw new Error(msg);
+    }
+    this.lastPerAppSummary = policy.mode === 'off'
+      ? '全应用走 VPN'
+      : `${policy.mode === 'include' ? '仅代理' : '排除'} ${policy.count} 个应用(上限 ${policy.limit})`;
+    if (policy.mode === 'exclude' && policy.effectivePackages.length === 0) {
+      LogStore.addLog('[vpn] 分应用(排除): 当前没有排除应用');
+    }
+    if (policy.mode === 'exclude' && policy.effectivePackages.length > 0) {
+      config.blockedApplications = policy.effectivePackages; // 这些应用不走 VPN
+      LogStore.addLog(`[vpn] 分应用(排除): ${policy.effectivePackages.join(', ')}`);
+    } else if (policy.mode === 'include' && policy.effectivePackages.length > 0) {
+      config.trustedApplications = policy.effectivePackages; // 仅这些应用走 VPN
+      LogStore.addLog(`[vpn] 分应用(仅这些): ${policy.effectivePackages.join(', ')}`);
     }
 
     // ---- 3. 生成配置文件(内核日志写 log.output 文件,由日志页直读) ----
     const logPath = CoreManager.resetLogFile(context);
     let geositePath = '';
     let geoIpPath = '';
+    /* geo 资产版本(mtime-size):拼进 rule-set URL 让内核 remote 缓存按文件版本失效 */
+    let geositeVersion = '';
+    let geoIpVersion = '';
     if (settings.mode === 'rule') {
       try {
         if (geoReady(context)) {
           geositePath = geoSiteFile(context);
           geoIpPath = geoIpFile(context);
+          geositeVersion = this.geoAssetVersion(geositePath);
+          geoIpVersion = this.geoAssetVersion(geoIpPath);
           LogStore.addLog('[vpn] Geo 分流数据就绪,cn 直连分流已启用');
         } else {
           LogStore.addLog('[vpn] Geo 数据未下载,规则模式仅私网/自定义直连');
@@ -546,7 +823,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     }
     const cachePath = logPath.length > 0 ? logPath.substring(0, logPath.lastIndexOf('/') + 1) + 'cache.db' : '';
     const configJson = buildCoreConfig(node, settings, ifname, logPath, geositePath, geoIpPath,
-      customRules, remoteRuleSets, cachePath, profiles, groups);
+      customRules, remoteRuleSets, cachePath, profiles, groups, geositeVersion, geoIpVersion);
     const configPath = CoreManager.writeConfigFile(context, configJson);
     LogStore.addLog(`[vpn] sing-box 配置已写入 ${configPath}`);
 
@@ -561,7 +838,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       // 正常情况:没有残留
     }
     LogStore.addLog('[vpn] 正在创建 VPN 隧道(如弹出授权框请点「允许」)…');
-    publishVpnStatus('awaiting_auth', false);
+    this.publishStatus('awaiting_auth', false);
     const tunFd: number = await withTimeout(this.vpnConnection.create(config), 60000,
       '创建 TUN 超时:未收到系统 VPN 授权,或系统 VPN 服务无响应');
     LogStore.addLog(`[vpn] TUN fd = ${tunFd}`);
@@ -601,13 +878,24 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.currentNodeName = node.name;
     await setRunningProfileId(pendingId);
     this.notificationLatencyMs = -1;
-    await this.showConnectedNotification(node.name, -1);
-    this.startNotificationTrafficPoller();
-    publishVpnStatus(`connected:${node.name}`, true, pendingId);
+    this.notificationStartedAt = Date.now();
+    this.lastNotificationLine = '';
+    await this.showConnectedNotification();
+    void this.startNotificationTrafficPoller();
+    this.publishStatus(`connected:${node.name}`, true, pendingId);
     await clearPendingProfileId();
   }
 
-  private startNotificationTrafficPoller(): void {
+  private async loadNotificationBaseline(): Promise<TrafficBaseline | null> {
+    try {
+      const text = await readPrefString('traffic_display_baseline', '');
+      return text.length > 0 ? parseBaseline(text) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  private async startNotificationTrafficPoller(): Promise<void> {
     this.stopNotificationTrafficPoller();
     const settings = this.notificationSettings;
     if (!this.started || settings === null || !settings.clashApiEnabled) {
@@ -618,6 +906,9 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.notificationLastAt = 0;
     this.notificationUpSpeed = 0;
     this.notificationDownSpeed = 0;
+    /* W20:会话启动读一次显示基准(扩展进程 Preferences 缓存约束:会话中途 UI 重置,
+      通知最迟在下一次会话/apply 后同步 —— 已知降级,如实记录) */
+    this.notificationBaseline = await this.loadNotificationBaseline();
     this.notificationTotalUp = 0;
     this.notificationTotalDown = 0;
     this.notificationFailStreak = 0;
@@ -638,11 +929,15 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       this.notificationLastUp = totals.up;
       this.notificationLastDown = totals.down;
       this.notificationLastAt = startedAt;
-      this.notificationTotalUp = totals.up;
-      this.notificationTotalDown = totals.down;
+      if (baselineStale(totals.up, totals.down, this.notificationBaseline)) {
+        this.notificationBaseline = null;
+      }
+      const shownTotals = displayTotals(totals.up, totals.down, this.notificationBaseline);
+      this.notificationTotalUp = shownTotals[0];
+      this.notificationTotalDown = shownTotals[1];
       publishVpnTraffic(this.notificationUpSpeed, this.notificationDownSpeed,
         this.notificationTotalUp, this.notificationTotalDown);
-      await this.showConnectedNotification(this.currentNodeName, this.notificationLatencyMs);
+      await this.showConnectedNotification();
     };
     void poll();
     // 通知刷新间隔(对齐安卓 speedInterval,默认 1000ms,允许 500ms~10s)
@@ -666,6 +961,8 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.notificationDownSpeed = 0;
     this.notificationTotalUp = 0;
     this.notificationTotalDown = 0;
+    this.notificationStartedAt = 0;
+    this.lastNotificationLine = '';
   }
 
   /**
@@ -729,13 +1026,13 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     return `${(mb / 1024).toFixed(2)} GB`;
   }
 
-  /** 常驻通知:显示当前连接、延迟、实时速率和累计流量,并提供断开操作 */
-  private async showConnectedNotification(nodeName: string, latencyMs: number): Promise<void> {
+  /** 常驻通知(2026-10-23 用户定稿):标题=已连接,正文=**实时速率**,附加行=**本次运行时长**,
+   *  右侧"断开"按钮。不再显示节点名/分组名/延迟(节点看应用内列表即可,通知栏位置留给状态)。 */
+  private async showConnectedNotification(): Promise<void> {
     if (this.notificationFailStreak >= 5) {
       return; // 连续 5 次发布失败(通知权限被关):本会话内停用周期通知,流量统计不受影响
     }
     try {
-      const latencyText: string = latencyMs >= 0 ? `${latencyMs}ms` : '--';
       const disconnectAgent = await wantAgent.getWantAgent({
         wants: [{
           bundleName: 'com.nekobox.app.jynxen',
@@ -748,21 +1045,25 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       });
       // 本机 SDK(API 24)通知字段为 string 类型,不接受 Resource:构建时现取本地化字符串
       const res = this.context.resourceManager;
-      const displayName = this.notificationGroupName.length > 0
-        ? `[${this.notificationGroupName}] ${nodeName}` : nodeName;
       const uploadLabel = res.getStringSync($r('app.string.notification_upload'));
       const downloadLabel = res.getStringSync($r('app.string.notification_download'));
-      const totalLabel = res.getStringSync($r('app.string.notification_total'));
-      const trafficText = `${uploadLabel} ${this.formatNotificationSpeed(this.notificationUpSpeed)} / ` +
-        `${downloadLabel} ${this.formatNotificationSpeed(this.notificationDownSpeed)} · ` +
-        `${totalLabel} ${uploadLabel} ${this.formatNotificationBytes(this.notificationTotalUp)} / ` +
-        `${downloadLabel} ${this.formatNotificationBytes(this.notificationTotalDown)}`;
+      const uptimeLabel = res.getStringSync($r('app.string.notification_uptime'));
+      const speedText = `${uploadLabel} ${this.formatNotificationSpeed(this.notificationUpSpeed)} / ` +
+        `${downloadLabel} ${this.formatNotificationSpeed(this.notificationDownSpeed)}`;
+      const elapsedMs = this.notificationStartedAt > 0 ? Date.now() - this.notificationStartedAt : 0;
+      const uptimeText = `${uptimeLabel} ${formatUptimeText(elapsedMs)}`;
+      // 仅在内容变化时记一条:通知栏实际显示什么,真机排查(及本轮验收)都能直接对着日志核
+      const contentLine = `${speedText} | ${uptimeText}`;
+      if (contentLine !== this.lastNotificationLine) {
+        this.lastNotificationLine = contentLine;
+        LogStore.addLog(`[vpn] 通知内容: ${contentLine}`);
+      }
       const content: notificationManager.NotificationContent = {
         contentType: notification.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
         normal: {
           title: res.getStringSync($r('app.string.notification_vpn_connected')),
-          text: `${displayName} · ${latencyText}`,
-          additionalText: trafficText
+          text: speedText,
+          additionalText: uptimeText
         }
       };
       const request: notificationManager.NotificationRequest = {

@@ -9,6 +9,10 @@
       "value": "用于从剪贴板读取并导入订阅链接或节点配置"
     },
     {
+      "name": "permission_keep_bg_running_system_reason",
+      "value": "用于在手机/平板上申请计算任务类型长时任务，以保证 VPN 代理隧道持续运行"
+    },
+    {
       "name": "brand_name",
       "value": "NEKOBOX"
     },
@@ -1746,15 +1750,15 @@
     },
     {
       "name": "nav_config",
-      "value": "配置"
+      "value": "节点"
     },
     {
       "name": "nav_groups",
-      "value": "分组"
+      "value": "订阅"
     },
     {
       "name": "nav_route",
-      "value": "路由"
+      "value": "分流"
     },
     {
       "name": "nav_dashboard",
@@ -1819,6 +1823,50 @@
     {
       "name": "dedup_none",
       "value": "没有发现重复节点"
+    },
+    {
+      "name": "confirm",
+      "value": "确认"
+    },
+    {
+      "name": "dedup_confirm_body",
+      "value": "确定要移除以下重复节点吗?\n%1$s"
+    },
+    {
+      "name": "group_no_difference",
+      "value": "%1$s:没有变化"
+    },
+    {
+      "name": "group_updated",
+      "value": "%1$s:已更新 %2$d 个代理"
+    },
+    {
+      "name": "group_diff_title",
+      "value": "差异(%1$s)"
+    },
+    {
+      "name": "group_diff_added",
+      "value": "新增:\n%1$s\n\n"
+    },
+    {
+      "name": "group_diff_updated",
+      "value": "已更新:\n%1$s\n\n"
+    },
+    {
+      "name": "group_diff_deleted",
+      "value": "已删除:\n%1$s\n\n"
+    },
+    {
+      "name": "group_diff_duplicate",
+      "value": "重复(已忽略):\n%1$s\n\n"
+    },
+    {
+      "name": "update_subscription_warning",
+      "value": "当前未连接 VPN,更新订阅会以直连方式进行。继续?"
+    },
+    {
+      "name": "sub_interval_minutes",
+      "value": "更新间隔(分钟)"
     },
     {
       "name": "no_unavailable_nodes",
@@ -2086,7 +2134,7 @@
     },
     {
       "name": "latency_test_mode_desc",
-      "value": "URL Test 通过代理实际访问下方测试网址,只有全链路可用才计绿;TCPing 仅测服务器端口握手,失效节点也可能显示绿色。"
+      "value": "URL Test 经节点实际访问下方测试网址，只有全链路可用才计绿；TCPing 仅测服务器端口握手（固定 3000ms，跳过 Hysteria/TUIC/WireGuard 等不支持握手测试的协议），失效节点也可能显示绿色。"
     },
     {
       "name": "settings_route",
@@ -2110,7 +2158,7 @@
     },
     {
       "name": "settings_test_url_desc",
-      "value": "URL Test 会经节点实际访问此网址。默认 HTTP 204(gstatic),与 Clash 系客户端口径一致;换用 HTTPS 网址会额外计入到目标站的 TLS 握手,数值会偏高。"
+      "value": "URL Test 会经节点实际访问此网址。默认 http://cp.cloudflare.com/（与安卓版一致）；换用 HTTPS 网址会额外计入到目标站的 TLS 握手，数值会偏高。"
     },
     {
       "name": "settings_test_concurrent",
@@ -2407,6 +2455,850 @@
     {
       "name": "more_actions",
       "value": "更多操作"
+    },
+    {
+      "name": "per_app_hint_exclude",
+      "value": "勾选的应用不走 VPN（其余应用按路由规则处理）"
+    },
+    {
+      "name": "per_app_hint_include",
+      "value": "只有勾选的应用走 VPN（其余应用直连）"
+    },
+    {
+      "name": "per_app_search_placeholder",
+      "value": "搜索应用名或包名"
+    },
+    {
+      "name": "per_app_add_import",
+      "value": "添加 / 批量导入"
+    },
+    {
+      "name": "per_app_empty",
+      "value": "还没有应用条目,点「添加 / 批量导入」填写应用名和包名"
+    },
+    {
+      "name": "per_app_search_empty",
+      "value": "没有匹配的应用"
+    },
+    {
+      "name": "per_app_preset_tag",
+      "value": "预置"
+    },
+    {
+      "name": "per_app_remove_entry",
+      "value": "移除条目"
+    },
+    {
+      "name": "per_app_remove_confirm",
+      "value": "确定移除「%s」?"
+    },
+    {
+      "name": "per_app_effective_count",
+      "value": "已勾选 %d 个应用生效"
+    },
+    {
+      "name": "per_app_note",
+      "value": "应用名只用于界面区分,不参与系统路由;未勾选的条目不会下发。修改后会自动重连 VPN 生效。"
+    },
+    {
+      "name": "per_app_dialog_title",
+      "value": "添加 / 批量导入"
+    },
+    {
+      "name": "per_app_dialog_hint",
+      "value": "每行一个鸿蒙应用包名;名称备注只用于单个应用。请勿使用 Android 包名代替鸿蒙包名。"
+    },
+    {
+      "name": "per_app_dialog_label_placeholder",
+      "value": "名称备注(可选)"
+    },
+    {
+      "name": "per_app_dialog_packages_placeholder",
+      "value": "com.tencent.wechat\ncom.ss.hm.ugc.aweme"
+    },
+    {
+      "name": "per_app_dialog_confirm",
+      "value": "添加到当前名单"
+    },
+    {
+      "name": "per_app_dialog_need_package",
+      "value": "请至少填写一个包名"
+    },
+    {
+      "name": "per_app_dialog_all_invalid",
+      "value": "包名格式不正确:%s"
+    },
+    {
+      "name": "per_app_added_count",
+      "value": "已添加 %d 个应用"
+    },
+    {
+      "name": "per_app_added_with_invalid",
+      "value": "已添加 %d 个应用,%d 个包名格式不正确已忽略"
+    },
+    {
+      "name": "ok",
+      "value": "好"
+    },
+    {
+      "name": "connection_test_testing",
+      "value": "测试中…"
+    },
+    {
+      "name": "connection_test_refused",
+      "value": "连接被拒绝"
+    },
+    {
+      "name": "connection_test_unreachable",
+      "value": "网络不可达"
+    },
+    {
+      "name": "connection_test_domain_not_found",
+      "value": "域名解析失败"
+    },
+    {
+      "name": "connection_test_unavailable",
+      "value": "不可用"
+    },
+    {
+      "name": "connection_test_tcp_ping",
+      "value": "TCPing"
+    },
+    {
+      "name": "connection_test_tcp_ping_unavailable",
+      "value": "当前分组没有可 TCPing 的节点"
+    },
+    {
+      "name": "connection_test_url_test",
+      "value": "URL Test"
+    },
+    {
+      "name": "connection_test_error",
+      "value": "测试失败:%1$s"
+    },
+    {
+      "name": "connection_test_error_timeout",
+      "value": "测试失败:超时"
+    },
+    {
+      "name": "connection_test_error_refused",
+      "value": "测试失败:连接被拒绝"
+    },
+    {
+      "name": "connection_test_error_unreachable",
+      "value": "测试失败:网络不可达"
+    },
+    {
+      "name": "connection_test_available",
+      "value": "成功:HTTPS 握手耗时 %1$dms"
+    },
+    {
+      "name": "connection_test_available_http",
+      "value": "成功:HTTP 握手耗时 %1$dms"
+    },
+    {
+      "name": "connection_test_error_detail",
+      "value": "错误详情"
+    },
+    {
+      "name": "crash_recovery_title",
+      "value": "恢复连接"
+    },
+    {
+      "name": "crash_recovery_prompt",
+      "value": "检测到上次运行时应用被系统回收,VPN 可能已断开。是否立即重新连接?"
+    },
+    {
+      "name": "crash_recovery_connect",
+      "value": "重新连接"
+    },
+    {
+      "name": "notification_uptime",
+      "value": "已运行"
+    },
+    {
+      "name": "route_rule_packages_platform_hint",
+      "value": "鸿蒙版暂不支持在路由规则中按包名指定出站。请到设置 → 分应用代理选择哪些应用走 VPN；此处保留旧数据。"
+    },
+    {
+      "name": "speed_test_bind_fallback",
+      "value": "绑定物理网卡测速失败，已取消绑定重测；连接 VPN 时结果可能包含当前隧道延迟。"
+    },
+    {
+      "name": "settings_section_appearance",
+      "value": "外观与浏览"
+    },
+    {
+      "name": "settings_section_startup",
+      "value": "启动与行为"
+    },
+    {
+      "name": "settings_section_probe",
+      "value": "连接检测"
+    },
+    {
+      "name": "settings_section_dns",
+      "value": "DNS"
+    },
+    {
+      "name": "settings_section_ipv6",
+      "value": "IPv6"
+    },
+    {
+      "name": "settings_section_inbound",
+      "value": "入站"
+    },
+    {
+      "name": "settings_section_mode",
+      "value": "分流模式"
+    },
+    {
+      "name": "settings_section_perapp",
+      "value": "分应用代理"
+    },
+    {
+      "name": "settings_section_advanced",
+      "value": "高级"
+    },
+    {
+      "name": "settings_mode",
+      "value": "分流模式"
+    },
+    {
+      "name": "settings_direct_domains",
+      "value": "直连域名后缀"
+    },
+    {
+      "name": "settings_direct_ip",
+      "value": "直连 IP 段"
+    },
+    {
+      "name": "settings_sniff_mode",
+      "value": "嗅探模式"
+    },
+    {
+      "name": "settings_fake_dns",
+      "value": "FakeDNS 假地址"
+    },
+    {
+      "name": "settings_ipv6",
+      "value": "IPv6"
+    },
+    {
+      "name": "settings_ipv6_mode",
+      "value": "IPv6 模式"
+    },
+    {
+      "name": "settings_per_app_mode",
+      "value": "分应用模式"
+    },
+    {
+      "name": "settings_per_app_list",
+      "value": "应用包名列表"
+    },
+    {
+      "name": "settings_per_app_entries",
+      "value": "分应用条目"
+    },
+    {
+      "name": "settings_latency_test_mode",
+      "value": "测速方式"
+    },
+    {
+      "name": "settings_test_timeout",
+      "value": "测试超时（毫秒）"
+    },
+    {
+      "name": "settings_test_retries",
+      "value": "失败重试次数"
+    },
+    {
+      "name": "settings_test_samples",
+      "value": "每节点取样次数"
+    },
+    {
+      "name": "settings_test_expect_status",
+      "value": "期望状态码判据"
+    },
+    {
+      "name": "settings_test_bypass_tunnel",
+      "value": "测速时绕过隧道"
+    },
+    {
+      "name": "settings_latency_stale",
+      "value": "延迟陈旧阈值"
+    },
+    {
+      "name": "settings_sub_update_interval",
+      "value": "订阅更新间隔（小时）"
+    },
+    {
+      "name": "settings_appearance",
+      "value": "外观主题"
+    },
+    {
+      "name": "settings_haptic",
+      "value": "触感反馈"
+    },
+    {
+      "name": "settings_liquid_glass",
+      "value": "液态玻璃"
+    },
+    {
+      "name": "settings_show_bottom_bar",
+      "value": "显示底部速率条"
+    },
+    {
+      "name": "settings_nav_layout",
+      "value": "导航布局"
+    },
+    {
+      "name": "settings_profile_sort",
+      "value": "节点排序方式"
+    },
+    {
+      "name": "settings_network_reset",
+      "value": "网络切换时重置连接"
+    },
+    {
+      "name": "settings_wake_reset",
+      "value": "唤醒时重置连接"
+    },
+    {
+      "name": "settings_profile_traffic",
+      "value": "节点流量统计"
+    },
+    {
+      "name": "settings_mtu",
+      "value": "MTU"
+    },
+    {
+      "name": "settings_stack",
+      "value": "协议栈"
+    },
+    {
+      "name": "settings_allow_insecure",
+      "value": "全局放行不安全 TLS"
+    },
+    {
+      "name": "settings_clash_api",
+      "value": "Clash API"
+    },
+    {
+      "name": "settings_clash_port",
+      "value": "Clash API 端口"
+    },
+    {
+      "name": "settings_clash_secret",
+      "value": "Clash API 密钥"
+    },
+    {
+      "name": "settings_global_custom",
+      "value": "全局自定义配置"
+    },
+    {
+      "name": "settings_coexist_fix",
+      "value": "共存修复标记"
+    },
+    {
+      "name": "settings_value_on",
+      "value": "开"
+    },
+    {
+      "name": "settings_value_off",
+      "value": "关"
+    },
+    {
+      "name": "settings_apply_immediate",
+      "value": "即时生效"
+    },
+    {
+      "name": "settings_apply_next_task",
+      "value": "下次任务"
+    },
+    {
+      "name": "settings_apply_reconnect",
+      "value": "需要重连"
+    },
+    {
+      "name": "subscription_page_title_count",
+      "value": "订阅 %1$d"
+    },
+    {
+      "name": "subscription_update_all",
+      "value": "更新全部"
+    },
+    {
+      "name": "subscription_updating_all",
+      "value": "正在更新 %1$d 个订阅…"
+    },
+    {
+      "name": "subscription_offline_hint",
+      "value": "网络不可用，暂时无法更新订阅"
+    },
+    {
+      "name": "subscription_batch_dismiss",
+      "value": "知道了"
+    },
+    {
+      "name": "subscription_batch_incomplete",
+      "value": "更新未完成"
+    },
+    {
+      "name": "subscription_action_view_nodes",
+      "value": "查看节点"
+    },
+    {
+      "name": "subscription_action_probe",
+      "value": "检测可用性"
+    },
+    {
+      "name": "subscription_empty_add",
+      "value": "添加订阅 / 导入"
+    },
+    {
+      "name": "subscription_empty_scan",
+      "value": "扫码添加"
+    },
+    {
+      "name": "subscription_empty_import",
+      "value": "从文件导入"
+    },
+    {
+      "name": "subscription_empty_manual",
+      "value": "手动添加"
+    },
+    {
+      "name": "subscription_row_update",
+      "value": "更新"
+    },
+    {
+      "name": "subscription_row_more",
+      "value": "更多"
+    },
+    {
+      "name": "subscription_row_detail",
+      "value": "订阅详情"
+    },
+    {
+      "name": "subscription_row_clear_nodes",
+      "value": "清空节点"
+    },
+    {
+      "name": "subscription_row_delete",
+      "value": "删除订阅"
+    },
+    {
+      "name": "subscription_row_node_count",
+      "value": "节点 %1$d"
+    },
+    {
+      "name": "subscription_delete_confirm_title",
+      "value": "删除订阅"
+    },
+    {
+      "name": "subscription_delete_confirm_body",
+      "value": "删除订阅“%1$s”及其 %2$d 个节点？删除后需重新导入。"
+    },
+    {
+      "name": "subscription_clear_nodes_confirm_title",
+      "value": "清空节点"
+    },
+    {
+      "name": "subscription_clear_nodes_confirm_body",
+      "value": "清空“%1$s”的 %2$d 个节点？订阅记录保留，可再次更新找回。"
+    },
+    {
+      "name": "subscription_sort_name",
+      "value": "排序：名称"
+    },
+    {
+      "name": "subscription_sort_recent",
+      "value": "排序：最近更新"
+    },
+    {
+      "name": "subscription_error_expand",
+      "value": "查看原因"
+    },
+    {
+      "name": "subscription_error_collapse",
+      "value": "收起原因"
+    },
+    {
+      "name": "sub_state_ok",
+      "value": "正常"
+    },
+    {
+      "name": "sub_state_never",
+      "value": "从未更新"
+    },
+    {
+      "name": "sub_state_failed",
+      "value": "更新失败"
+    },
+    {
+      "name": "sub_state_updating",
+      "value": "更新中"
+    },
+    {
+      "name": "sub_state_expired",
+      "value": "已过期"
+    },
+    {
+      "name": "sub_last_updated_never",
+      "value": "从未更新"
+    },
+    {
+      "name": "sub_last_updated_just_now",
+      "value": "刚刚"
+    },
+    {
+      "name": "sub_last_updated_minutes_ago",
+      "value": "%1$d 分钟前"
+    },
+    {
+      "name": "sub_last_updated_hours_ago",
+      "value": "%1$d 小时前"
+    },
+    {
+      "name": "sub_last_updated_days_ago",
+      "value": "%1$d 天前"
+    },
+    {
+      "name": "sub_auto_update_off",
+      "value": "自动更新已关闭"
+    },
+    {
+      "name": "sub_auto_update_every_minutes",
+      "value": "每 %1$d 分钟"
+    },
+    {
+      "name": "sub_auto_update_daily",
+      "value": "每天"
+    },
+    {
+      "name": "sub_auto_update_every_days",
+      "value": "每 %1$d 天"
+    },
+    {
+      "name": "sub_auto_update_hourly",
+      "value": "每小时"
+    },
+    {
+      "name": "sub_auto_update_every_hours",
+      "value": "每 %1$d 小时"
+    },
+    {
+      "name": "sub_traffic_total_unknown",
+      "value": "%1$s / 总量未知"
+    },
+    {
+      "name": "sub_expiry_unknown",
+      "value": "到期时间未知"
+    },
+    {
+      "name": "sub_expiry_expired_days",
+      "value": "已过期 %1$d 天"
+    },
+    {
+      "name": "sub_expiry_just_expired",
+      "value": "刚刚过期"
+    },
+    {
+      "name": "sub_expiry_in_days",
+      "value": "%1$d 天后到期"
+    },
+    {
+      "name": "sub_expiry_on_date",
+      "value": "%1$s 到期"
+    },
+    {
+      "name": "sub_summary_updated",
+      "value": "更新 %1$d"
+    },
+    {
+      "name": "sub_summary_added",
+      "value": "新增 %1$d"
+    },
+    {
+      "name": "sub_summary_removed",
+      "value": "删除 %1$d"
+    },
+    {
+      "name": "sub_summary_not_modified",
+      "value": "未变 %1$d"
+    },
+    {
+      "name": "sub_summary_skipped",
+      "value": "跳过 %1$d"
+    },
+    {
+      "name": "sub_summary_failed",
+      "value": "失败 %1$d"
+    },
+    {
+      "name": "sub_outcome_failed",
+      "value": "%1$s：更新失败 — %2$s"
+    },
+    {
+      "name": "sub_outcome_not_modified",
+      "value": "%1$s：内容未变"
+    },
+    {
+      "name": "sub_outcome_changed",
+      "value": "%1$s：%2$s"
+    },
+    {
+      "name": "sub_empty_no_subs_title",
+      "value": "还没有订阅"
+    },
+    {
+      "name": "sub_empty_no_subs_body",
+      "value": "添加机场订阅链接，导入后节点会自动归入订阅分组。"
+    },
+    {
+      "name": "sub_empty_offline_title",
+      "value": "当前网络不可用"
+    },
+    {
+      "name": "sub_empty_offline_body",
+      "value": "恢复网络后即可添加订阅；也可先从文件导入配置。"
+    },
+    {
+      "name": "sub_import_none",
+      "value": "未识别到可导入的节点"
+    },
+    {
+      "name": "sub_import_nodes",
+      "value": "节点 %1$d"
+    },
+    {
+      "name": "sub_import_groups",
+      "value": "分组 %1$d"
+    },
+    {
+      "name": "sub_import_skipped",
+      "value": "跳过 %1$d"
+    },
+    {
+      "name": "sub_tombstone_header",
+      "value": "远端已移除 %1$d 个节点(更新时被删除,可转为手动节点)"
+    },
+    {
+      "name": "sub_tombstone_kept",
+      "value": "已保留收藏/排序"
+    },
+    {
+      "name": "sub_tombstone_pending",
+      "value": "覆盖已保留待恢复"
+    },
+    {
+      "name": "sub_tombstone_convert",
+      "value": "转为手动"
+    },
+    {
+      "name": "sub_tombstone_converted",
+      "value": "已转为手动节点: %1$s"
+    },
+    {
+      "name": "connection_filter_all",
+      "value": "全部"
+    },
+    {
+      "name": "connection_chain_proxy",
+      "value": "代理"
+    },
+    {
+      "name": "connection_chain_direct",
+      "value": "直连"
+    },
+    {
+      "name": "connection_chain_reject",
+      "value": "拒绝"
+    },
+    {
+      "name": "connection_not_provided",
+      "value": "未提供"
+    },
+    {
+      "name": "connection_search_hint",
+      "value": "搜索目标 / 节点 / 规则"
+    },
+    {
+      "name": "connection_evidence_title",
+      "value": "为什么走这条线路"
+    },
+    {
+      "name": "connection_evidence_target",
+      "value": "目标"
+    },
+    {
+      "name": "connection_evidence_network",
+      "value": "网络"
+    },
+    {
+      "name": "connection_evidence_rule",
+      "value": "内核规则"
+    },
+    {
+      "name": "connection_evidence_rule_payload",
+      "value": "规则载荷"
+    },
+    {
+      "name": "connection_evidence_chains",
+      "value": "策略组链"
+    },
+    {
+      "name": "connection_evidence_final_node",
+      "value": "最终节点"
+    },
+    {
+      "name": "connection_evidence_revision",
+      "value": "运行修订"
+    },
+    {
+      "name": "connection_evidence_unknown",
+      "value": "未知"
+    },
+    {
+      "name": "connection_evidence_collected",
+      "value": "采集时间"
+    },
+    {
+      "name": "connection_evidence_close",
+      "value": "关闭"
+    },
+    {
+      "name": "log_export_dialog_title",
+      "value": "导出日志(默认脱敏)"
+    },
+    {
+      "name": "log_export_dialog_note",
+      "value": "导出内容将脱敏 URL 凭据、订阅 token、密码与密钥。"
+    },
+    {
+      "name": "log_export_redacted",
+      "value": "导出脱敏"
+    },
+    {
+      "name": "log_export_raw",
+      "value": "导出原文"
+    },
+    {
+      "name": "log_redact_preview_tail",
+      "value": "…(共 %1$d 行,已脱敏)"
+    },
+    {
+      "name": "nav_action_search",
+      "value": "搜索"
+    },
+    {
+      "name": "nav_action_add",
+      "value": "添加"
+    },
+    {
+      "name": "nav_action_probe",
+      "value": "检测可用性"
+    },
+    {
+      "name": "nav_action_cancel_probe",
+      "value": "取消检测"
+    },
+    {
+      "name": "nav_action_update_all",
+      "value": "更新全部订阅"
+    },
+    {
+      "name": "nav_action_more",
+      "value": "更多操作"
+    },
+    {
+      "name": "nav_action_probing",
+      "value": "检测进行中"
+    },
+    {
+      "name": "nav_reason_no_profiles",
+      "value": "没有可检测的节点"
+    },
+    {
+      "name": "nav_reason_no_subscriptions",
+      "value": "没有订阅"
+    },
+    {
+      "name": "nav_reason_probe_unsupported",
+      "value": "当前内核不支持该检测"
+    },
+    {
+      "name": "nav_reason_updating",
+      "value": "正在更新"
+    },
+    {
+      "name": "nav_reason_not_running",
+      "value": "VPN 未运行"
+    },
+    {
+      "name": "topbar_connections",
+      "value": "连接列表"
+    },
+    {
+      "name": "settings_pending_summary",
+      "value": "有 %1$d 项修改待应用"
+    },
+    {
+      "name": "settings_impact_reconnect",
+      "value": "需要重连 %1$d 项"
+    },
+    {
+      "name": "settings_impact_next_task",
+      "value": "下次任务 %1$d 项"
+    },
+    {
+      "name": "settings_impact_immediate",
+      "value": "即时生效 %1$d 项"
+    },
+    {
+      "name": "settings_search_hint",
+      "value": "搜索设置项"
+    },
+    {
+      "name": "settings_clear_search",
+      "value": "清除"
+    },
+    {
+      "name": "settings_restore_defaults",
+      "value": "恢复默认"
+    },
+    {
+      "name": "settings_section_defaults_toast",
+      "value": "已恢复本分区默认值并自动应用"
+    },
+    {
+      "name": "settings_section_already_default",
+      "value": "该分区已是默认值"
+    },
+    {
+      "name": "settings_restore_confirm_title",
+      "value": "恢复「%1$s」默认值"
+    },
+    {
+      "name": "settings_restore_confirm_body",
+      "value": "将修改 %1$d 个字段：\n%2$s\n\n保存后自动生效（如需重连会自动重连一次）。"
+    },
+    {
+      "name": "settings_jump_toast",
+      "value": "已跳到「%1$s」"
+    },
+    {
+      "name": "favorite_add",
+      "value": "收藏"
+    },
+    {
+      "name": "favorite_remove",
+      "value": "取消收藏"
+    },
+    {
+      "name": "app_page_system",
+      "value": "系统"
     }
   ]
 }

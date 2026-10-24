@@ -32,6 +32,17 @@ typedef char *(*CGoTestStartFunc)(char *, char *);
 typedef char *(*CGoTestStartLegacyFunc)(char *);
 typedef char *(*CGoTestProxyFunc)(char *, char *, int, char *);
 typedef char *(*CGoTestProxyLegacyFunc)(char *, char *, int);
+// K1 无副作用校验导出(CGoCheckConfigV1 / CGoValidateSRSFileV1)。
+// 与测速不同代:这两个符号只存在于新编 .so,老 .so 里 dlsym 必然为空 ——
+// 空即代表"能力缺失",NAPI 层回退字符串 "unsupported",ArkTS 侧据此
+// 不标"已验证"(docs/p0-baseline/kernel-capabilities.md §2.2 能力探测)。
+typedef char *(*CGoStringOneArgFunc)(char *);
+// K2 会话化测速(V3,带 sessionId)。全部按 dlsym 解析:老 .so 上必然为空,
+// 此时对应 native 方法回退 "unsupported"(能力探测语义,不得当成成功)。
+typedef char *(*CGoTestStartV3Func)(char *, char *, char *);             // (sessionId, configPath, bindIfname)
+typedef char *(*CGoTestProxyV3Func)(char *, char *, char *, int, char *); // (sessionId, tag, url, timeoutMs, expectStatus)
+typedef char *(*CGoTestStopV3Func)(char *);                              // (sessionId)
+typedef char *(*CGoTestInfoV3Func)(char *);                              // (sessionId)
 
 enum class CoreState {
     Stopped,
@@ -56,9 +67,19 @@ static CGoTestStartLegacyFunc g_testStartLegacy = nullptr;
 static CGoTestProxyFunc g_testProxy = nullptr;
 static CGoTestProxyLegacyFunc g_testProxyLegacy = nullptr;
 static CGoStringFunc g_testStop = nullptr;
+// K1 校验能力指针:nullptr = 内核无该导出(旧 .so),能力回退 "unsupported"
+static CGoStringOneArgFunc g_checkConfig = nullptr;
+static CGoStringOneArgFunc g_validateSrs = nullptr;
 // true = 内核提供 V2 测速导出(支持响应状态判定 + 测速绕过隧道);
 // false = 跑的是冻结 .so 的旧导出,这两项能力不可用。
 static bool g_testV2 = false;
+// K2 V3 会话导出(五件套齐全才算 v3:start/proxy/stop/info/active)
+static CGoTestStartV3Func g_testStartV3 = nullptr;
+static CGoTestProxyV3Func g_testProxyV3 = nullptr;
+static CGoTestStopV3Func g_testStopV3 = nullptr;
+static CGoTestInfoV3Func g_testInfoV3 = nullptr;
+static CGoStringFunc g_testActiveV3 = nullptr;
+static bool g_testV3 = false;
 
 struct TsfData {
     std::string text;
@@ -202,6 +223,19 @@ static bool LoadCoreLib(std::string &message)
             reinterpret_cast<CGoTestProxyLegacyFunc>(dlsym(handle, "CGoTestProxySingBox"));
     }
     g_testStop = reinterpret_cast<CGoStringFunc>(dlsym(handle, "CGoTestStopSingBox"));
+    // K1 校验导出:可选能力,dlsym 落空不算失败 —— 旧冻结 .so 没有这两个符号,
+    // 此时 checkConfigNative/validateSrsNative 回退 "unsupported"。
+    g_checkConfig = reinterpret_cast<CGoStringOneArgFunc>(dlsym(handle, "CGoCheckConfigV1"));
+    g_validateSrs = reinterpret_cast<CGoStringOneArgFunc>(dlsym(handle, "CGoValidateSRSFileV1"));
+    // K2 V3 会话导出:同样按"可选能力"解析。老 .so 上五个全是 nullptr,
+    // 对应 native 方法回退 "unsupported",绝不会当成成功。
+    g_testStartV3 = reinterpret_cast<CGoTestStartV3Func>(dlsym(handle, "CGoTestStartSingBoxV3"));
+    g_testProxyV3 = reinterpret_cast<CGoTestProxyV3Func>(dlsym(handle, "CGoTestProxySingBoxV3"));
+    g_testStopV3 = reinterpret_cast<CGoTestStopV3Func>(dlsym(handle, "CGoTestStopSingBoxV3"));
+    g_testInfoV3 = reinterpret_cast<CGoTestInfoV3Func>(dlsym(handle, "CGoTestSessionInfoV3"));
+    g_testActiveV3 = reinterpret_cast<CGoStringFunc>(dlsym(handle, "CGoTestActiveSessionsV3"));
+    g_testV3 = (g_testStartV3 != nullptr) && (g_testProxyV3 != nullptr) && (g_testStopV3 != nullptr) &&
+               (g_testInfoV3 != nullptr) && (g_testActiveV3 != nullptr);
     if (g_start == nullptr || g_stop == nullptr || g_setTunFd == nullptr) {
         message = "libsingbox.so 缺少导出符号(CGoStartSingBox/CGoStopSingBox/CGoSetTunFd)";
         g_version = nullptr;
@@ -410,8 +444,9 @@ static napi_value TestProxyNative(napi_env env, napi_callback_info info)
     return nullptr;
 }
 
-// testCapsNative(onResult) —— 回报测速能力:"v2" = 内核支持响应状态判定 +
-// 测速绕过隧道;"legacy" = 跑的是冻结 .so 的旧导出,这两项不可用。
+// testCapsNative(onResult) —— 回报测速能力:"v3" = 内核支持 K2 会话化测速
+// (sessionId 取消/迟到回调防护);"v2" = 支持响应状态判定 + 测速绕过隧道;
+// "legacy" = 跑的是冻结 .so 的旧导出,这两项不可用。
 static napi_value TestCapsNative(napi_env env, napi_callback_info info)
 {
     size_t argc = 8;
@@ -424,8 +459,338 @@ static napi_value TestCapsNative(napi_env env, napi_callback_info info)
         std::string message;
         bool loaded = LoadCoreLib(message);
         if (loaded) {
-            message = g_testV2 ? "v2" : "legacy";
+            if (g_testV3) {
+                message = "v3";
+            } else {
+                message = g_testV2 ? "v2" : "legacy";
+            }
         }
+        EmitString(tsf, message);
+        usleep(200 * 1000);
+        napi_release_threadsafe_function(tsf, napi_tsfn_release);
+    }).detach();
+    return nullptr;
+}
+
+// checkConfigNative(configPath, onResult) —— K1 内核 schema 校验(无副作用:不启动、
+// 不碰环境变量、不写文件)。onResult 收到 "" = 通过(或内核无该能力),否则错误文本。
+// 旧 .so 没有 CGoCheckConfigV1 时回退 "unsupported":调用方据此不标"已验证"。
+static napi_value CheckConfigNative(napi_env env, napi_callback_info info)
+{
+    std::string configPath;
+    size_t argc = 8;
+    napi_value argv[8] = {nullptr};
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    GetArgStringAt(env, argv[0], configPath);
+    napi_value onResult = argc >= 2 ? argv[1] : nullptr;
+    napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+
+    std::thread([configPath, tsf]() {
+        std::string message;
+        do {
+            std::string loadErr;
+            if (!LoadCoreLib(loadErr)) {
+                message = "err:" + loadErr;
+                break;
+            }
+            if (g_checkConfig == nullptr) {
+                // 能力探测语义:老内核没有校验导出,调用方不得据此标"已验证"
+                message = "unsupported";
+                break;
+            }
+            char *pathC = strdup(configPath.c_str());
+            if (pathC == nullptr) {
+                message = "err:failed to allocate config path";
+                break;
+            }
+            char *err = g_checkConfig(pathC);
+            free(pathC);
+            if (err != nullptr && err[0] != '\0') {
+                message = std::string(err);
+            }
+            FreeGoString(err);
+        } while (false);
+        EmitString(tsf, message);
+        usleep(200 * 1000);
+        napi_release_threadsafe_function(tsf, napi_tsfn_release);
+    }).detach();
+    return nullptr;
+}
+
+// validateSrsNative(path, onResult) —— K1 SRS 内容校验(纯解析,无副作用)。
+// onResult 收到 "" = 通过,否则错误文本;内核无该导出时回退 "unsupported"。
+static napi_value ValidateSrsNative(napi_env env, napi_callback_info info)
+{
+    std::string path;
+    size_t argc = 8;
+    napi_value argv[8] = {nullptr};
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    GetArgStringAt(env, argv[0], path);
+    napi_value onResult = argc >= 2 ? argv[1] : nullptr;
+    napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+
+    std::thread([path, tsf]() {
+        std::string message;
+        do {
+            std::string loadErr;
+            if (!LoadCoreLib(loadErr)) {
+                message = "err:" + loadErr;
+                break;
+            }
+            if (g_validateSrs == nullptr) {
+                message = "unsupported";
+                break;
+            }
+            char *pathC = strdup(path.c_str());
+            if (pathC == nullptr) {
+                message = "err:failed to allocate rule-set path";
+                break;
+            }
+            char *err = g_validateSrs(pathC);
+            free(pathC);
+            if (err != nullptr && err[0] != '\0') {
+                message = std::string(err);
+            }
+            FreeGoString(err);
+        } while (false);
+        EmitString(tsf, message);
+        usleep(200 * 1000);
+        napi_release_threadsafe_function(tsf, napi_tsfn_release);
+    }).detach();
+    return nullptr;
+}
+
+// testStartNativeV3(sessionId, configPath, bindIfname, onResult) —— K2:以 sessionId
+// 建立独立测速会话。onResult 收到 "" = 成功,否则错误文本;内核无 V3 导出时
+// 回退 "unsupported"(能力探测语义:调用方不得当成成功)。
+static napi_value TestStartNativeV3(napi_env env, napi_callback_info info)
+{
+    std::string sessionId;
+    std::string configPath;
+    std::string bindIfname;
+    size_t argc = 8;
+    napi_value argv[8] = {nullptr};
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    GetArgStringAt(env, argv[0], sessionId);
+    GetArgStringAt(env, argv[1], configPath);
+    GetArgStringAt(env, argv[2], bindIfname);
+    napi_value onResult = argc >= 4 ? argv[3] : nullptr;
+    napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+
+    std::thread([sessionId, configPath, bindIfname, tsf]() {
+        std::string message;
+        do {
+            std::string loadErr;
+            if (!LoadCoreLib(loadErr)) {
+                message = loadErr;
+                break;
+            }
+            if (g_testStartV3 == nullptr) {
+                message = "unsupported";
+                break;
+            }
+            char *idC = strdup(sessionId.c_str());
+            char *pathC = strdup(configPath.c_str());
+            char *bindC = strdup(bindIfname.c_str());
+            if (idC == nullptr || pathC == nullptr || bindC == nullptr) {
+                free(idC);
+                free(pathC);
+                free(bindC);
+                message = "failed to allocate K2 start arguments";
+                break;
+            }
+            char *err = g_testStartV3(idC, pathC, bindC);
+            free(idC);
+            free(pathC);
+            free(bindC);
+            if (err != nullptr && err[0] != '\0') {
+                message = std::string(err);
+            }
+            FreeGoString(err);
+        } while (false);
+        EmitString(tsf, message);
+        usleep(200 * 1000);
+        napi_release_threadsafe_function(tsf, napi_tsfn_release);
+    }).detach();
+    return nullptr;
+}
+
+// testProxyNativeV3(sessionId, tag, url, timeoutMs, expectStatus, onResult) —— K2:
+// 只在该 sessionId 会话内探测。onResult 收到 "ms" 或 "err:...",与 V2 同构;
+// 内核无 V3 导出时回退 "unsupported"。
+static napi_value TestProxyNativeV3(napi_env env, napi_callback_info info)
+{
+    std::string sessionId;
+    std::string tag;
+    std::string url;
+    std::string expectStatus = "2xx";
+    int timeoutMs = 5000;
+    size_t argc = 8;
+    napi_value argv[8] = {nullptr};
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    GetArgStringAt(env, argv[0], sessionId);
+    GetArgStringAt(env, argv[1], tag);
+    GetArgStringAt(env, argv[2], url);
+    GetArgInt(env, argv[3], timeoutMs);
+    GetArgStringAt(env, argv[4], expectStatus);
+    napi_value onResult = argc >= 6 ? argv[5] : nullptr;
+    napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+
+    std::thread([sessionId, tag, url, timeoutMs, expectStatus, tsf]() {
+        std::string message = "unsupported";
+        do {
+            std::string loadErr;
+            if (!LoadCoreLib(loadErr)) {
+                message = "err:" + loadErr;
+                break;
+            }
+            if (g_testProxyV3 == nullptr) {
+                message = "unsupported";
+                break;
+            }
+            char *idC = strdup(sessionId.c_str());
+            char *tagC = strdup(tag.c_str());
+            char *urlC = strdup(url.c_str());
+            char *expectC = strdup(expectStatus.c_str());
+            if (idC == nullptr || tagC == nullptr || urlC == nullptr || expectC == nullptr) {
+                free(idC);
+                free(tagC);
+                free(urlC);
+                free(expectC);
+                message = "err:failed to allocate K2 probe arguments";
+                break;
+            }
+            char *res = g_testProxyV3(idC, tagC, urlC, timeoutMs, expectC);
+            free(idC);
+            free(tagC);
+            free(urlC);
+            free(expectC);
+            if (res != nullptr) {
+                message = std::string(res);
+            }
+            FreeGoString(res);
+        } while (false);
+        EmitString(tsf, message);
+        usleep(200 * 1000);
+        napi_release_threadsafe_function(tsf, napi_tsfn_release);
+    }).detach();
+    return nullptr;
+}
+
+// testStopNativeV3(sessionId, onResult) —— K2:停止该会话;"" = 实例已确认关闭
+// (含未知/已停止 id 的幂等成功);内核无 V3 导出时回退 "unsupported"。
+static napi_value TestStopNativeV3(napi_env env, napi_callback_info info)
+{
+    std::string sessionId;
+    size_t argc = 8;
+    napi_value argv[8] = {nullptr};
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    GetArgStringAt(env, argv[0], sessionId);
+    napi_value onResult = argc >= 2 ? argv[1] : nullptr;
+    napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+
+    std::thread([sessionId, tsf]() {
+        std::string message;
+        do {
+            std::string loadErr;
+            if (!LoadCoreLib(loadErr)) {
+                message = loadErr;
+                break;
+            }
+            if (g_testStopV3 == nullptr) {
+                message = "unsupported";
+                break;
+            }
+            char *idC = strdup(sessionId.c_str());
+            if (idC == nullptr) {
+                message = "failed to allocate K2 stop argument";
+                break;
+            }
+            char *err = g_testStopV3(idC);
+            free(idC);
+            if (err != nullptr && err[0] != '\0') {
+                message = std::string(err);
+            }
+            FreeGoString(err);
+        } while (false);
+        EmitString(tsf, message);
+        usleep(200 * 1000);
+        napi_release_threadsafe_function(tsf, napi_tsfn_release);
+    }).detach();
+    return nullptr;
+}
+
+// testSessionInfoNativeV3(sessionId, onResult) —— K2:会话快照 JSON("" = 未知会话;
+// "unsupported" = 内核无 V3 导出)。
+static napi_value TestSessionInfoNativeV3(napi_env env, napi_callback_info info)
+{
+    std::string sessionId;
+    size_t argc = 8;
+    napi_value argv[8] = {nullptr};
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    GetArgStringAt(env, argv[0], sessionId);
+    napi_value onResult = argc >= 2 ? argv[1] : nullptr;
+    napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+
+    std::thread([sessionId, tsf]() {
+        std::string message = "unsupported";
+        do {
+            std::string loadErr;
+            if (!LoadCoreLib(loadErr)) {
+                message = "err:" + loadErr;
+                break;
+            }
+            if (g_testInfoV3 == nullptr) {
+                message = "unsupported";
+                break;
+            }
+            char *idC = strdup(sessionId.c_str());
+            if (idC == nullptr) {
+                message = "err:failed to allocate K2 info argument";
+                break;
+            }
+            char *res = g_testInfoV3(idC);
+            free(idC);
+            if (res != nullptr) {
+                message = std::string(res);
+            }
+            FreeGoString(res);
+        } while (false);
+        EmitString(tsf, message);
+        usleep(200 * 1000);
+        napi_release_threadsafe_function(tsf, napi_tsfn_release);
+    }).detach();
+    return nullptr;
+}
+
+// testActiveSessionsNative(onResult) —— K2:当前 active 的 sessionId(逗号分隔,
+// 串行语义下最多一个);"" = 无;内核无 V3 导出时回退 "unsupported"。
+static napi_value TestActiveSessionsNative(napi_env env, napi_callback_info info)
+{
+    size_t argc = 8;
+    napi_value argv[8] = {nullptr};
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    napi_value onResult = argc >= 1 ? argv[0] : nullptr;
+    napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+
+    std::thread([tsf]() {
+        std::string message = "unsupported";
+        do {
+            std::string loadErr;
+            if (!LoadCoreLib(loadErr)) {
+                message = "err:" + loadErr;
+                break;
+            }
+            if (g_testActiveV3 == nullptr) {
+                message = "unsupported";
+                break;
+            }
+            char *res = g_testActiveV3();
+            if (res != nullptr) {
+                message = std::string(res);
+            }
+            FreeGoString(res);
+        } while (false);
         EmitString(tsf, message);
         usleep(200 * 1000);
         napi_release_threadsafe_function(tsf, napi_tsfn_release);
@@ -533,6 +898,15 @@ static napi_value Init(napi_env env, napi_value exports)
         {"testProxyNative", nullptr, TestProxyNative, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"testStopNative", nullptr, TestStopNative, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"testCapsNative", nullptr, TestCapsNative, nullptr, nullptr, nullptr, napi_default, nullptr},
+        // K1 无副作用校验(缺失导出时回调 "unsupported")
+        {"checkConfigNative", nullptr, CheckConfigNative, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"validateSrsNative", nullptr, ValidateSrsNative, nullptr, nullptr, nullptr, napi_default, nullptr},
+        // K2 会话化测速(V3;缺失导出时回调 "unsupported")
+        {"testStartNativeV3", nullptr, TestStartNativeV3, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"testProxyNativeV3", nullptr, TestProxyNativeV3, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"testStopNativeV3", nullptr, TestStopNativeV3, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"testSessionInfoNativeV3", nullptr, TestSessionInfoNativeV3, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"testActiveSessionsNative", nullptr, TestActiveSessionsNative, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     return exports;

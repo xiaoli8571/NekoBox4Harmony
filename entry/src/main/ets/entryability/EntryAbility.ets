@@ -9,13 +9,21 @@ import common from '@ohos.app.ability.common';
 import notificationManager from '@ohos.notificationManager';
 import BusinessError from '@ohos.base';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
-import backgroundTaskManager from '@ohos.resourceschedule.backgroundTaskManager';
-import wantAgent from '@ohos.app.ability.wantAgent';
 import { initStore, loadSettings, LogStore } from '../model/Store';
-import { subscribeVpnEvents, unsubscribeVpnEvents, publishAppForeground } from '../core/VpnIpc';
+import { subscribeVpnEvents, unsubscribeVpnEvents, publishAppForeground, VpnEnvelope, subscribeVpnApplied, unsubscribeVpnApplied, VpnApplyResult } from '../core/VpnIpc';
 import { VpnService } from '../core/VpnService';
+import { RuleSetRepository, HttpResourceFetcher } from '../core/RuleSetRepository';
+import { ResourceValidator } from '../core/ResourceValidator';
+import { CoreManager } from '../core/CoreManager';
+import { KeepAliveManager } from '../core/KeepAliveManager';
+import { CrashGuard } from '../core/CrashGuard';
 import { needAutoUpdate, updateSubscription, markSubSuccess, markSubFailure, setAppContext } from '../core/Subscriptions';
 import { subErrorText } from '../utils/Subscription';
+import { ConfigRepository } from '../core/ConfigRepository';
+import { SubscriptionSourceStore } from '../core/SubscriptionSourceStore';
+import { ProbeStore } from '../core/ProbeStore';
+import { MigrationV5, MigrationResult } from '../model/MigrationV5';
+import { errText } from '../utils/ErrText';
 
 /**
  * 窗口/系统栏底色的**显式**取值,与 `resources/{base,dark}/element/color.json` 的 `bg_page` 逐字一致。
@@ -73,20 +81,10 @@ export default class EntryAbility extends UIAbility {
       if (due.length === 0) {
         return;
       }
-      const agent = await wantAgent.getWantAgent({
-        wants: [{
-          bundleName: this.context.abilityInfo.bundleName,
-          abilityName: 'EntryAbility'
-        }],
-        actionType: wantAgent.OperationType.START_ABILITY,
-        requestCode: 1003,
-        actionFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
-      });
-      await backgroundTaskManager.startBackgroundRunning(
-        this.context,
-        backgroundTaskManager.BackgroundMode.DATA_TRANSFER,
-        agent);
-      backgroundRunning = true;
+      /* 只有**真实数据传输**才持有长时任务(2026-10-23 整改):
+       * DATA_TRANSFER 的 SDK 语义是上传/下载,10 分钟无 live view 进度通知会被系统取消;
+       * 订阅更新通常几秒完成,远低于取消线。会话级保活不在这里做(见 KeepAliveManager 注释)。 */
+      backgroundRunning = await KeepAliveManager.beginTransfer('subscription');
       for (const sub of due) {
         try {
           const result = await updateSubscription(sub.url);
@@ -101,11 +99,7 @@ export default class EntryAbility extends UIAbility {
       LogStore.addLog(`[app] 后台订阅更新任务失败: ${e}`);
     } finally {
       if (backgroundRunning) {
-        try {
-          await backgroundTaskManager.stopBackgroundRunning(this.context);
-        } catch (e) {
-          LogStore.addLog(`[app] 释放后台订阅任务失败: ${e}`);
-        }
+        await KeepAliveManager.endTransfer('subscription');
       }
       this.backgroundUpdating = false;
     }
@@ -233,13 +227,52 @@ export default class EntryAbility extends UIAbility {
     });
   }
 
+  /**
+   * P1/W04：配置快照仓库初始化 + v4→v5 迁移(§14.4)；P2/W09：检测结果独立存储初始化。
+   * 放在独立异步方法里 fire-and-forget：任何失败只记日志/标记，**不得阻断应用启动**、
+   * 不得清空数据(§14.4-11/§18「迁移中断」行；旧 Preferences 数据保持可读)。
+   */
+  private async initConfigRepositoryAndMigrate(): Promise<void> {
+    try {
+      await initStore(this.context);
+      await ConfigRepository.init(this.context);
+      // P2/W09:检测结果与节点配置独立存储(§6.2);未初始化时 ProbeStore.saveRun 安全返回 false
+      ProbeStore.init(this.context);
+      // P1/W08:规则集资源仓库就绪(K1 验证能力来自 W05 已落地的 CGoValidateSRSFileV1 桥接)。
+      // 下载器用内置 HttpResourceFetcher(仅真正触发下载时联网,P4 接线消费方)。
+      RuleSetRepository.init(this.context);
+      RuleSetRepository.setFetcher(new HttpResourceFetcher());
+      RuleSetRepository.setValidator(ResourceValidator.fromKernelBridge(
+        (path: string): Promise<string> => CoreManager.validateSrs(path)));
+      // P5/W17:订阅原始层存储(每次获取的不可变源快照,订阅事务写、编辑器不碰)。
+      SubscriptionSourceStore.init(this.context);
+      const result: MigrationResult = await MigrationV5.ensureMigrated(this.context);
+      if (result.ok) {
+        LogStore.addLog(`[app] 配置仓库就绪: revision=${result.revision}` +
+          (result.skipped ? '(已迁移,跳过)' : '(本次迁移完成)'));
+      } else {
+        LogStore.addLog(`[app] v5 迁移未完成(旧数据保持不变,不影响使用): ${result.error}`);
+      }
+    } catch (e) {
+      LogStore.addLog(`[app] v5 迁移异常(已忽略,不影响启动): ${errText(e)}`);
+    }
+  }
+
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     LogStore.addLog('[app] NekoBox 启动');
     this.handleAction(want);
     this.applyAppearance();
+    // 长时任务只能用 UIAbility 上下文申请(传输期守卫用)
+    KeepAliveManager.setContext(this.context);
+    // 被杀自愈:读回上次运行状态 + 注册 APP_KILLED/JS_ERROR/CPP_CRASH 事件 watcher(FlClash 同款)
+    CrashGuard.init(this.context).catch((e: Object) => {
+      LogStore.addLog(`[app] CrashGuard 初始化异常(忽略): ${e}`);
+    });
     /* ⚠️ 智感握姿**不在这里**启动:它要走 motion 系统服务(含一次同步调用),
        放在 onCreate 会占住启动关键路径(服务异常时表现为卡在开屏页)。
        改到首页 `Index.aboutToAppear` 里启动,见 common/Handedness.ets 的注释。 */
+    // P1/W04:快照仓库 + v5 迁移(异步,失败不阻断启动,见 initConfigRepositoryAndMigrate 注释)
+    this.initConfigRepositoryAndMigrate();
     this.updateDueSubscriptionsInBackground();
     // 请求通知权限(常驻通知用),用户拒绝也不影响功能
     try {
@@ -276,6 +309,34 @@ export default class EntryAbility extends UIAbility {
           LogStore.addLog('[app] connected 状态回调缺失，已根据 VPN 流量恢复连接状态');
         }
       }
+    }, (env: VpnEnvelope) => {
+      // §16.1:信封随行时记录扩展会话与实际生效修订(AppState 键,P4 待应用条消费);
+      // sequence 排序/去重在 P4 全量接入时启用,此处先落存储不改变既有状态机。
+      AppStorage.setOrCreate('vpnSessionId', env.sessionId);
+      AppStorage.setOrCreate('vpnAppliedRevision', env.appliedRevision);
+      AppStorage.setOrCreate('vpnEventSequence', env.sequence);
+    });
+    /* P4/W16:应用事务回执(与状态事件分开订阅,§12.3 只认匹配 operationId/revision 的确认) */
+    this.subscribeApplyResults();
+  }
+
+  /**
+   * P4/W16：应用事务回执 → AppStorage(§12.3-5/6)。
+   * 只写结果键，不在这里改设置/配置：UI 侧按 operationId/sessionId/revision 匹配后才结束事务。
+   */
+  private subscribeApplyResults(): void {
+    subscribeVpnApplied((result: VpnApplyResult) => {
+      AppStorage.setOrCreate('vpnApplyOk', result.ok);
+      AppStorage.setOrCreate('vpnApplyError', result.error);
+      AppStorage.setOrCreate('vpnApplyPerApp', result.perAppSummary);
+      const env = result.env;
+      if (env !== null) {
+        AppStorage.setOrCreate('vpnApplyOperationId', env.operationId);
+        AppStorage.setOrCreate('vpnAppliedRevision', env.appliedRevision);
+        AppStorage.setOrCreate('vpnApplySessionId', env.sessionId);
+      }
+      LogStore.addLog(`[app] 应用事务回执 ok=${result.ok} revision=${env !== null ? env.appliedRevision : 0}` +
+        (result.error.length > 0 ? ` error=${result.error}` : ''));
     });
   }
 
@@ -331,6 +392,7 @@ export default class EntryAbility extends UIAbility {
   onDestroy(): void {
     handedness.stop();
     unsubscribeVpnEvents();
+    unsubscribeVpnApplied();
   }
 
   onForeground(): void {

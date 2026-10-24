@@ -1,5 +1,243 @@
 # Phase A-D Implementation Status
 
+## 真机反馈第五轮:横幅说谎/压状态栏/稍后死按钮(2026-10-24,用户已验证)
+
+- **横幅在连接后冒出来谎称"点应用立即生效"**:链路 = 分应用勾选即时保存(VPN 未运行 → 标记"下次连接生效",r16–r20 五连存)→ 用户连接(扩展启动加载磁盘快照,**配置实际已生效**)→ 但壳层 `pendingChanges` 计数未在连接成功路径清账 → `pendingChanges>0 && isRunning` 横幅亮出且文案错误。修复:`ApplyCoordinator.markAllAppliedOnConnect()`(连接成功 ⇒ appliedRevision 对齐 savedRevision、pendingChanges 清零、phase 收敛 applied;**phase=applying 时不抢裁决**,回执在途交给 acceptAck/超时),`onVpnStatusWatch` connected 分支调用。
+- **横幅压状态栏**:横幅在 immersive 内容 Column 的 y=0 渲染(时钟/电池被盖、应用按钮与状态栏图标重叠)。新增 `@State bannerTopVp`(aboutToAppear 经 `statusBarTopVp()` 量状态栏),横幅 `margin.top` 挂上。
+- **「稍后」死按钮做真**:`@State applyBannerDismissed` 本会话收起横幅(草稿保留,断开重连自然生效);新保存(`markSaved`)自动重新亮出。
+- **分应用交互口径(用户问询确认)**:无单独保存按钮,勾选/模式切换**即时落盘**(每次动作一轮 commit);VPN 未运行 toast"下次连接生效",运行中自动走应用事务。
+- **验证**:Node **43 套件全 PASS**;debug HAP 重装真机,用户亲自验证横幅行为正常("我验证了,没问题");`Get color by id error` 0 条。**未 commit(等待用户指示后随本轮推送)**。
+
+## 真机反馈第四轮:分应用无反应根因/横幅死按钮/内联新建规则/分应用顶距(2026-10-24,已重装真机)
+
+- **分应用「点应用/取消没反应+顶部提示常驻」根因**:`commitAndApplySettings` 提交的是内存里的**旧** `this.settings`(PerAppManager 自己写 Preferences,壳层副本过期)→ 扩展快照比对 `settings_out_of_sync` 拒绝 → 回执不到 → 横幅永不消失。修复:提交前 `loadSettings()` 盘上回读再 commit。横幅死按钮补刀:VPN 未运行时不再挂横幅,改 toast 提示「已保存,连接后生效」。
+- **新建规则不再跳页**(用户指示):`QuickRuleDialog` @CustomDialog 当前页内完成(类型 6 选/载荷/出站 3 选),走 RuleEditor 同套 `emptyForm/validateForm/formToRule` 校验(错误码→`quickError` 行内显示),行内「编辑」仍进完整表单页。
+- **分应用 tab 内容顶距 442px 根因**:ArkUI **Scroll 对短于视口的内容默认垂直居中**(dump 算术:子组件 h=1383 在视口 h=2164 中偏移 ≈(2164-1383)/2=390,与实测 395 吻合;规则 tab 内容高所以从未暴露)。修复:perAppTab 拆掉外层 Scroll 改 `Column.layoutWeight(1)` 顶排(PerAppManager 内部 List 自滚动);同时全仓扫描该模式,`SubDetailPage` 的 Scroll 补 `.align(Alignment.Top)`(Tools/About/Settings/ProfileEdit/RuleEdit 早已带,唯二漏网即此两处)。
+- **真机黑屏事故(装机后当场反馈,已解决)**:症状 = 界面全黑但 layout 树完整;hilog 每秒刷 `AceResource: Get color by id error id=16777860/16777857`。根因 = **增量构建产物脏**:中途 `rm -rf entry/build/default/intermediates` 后重编,resources.index 与代码引用的资源 ID 错位。处置:`rm -rf entry/build` 全清重建 → 同一包结构重装 → 颜色错误 **0 条**,截屏 `dist/device-after-clean.jpeg` 界面正常(抽屉/工具卡/STUN 输入框俱全)。教训入档:构建问题先全清再查代码。
+- **验证**:Node **43 套件全 PASS**;debug HAP 17,577,524 B,包内 `libsingbox.so` sha256 `9b05c0bfccad124f` 冻结未动;真机重装+启动 0 资源错误、UI 正常渲染。**待用户让出设备后复测**:分应用顶距(预测 ≤20px)、分应用应用事务横幅消失、内联新建规则落库。**未 commit**。
+- **2.3.0 发布包重打**(含本轮修复,AppScope 版本未动仍 2.3.0/2300000):release assembleHap+assembleApp BUILD SUCCESSFUL;`sign-release-agc.ps1` 双层签名两层 verify 通过、发布证书链指纹一致(叶子 `E3:5A:CF:…`);产物 `dist/NekoBox-2.3.0-release-signed.hap`(15,069,086 B,sha256 `3ce89c91…`)、`dist/NekoBox-2.3.0-release-signed.app`(14,025,513 B,sha256 `aa86d71d…`)、`dist/NekoBox4Harmony-2.3.0-unsigned.hap`(15,007,465 B,sha256 `c3e2be38…`);签名包内 .so 仍 `9b05c0bf…` 冻结。未推 GitHub Release(未获指示)。**未 commit**。
+
+## 真机反馈第二/三轮:内核红字/设置页收口/订阅行距/系统页/分应用迁移(2026-10-24,已重装真机)
+
+用户真机反馈逐项修复(每项装真机复核):
+
+- **内核 `route: watch rule-set file` permission denied 红字**:根因 = 内核对 local rule-set 做 fswatch,OHOS 应用存储别名(/data/storage/el2/*)不允许 inotify。路径换算方案真机证伪(扩展进程命名空间里 /data/app/el2/100/... 不存在,内核 open 拒绝启动)已回滚;**终案 = geo 规则集改 `remote + initial_path`**(启动顺序 cache→initial_path 本地文件→才网络;update_interval 10 年;URL 用 jsdelivr 镜像并带 `?v=<mtime>-<size>` 让 geo 更新绕开内核缓存)。真机验证:连接后 singbox.log **0 ERROR / 0 watch**。
+- **设置页「应用/稍后/放弃」全部撤除**:待应用条+变更列表 sheet 删除;**保存(右上按钮)即自动走应用事务**(save→requestApply→commitAndApplySettings,运行中由扩展串行重连一次);「恢复默认」同口径;`persistPerApp`/分应用模式切换的直连 `VpnService.switchTo` 一并移除(**修双重重启**);8 个待应用条资源键删除;functional-audit 改测新语义(保存失败不得应用旧设置,成功恰好一次)。
+- **订阅行距过大**:真凶是 **P5 遗留 bug**——行内 name Text 带了纵向 `layoutWeight(1)`(在 Column 里被解释成高度权重,把行撑到 1400+px,真机 layout 取证实锤);移除该权重 + 行距收紧(padding 12→8、space 6→4、URL 10fp、按钮 28→24,热区仍 44)。
+- **收藏入口找不到**:长按菜单「置顶/取消置顶」→「**收藏/取消收藏**」(pinned 同字段,与工具条「收藏」筛选同口径,排序仍置顶)。
+- **非节点页顶部空带**:tab≠0 原本用含模式行/分组条的整栏 contentTopInset 垫顶,多出 ~130px;新增 `titleOnlyInset`(nbTitleProbe 标定,仅标题栏高)。真机分流页实测间隙 33px。
+- **新建规则页顶控件被状态栏盖住**:新建 `common/PageTopInset.ets`(`getAvoidArea(TYPE_SYSTEM)` 运行时状态栏高度+8);RuleEdit/ProfileEdit/SubDetail/Connections 四个二级页全部接上。
+- **工具+关于合并为「系统」页**(用户指示):Navigation 6 页(legacy tab 5/6 → system),新 `SystemPage`(实用工具/关于 chips,复用两原组件),抽屉图标沿用;navigation.cjs 按新契约更新(意图保留)。
+- **分应用完整管理迁分流页**(用户指示,P4 遗留#2 关闭):新自包含组件 `pages/PerAppManager.ets`(模式/搜索/条目/添加对话框/剪贴板导入导出,保存即回调 `onApplyPerApp` 走应用事务);设置页该区整体移除(设置搜索过滤 perapp 分区)。
+- **验证**:Node **41 套件全 PASS** + Go PASS + BUILD SUCCESSFUL(HAP 14,993,633 B,.so `9b05c0bf…` 冻结未动);真机已装:系统页渲染正常(chips+关于)、VPN 可连且内核 0 ERROR。**未 commit**。
+
+## 真机反馈撤回轮:去侧边详情栏 + 状态卡连接按钮(2026-10-24,2.3.0 已重装真机)
+
+- **用户真机反馈(装机后当场提出)**:① 不要侧面显示节点信息的详情栏;② 顶部连接按钮去掉(有大电源键)。
+- **撤侧栏**:`configFragment` 双栏分支与单列详情视图删除,`nodeDetailPane`/面板辅助方法/`onNodeTap` 面板钩子/`uiBreakpoint @Watch`/`paneState` 全撤;`model/ResponsiveLayout.ets` 与 `tests/responsive-layout.cjs` 删除;`nodes_detail_*` 5 个资源键移除(base/en 各 835→830 对称);`p6-ui-static` 第 5 组改为**无侧栏回归守卫**(Index 不得再出现 nodeDetailPane/twoPaneEnabled/paneState/ResponsiveLayout)。
+- **状态卡去连接按钮**:主「连接/重试」按钮删除(启动/断开统一走大电源键),「检查连接」「详情」保留并 layoutWeight 等分;死代码 `primaryActionText/primaryActionColor/onStatusPrimaryAction/cancelSessionAction` 删除。
+- **验证**:Node **41 套件全 PASS** + Go PASS;release assembleHap BUILD SUCCESSFUL(HAP 15,004,034 B,.so `9b05c0bf…` 冻结未动);真机重装(`entry-default-signed.hap` 2.3.0 debug 链,数据保留)后 uitest layout 取证:**无侧栏痕迹(编辑/保存改名/返回不在屏)、无「连接」按钮、单列节点列表正常**,截图 `dist/device-2.3.0-after-revert.jpeg`。文档同步:p6 报告/req-traceability(REQ-22 回退 ⚠️,19✅/5⚠️)/upgrade-notes/2.2 §10。
+- **未 commit**。REQ-22 断点双栏按用户裁决撤回,宽屏形态如再引入需先过用户确认。
+
+## 全面改造复审 + 版本 2.3.0 发布打包(2026-10-24)
+
+- **全面复审修复**(打包前过一遍本轮全部改动):
+  1. **连接页 `startTimeText` 返回值进模板串**——`start=0` 时把 Resource 插值成 `[object Object]`(§24.2-6 红线)→ 改回 `string`(未提供文案经 `resText` 现取),并加静态守卫断言;
+  2. **单列点击节点不再整页跳详情**——`selectInPane` 误把单列选择置 `detailOpen=true`,手机上点节点会替换整个列表(改变既有交互,违背 §13.2"单列详情进二级页")→ 选择只更新选中,详情视图仅由 large→compact 收缩时 `paneTransition` 保留;模型测试同步;
+  3. 单列详情视图补顶部让位(`contentTopInset`)+ 左右边距(immersive 顶栏 overlay 口径);双栏子 Column 去掉与 `layoutWeight` 冲突的 `width('100%')`;
+  4. `closeDetail` 清掉恒 false 三元与未用参数。
+- **新增守卫**:`i18n-keys.cjs` 占位符中英一致检查(122 个带参键 `%n$s/%n$d` 序列逐位对齐,防参数错位/漏译);`p6-ui-static.cjs` 补 startTimeText 返回类型断言。
+- **版本 2.3.0/2300000**(用户指示):`AppScope/app.json5` + 根/entry `oh-package.json5` 统一(原基线 2.2.1/2200001)。
+- **构建/交付**:`assembleHap` + `assembleApp`(project/release)BUILD SUCCESSFUL;内层 HAP `2.3.0/2300000/buildMode=release/minAPI 60101024`,包内 `.so` sha256 `9b05c0bfccad124f`(16 导出,冻结内核未动)。AGC 双层签名(`scripts/sign-release-agc.ps1`,口令仅经环境变量):两层 `verify-app` 通过 + 发布证书链指纹断言(叶子 `E3:5A:CF:…`,与 2.1.x/2.2.0 发布证书同一张)。产物:
+  - `dist/NekoBox-2.3.0-release-signed.hap`(SHA256 `1331FAE8744945D9CC125A4330673FC2AD64806469C678A3A5DE2748E4BA69B3`)
+  - `dist/NekoBox-2.3.0-release-signed.app`(SHA256 `1C5E73BA13F2C838B8BB1FD7C72E5781ED8605E4E652B0FA840E30182BF05E21`)
+  - `dist/NekoBox4Harmony-2.3.0-unsigned.hap`(15,022,348 B)
+- **验证**:Node **42 套件全 PASS**;`tests/hostprobe` Go PASS。真机安装/回归**待验**(无 HDC 设备)。
+- **真机推送(2026-10-24,无线调试 192.168.3.146:39933)**:release-signed 装机报 9568322(设备上原装是 **debug 签名 2.2.1**,签名源不同不可覆盖)→ 改装同链路 debug 签名产物 `entry-default-signed.hap`(2.3.0),`-r` 覆盖成功、数据保留,`bm dump` 回读 2.3.0/2300000;启动无崩溃,首页渲染经 uitest layout 验证(分组/状态卡/工具条/节点行在屏),P5 订阅事务真机跑通(快照 r2→r4、原始层 22 节点、长时任务 3.9s 释放);截图 `dist/device-2.3.0-home.jpeg`。
+- **未 commit**;release profile 仍为历史 udid 白名单(与此前发布包同设备清单,装不上先查白名单)。
+
+## 全面改造 P6 适配与回归 + P7 发布检查(2026-10-24,W21/W22)
+
+依据 `docs/REDESIGN-PLAN-2026-10-23.md` §13/§23/§24。报告：`docs/p6-foundation/README.md`、`docs/p7-release/README.md`。
+
+- **W21 i18n 收口(P4 硬缺口清零)**：设置页 `SETTING_LABELS` **16→54 条全量** + `SECTION_LABELS` 9 分区 + 待应用条/对话框/搜索占位全资源化;`SettingsSchema.summaryText→token`、`impactLines→impactParts`;`i18n-keys.cjs` 收紧为 54/54+9/9 强制对齐。
+- **W21 订阅/连接/日志/订阅详情文案资源化**:`SubscriptionList` 模型 token 化(行文本/状态/空态/摘要/逐订阅结果/导入识别,模型不再产用户语言),`SubscriptionPage` 全 $r 映射 + 反馈条结构化 props(`batchOutcomes/batchSummaryModel/batchVisible`,Index 传模型);`ConnectionView` 空值不再注入「未提供」(页面资源键兜底);`ConnectionsPage` 筛选/证据卡/占位符;`LogPage` 导出对话框 + `redactPreview` 结构化;`SubDetailPage` 墓碑区。资源键 base/en_US **700→835 对称**。
+- **W21 响应式双栏(§13.2)**:新 `model/ResponsiveLayout.ets`(600/840 断点、`paneTransition` 断点迁移**保留详情选择与改名草稿**、`selectInPane/closeDetail`);Index 节点页 ≥840vp 列表+详情双栏(右栏改名草稿存 `PaneState` 不进组件局部状态,断点来回切不丢;空选择占位说明)、600–839 单列紧凑;`uiBreakpoint` 加 `@Watch` 走纯函数迁移。
+- **W21 热区/无障碍/等宽(§13.1/§13.3)**:`GlowIconButton` 暴露 `a11yText/a11yReason`,顶栏动作读屏名称+**禁用原因**(`nav_reason_*`);节点页 ⋮「连接列表」资源键(§3.3 TODO 清零);订阅行 28 高/墓碑 26 高按钮 `responseRegion` 扩 44×44(视觉不变);延迟/速率/流量 `fontFamily('monospace')`(节点行/连接页行与汇总/订阅行/详情面板)。
+- **W22 发布检查**:`docs/upgrade-notes-2.2.md` 补 P5/P6 行为变更(订阅三层/远端改名不再加删/304 语义/流量清除改基准/导出默认脱敏/双栏);`docs/p7-release/README.md` 按 §24.2 十条逐项出检查清单 + §24.3 交付物矩阵 + §22 设备验收矩阵,**真机项全部标「待验」**。
+- **验证**:release assembleHap **BUILD SUCCESSFUL**(HAP **15,022,284 B**,包内 .so sha256 `9b05c0bf…`,16 导出,冻结内核未动);**Node 42 套件全 PASS**(新增 `responsive-layout` 5 组、`p6-ui-static` 6 组静态防漂移);Go hostprobe PASS。
+- 降级项(如实):Index 壳层 P3 中文兜底(状态卡 ~200 处)与 HomeView 延迟 token 中文未动(本轮任务范围为 P5 文案+设置页,如实遗留);双栏仅节点页(分流规则编辑器仍二级页,600–839 按方案不强行双表单);字体档位/读屏/键盘走查/浅深色视觉待真机。**未 commit**。
+
+## 全面改造 P0 基线 + P1 基础层(2026-10-24,W03~W08)
+
+依据 `docs/REDESIGN-PLAN-2026-10-23.md`。完整报告：`docs/p0-baseline/README.md`、`docs/p1-foundation/README.md`。
+
+- **W03 配置快照仓库**：`model/ConfigSnapshot.ets`(schema v5 内容模型 + FNV-1a checksum + 固定键序)、`core/SnapshotStore.ets`(原子写/读回/列举)、`core/ConfigRepository.ets`(单写者队列、双槽 manifest、单调 revision、读回复核、三级恢复、孤儿快照防护、GC 保留 3 版)。`tests/config-repository.cjs` 14 项 PASS(含注入 manifest 写失败不推进保存状态、校验和篡改拒绝、未来 schema 拒绝、回滚、保留未知键)。
+- **W04 v5 迁移**：`model/MigrationV5.ets`——6 键原文采集 + 总 hash、一次性恢复点 `config/migration/pre-v5-backup-<ts>.json`、稳定 ID 分配(既有 ID 保留、空 ID 生成 `p_/grp_/sub_/rule_/rset_`)、`id-map.json` 映射表、风险标记(include 空名单/超限/非法包名/packages 规则加 `unsupportedOnPlatform`/悬空引用)、`commitInitial` 提交 + 重读核对、`config_migration_v5` 标记;`EntryAbility` fire-and-forget 初始化(失败不阻断启动、旧数据零改动)。`tests/migration-v5.cjs` 12 项 PASS。
+- **W05 K1 内核校验导出**：`CGoCheckConfigV1`(配置 schema 纯解析)、`CGoValidateSRSFileV1`(srs.Read 纯解析),无 `box.New`/不碰环境变量/不写文件(源码级守卫测试);NAPI `checkConfigNative/validateSrsNative`(dlsym 缺失回退 `"unsupported"`)+ `CoreManager.checkConfig()/validateSrs()`;.so 重编为 11 导出 sha256 `fa0b67c4…`,HAP 内含同一 .so。`tests/hostprobe` 全绿(含 19 项 K1 用例)。
+- **W06 运行状态协议骨架**：`core/VpnIpc.ets` 事件信封(`VpnEnvelope`:protocolVersion/sessionId/generation/sequence/operationId/appliedRevision/configHash/emittedAt)+ `VPN_CMD` 命令通道 + `VPN_APPLIED` 回执;`core/ApplyCoordinator.ets` saved/applied 分离事务状态机(operationId 去重、迟到/跨会话回执拒绝、一次有界恢复);`VpnExtAbility` 状态带信封 + `query` 命令;设计文档 `docs/p1-design/runtime-protocol.md`。`tests/runtime-protocol.cjs` 8 项 PASS。
+- **W07 分应用门控**：`model/PerAppPolicy.ets` 纯函数(include 空名单→block、超限 64/256→block、非法/重复包名 dropped、blocked 时生效名单清空);`VpnService.connect` 启动前评估、`VpnExtAbility.startVpn` TUN 前同函数评估(Want CSV 与读盘同构);删除"空名单=全部应用"静默降级。`tests/per-app-policy.cjs` 8 项 PASS。
+- **W08 规则集仓库**：`core/ResourceValidator.ets`(内核验证归一化/`unsupported` 不标已验证/SHA-256)、`core/RuleSetRepository.ets`(版本化内容寻址缓存、严格下载顺序、§7.5 失败策略 block/allow-unverified、GC current+previous、路径穿越安全 ID、单写者队列)、`EntryAbility` 接线 `init`+validator bridge。`tests/ruleset-repository.cjs` 17 项 PASS。
+- **验证**：Node 23 套件全 PASS(新增 5 套 + 既有 18)、Go hostprobe 全 PASS、release assembleHap BUILD SUCCESSFUL(14,519,422 B,包内 .so `fa0b67c4…`)。**无 HDC 设备**:迁移落盘、TUN、分应用真实流量、通知速率等真机项保持「待验」,未标通过。
+- 环境修复(机器级,非仓库):OHOS Go fork 补 `sync.WaitGroup.Go` 回植文件;`fsutil` 给 "DevEco Studio" 补 8.3 短名以修复 cgo CC 路径含空格。
+- **未 commit**;改造前工作区快照仍在 git stash(`P0-baseline 2026-10-24 redesigned snapshot`)。
+
+## 全面改造 P4 分流规则模型与设置应用事务(2026-10-24,W13/W16)
+
+依据 `docs/REDESIGN-PLAN-2026-10-23.md` §8/§12/§18。报告：`docs/p4-foundation/README.md`；设计：`docs/p4-design/apply-transaction.md`。
+
+- **规则类型化模型**（`model/RoutingRules.ets`）：类型 token（domain/domain_suffix/domain_keyword/domain_regex/rule_set/ip_cidr/geoip/port/port_range/network/process_name + 旧 package/advanced）；稳定 ID；旧多字段 AND 行**无损保留**（`legacyRow`，编译时合并进同一条内核规则，杜绝删条件放宽匹配）；校验（空载荷/CIDR/端口/正则/重复/规则集引用缺失）；重叠检测；`compileManifest`（排除禁用与 unsupported、按序、fnv1a32 哈希）；`toKernelItems` 与 `buildCustomRule` 16 字段同口径；`validateDnsProjection`（仅报可证明的回环：directDns 为域名时自举）；旧包名规则处理选项（保留暂停/转换/删除，**不自动转换**语义）。
+- **设置 Schema**（`model/SettingsSchema.ets`）：54 项注册表 = `AppSettings` 全部字段（防漂移测试直接读源码比对，漏登记即红）、9 分区、三档生效分类（即时效/下次任务/需要重连）、`diffSettings` 差异（数字按值/布尔按值/字符串不 trim/applied 缺键用默认兜底）、`summaryText`/`impactLines`/`searchSettings`/`sectionDefaults`。
+- **设置应用事务**：扩展侧 `VpnExtAbility.handleApplyCommand`——幂等（同 operationId 重投重播）、只读校验目标 revision 快照（schema/revision/checksum）、本地设置与快照一致性校验（不一致回 `settings_out_of_sync:<key>` 不重启）、单次串行重启、回执 `ok/appliedRevision/perAppSummary/error`；新增 `queryApplyStatus`；`VpnIpc.publishVpnApplied` 增 `error` 参数 + `VpnApplyResult`/`subscribeVpnApplied`；`EntryAbility` 写 AppStorage 六键。
+- **设置页**：待应用条（差异计数 + 「需要重连/下次任务/即时生效」影响）、变更列表 sheet（旧值→新值 + 分类徽标）、应用/稍后/放弃、分区「恢复默认」（只写草稿仍走条）、设置搜索面板、模式切换改走同一事务。
+- **全局横幅**：节点/分流页顶部待应用横幅；`ConfigRepository.commit(mutation)` → `markSaved` → 运行中发布 `apply` 命令 → `@Watch` 匹配 operationId 后 `acceptAck`；未运行标记"下次连接生效"（不假装生效）；模式切换 300ms 去抖合并为一次提交+一次应用；60s 无回执按失败处理并保留待应用。
+- **订阅页 ⋮**：排序（名称/最近）、更新选中、自动更新设置入口、删除选中（二次确认）。
+- **验证**：release assembleHap **BUILD SUCCESSFUL**（HAP 14,745,865 B，.so `9b05c0bf…`）；Node **31 套件全 PASS**（新增 routing-rules 21 组、settings-schema 25 组）；Go hostprobe 全 PASS。
+- 未完成（下一轮）：W14 分流四子页、W15 策略组管理与热切换；降级项见报告 §4（36 个 labelToken 缺资源键、搜索非逐字段、恢复默认仅 5 分区、横幅无计数等）。
+
+## 全面改造 P4 第二批 分流四子页与策略组(2026-10-24,W14/W15)
+
+- **规则编辑器模型**（`model/RuleEditor.ets`）：表单往返（旧 AND 行条件存 legacyRow 旧键位、不丢不放宽）、12 个校验码逐字段定位（域名/CIDR/端口开区间/正则原文/JSON/网络/目标引用）、目标缺失 `target_missing` 不自动改 proxy/direct、`moveRule`、旧包名规则三动作（convert 必须用户显式改写）、`toLogicalExpression` AND 预览。
+- **Clash API 客户端**（`core/ClashApi.ets`）：GET /proxies、GET /proxies/<tag>、PUT /proxies/<tag>（对 sing-box 源码核对 204/400 Must be a Selector/404/401、空 secret 不带头），可注入传输便于测试。
+- **策略组模型**（`model/PolicyGroups.ets`）：稳定 tag `group-<enc(id)>`、组校验（空组/缺失引用/环含自引用/重复 tag/失效前置）、`compileGroups`、`hotSwitchDecision`（不可切一律 needsRebuild）、`verifyNow`（只信 PUT 后的 GET `now`）、`actualMemberView`（未知即「实际节点未知」，不拿历史延迟推断）。
+- **内核组图（ConfigBuilder）**：非选中策略组也按稳定 tag 下发 selector/urltest（参数与选中组同口径）；节点按 tag 去重（多组共享成员不重复下发，避免内核 duplicate tag 启动失败）；规则支持 `group:<id>` 指向组出站；空组不下发、引用空组的规则跳过并告警。
+- **组播拒绝语义修正（§7.4/C7 行为变更）**：`ip_cidr`+`source_ip_cidr` 同规则 AND（几乎永不匹配）→ `logical/or`（源**或**目的命中即拒绝），范围仍 `224.0.0.0/3`+`ff00::/8`；`tests/parity-config.cjs` 已按新语义断言。
+- **分流页**（`pages/RouteRulesPage.ets` 重写 + 新建 `pages/RuleEditPage.ets`）：四子页签（分应用/域名·IP规则/规则集/策略组）、顶部「使用中配置 rN · 待应用 M 项」、按 `compileManifest` 最终编译顺序编号并标注来源、校验聚合条（错误红/警告黄、定位 ruleId）、行内开关/上下移/复制/删除、旧规则区三动作、规则集真实下载/验证时间戳（未验证不标）、策略组真实状态与实际成员与切换（selectProxy → GET 核对 → 才显示已切换；urltest 不给切换按钮）。
+- **本地化**：44 个设置项/分区资源键（base+en_US 键集合一致）+ `tests/i18n-keys.cjs` 防漂移测试。
+- **导航**：`NavMemory.hasRoutingTab()` 区分「用户选过的子页签」与旧默认值。
+- **验证**：release assembleHap **BUILD SUCCESSFUL**（HAP **14,897,920 B**，.so `9b05c0bf…`）；Node **35 套件全 PASS**；Go hostprobe PASS。
+- 升级说明：`docs/upgrade-notes-2.2.md`（菜单改名、待应用机制、组播 OR、检测判据、空名单保护、旧包名规则）。
+
+## 全面改造 P3 导航与节点首页(2026-10-24,W11/W12)
+
+依据 `docs/REDESIGN-PLAN-2026-10-23.md` §3/§4。完整报告：`docs/p3-foundation/README.md`；设计：`docs/p3-design/navigation-and-home.md`。
+
+- **导航契约**（`core/Navigation.ets`）：七页定义与抽屉顺序（节点/订阅/分流/设置/日志/工具/关于）、旧 `activeTab` 0..6 映射、返回语义（抽屉→父页→节点页→系统返回）、顶栏动作表与禁用原因、按页浏览记忆、跨页上下文参数（sessionId/configRevision）。
+- **抽屉与标题**：显示名改为 节点/订阅/分流（资源 `nav_config/nav_groups/nav_route` 值；内部标识与存储字段不变，§3.2）；删除无引用的 `pages/DashboardPage.ets`。
+- **顶栏按页**：节点=搜索/检测/⋮（检测中变进度+取消）、订阅=添加/更新全部/⋮、分流/设置/日志=搜索（分流另有添加）、工具/关于无占位按钮；未实现动作不渲染并记日志；不可用动作 toast 原因；「连接列表」移入节点页 ⋮ 并补无障碍文案。
+- **状态卡**（`model/HomeView.ets` + Index）：VPN 会话与连通性两套状态严格独立（`connected + 检测失败` 合法、`unknown` 不冒充已连接、`switching` 只显示"正在确认"）；主按钮五档（连接/断开/取消/重试/待确认）；副动作 检查连接/连接详情；底部速率条保留。
+- **节点行**：ProbeResult 驱动（`ProbeStore` 落盘 + live 合并 300ms 节流）；延迟分档 `<150 绿 / 150-399 琥珀 / ≥400 红`、方式徽标（HTTP 2xx/HTTP 有响应/TCP/TCP 回退）、旧结果标"历史"，失败可看内核原文；三态描边优先级 正在确认>正在使用>已选。
+- **工具条**：收藏/仅看可用/排序（manual→latency→name），筛选排序全部走 `ProbeFilters`/`HomeView`，页面不再自算；状态存 `NavMemory`，切页返回保持。
+- **空态**：无节点不显示连接按钮；离线/导入完成/首次授权被拒数据源已接（部分分支待 P4 提到横幅）；连接前 `connectActionEnabled` gating。
+- **订阅页**（`pages/SubscriptionPage.ets` + `model/SubscriptionList.ets`）：tab 1 改为订阅来源列表（节点数/上次更新/流量/到期/错误可展开、更新单个/全部、失败原文反馈条、删除二次确认、详情自跳）。
+- **配置校验闸**：所有连接入口统一 `connectTo()` → `buildCoreConfig` + `CoreManager.checkConfig`（K1 无副作用解析）；无效弹内核原文 + 「去修复」（订阅节点→订阅页/手建→编辑页），不进入重连循环；旧 .so `unsupported` 跳过并记降级日志。
+- **验证**：release assembleHap **BUILD SUCCESSFUL**（HAP 14,668,481 B，包内 .so `9b05c0bf…`）；Node **29 套件全 PASS**（新增 navigation/subscription-list，扩充 home-view 至 23 组）。无 HDC 设备：返回栈、折叠记忆、恢复确认、视觉验收保持「待验」。
+- 降级项（空态两分支不可达、订阅页 ⋮ 三项待 props、分流/设置搜索槽、状态卡折叠、配置校验共享路径、分组条旧投影、旧辅助函数死代码、新页面 i18n）见报告 §5。
+
+## 全面改造 P2 检测重构(2026-10-24,W09/W10)
+
+依据 `docs/REDESIGN-PLAN-2026-10-23.md` §6/§16.4。完整报告：`docs/p2-foundation/README.md`。
+
+- **ProbeResult 模型**（`model/ProbeResult.ets`）：22 字段；身份键 `profileId|profileConfigHash|methodActual|target|expectedStatus|path`；`profileConfigHash` 排除名称/分组/收藏/缓存延迟（仅改名称不使结果失效）；HTTP→TCP 回退永久标 `degradedReason`；旧 `status/ping/error` 保留为兼容投影，旧结果迁移 `method=unknown/path=legacyUnknown` 且不参与"新鲜可用"。
+- **ProbeCoordinator**（`core/ProbeCoordinator.ets`）：冻结目标快照、runId/generation 守卫（迟到回调拒绝）、批量启动失败二分隔离（最坏 2N−1，超预算如实报未完成）、环境级失败只报一次（节点 notApplicable 而非坏节点）、取消（未执行节点保留旧结果并标未参与）、写失败 `unsaved`、完成摘要。
+- **K2 会话导出**（`core/libsingbox14` + NAPI + CoreManager）：`CGoTestStartSingBoxV3/CGoTestProxySingBoxV3/CGoTestStopSingBoxV3/CGoTestSessionInfoV3/CGoTestActiveSessionsV3`；stop 返回前必须已关闭（停止确认）；启动期间被 stop → 迟到实例立即关闭；墓碑阻断迟到 start；旧导出签名逐字未变。.so 现 **16 导出** sha256 `9b05c0bf…`，hostprobe 12 项 K2 用例通过。
+- **ProbeRunner**（`core/ProbeRunner.ets`）：能力分档 v3/v2/legacy（能力如实写入结果）；组间串行、组内并发；桥接超时只判单节点失败，stop 确认后才允许下一批；**删除整批 TCPing 回退**（C3），仅逐节点显式开关下降级并永久标注；结果逐字段投影落盘，写失败 `saved=false`。
+- **LatencyTester 重构**：`urlTestProfiles` 委托 ProbeRunner，旧签名与 `TestResult`/`LatencyRunReport` 字段兼容（新增 `saved/unfinished/tcpingOption`），Index.ets 无需改动即获得新行为。
+- **ProbeStore**（`core/ProbeStore.ets`）：独立 `filesDir/probe/probe-results-v1.json`（不进 config/ 快照 GC）；复合键互不覆盖（HTTP/TCP 结果分别保存）；原子写+读回逐字节校验；写失败如实 `unsaved`；未来 schema 只读保护；`prune` 20 轮；`latest` 全量重建。
+- **ProbeFilters**（`model/ProbeFilters.ets`）：仅看可用/最快节点/每节点最新/按方法路径分组（判据不同分列）/live 与 stored 合并（取消不覆盖旧成功）/历史/重测判断/方法显示 token/新鲜度 token。
+- **验证**：Node **27 套件全 PASS**、Go hostprobe 全 PASS、release assembleHap **BUILD SUCCESSFUL**（HAP 14,592,908 B，包内 .so `9b05c0bf…`）。**无 HDC 设备**：真实探测、跨页取消、断电恢复、V3 真机调用保持「待验」。
+- 行为变更（升级说明素材）：C3 不再整批回退 TCPing；配置写盘失败=环境级失败；结果新增 `saved/unfinished/tcpingOption` 等字段。
+
+## 2.2.1 权限与隐私政策对齐(2026-10-23,AGC 退回修复)
+
+**AGC 退回原文**:「检测到当前软件包 user_grant 类型的权限与隐私政策中声明的权限不一致,请修改后提交。
+只在隐私政策中的权限:[READ_PASTEBOARD]」
+
+- **根因**:2.1.11~2.2.0 的"保活整改"把 `ohos.permission.READ_PASTEBOARD` 从 `module.json5` 删了
+  (理由误判为"个人开发者拿不到 system_basic"),而隐私政策从 1.9 起一直保留它;
+  **2.1.10 及以前包内声明了 6 个权限(含剪贴板),与政策一致,所以那时能过审**。
+  反证:`dist/NekoBox-2.1.10-release-signed.hap` 的 `module.json` 确有该权限,且 AGC 发布 profile
+  的 `acls.allowed-acls` 里就有它 —— 说明 AGC 早已给我们放行,删掉纯属自伤。
+- **修复**:按 2.1.10 原样恢复声明(`reason`+`usedScene`,`reason` 用既有
+  `$string:permission_read_pasteboard_reason`),**不改隐私政策文本**;版本升到 2.2.1 / 2200001
+  (AGC 重新提交需更高 versionCode)。恢复后剪贴板导入重新变静默读取(不再每次弹"允许粘贴")。
+- **新增防回归**:
+  - `docs/PRIVACY-POLICY.md` —— 与包内逐条一致的政策文本(6 权限,剪贴板标 `user_grant`),提交 AGC 直接照抄;
+  - `tests/permission-policy.cjs` —— 断言「包内声明集合 == 政策里出现的集合」,并交叉核对 SDK
+    `PermissionDefinitions.json` 的 grantMode:user_grant 必须在政策表格里标出,system_basic 必须有 ACL 放行;
+    还专门断言注释里的示例权限(如 `MANAGE_VPN`)不算声明。
+- **交付**:`dist/NekoBox-2.2.1-release-signed.app`(13,697,834 B,双层签名 + 发布证书指纹核对,
+  `pack.info` = 2200001/2.2.1,内层 HAP 6 个权限)、`dist/NekoBox-2.2.1-release-signed.hap`、
+  `dist/NekoBox-2.2.1-signed.hap`(调试签名,装平板用)。
+
+## 2.2.0 发布打包(2026-10-23)
+
+### ⚠️ `.app` 打包坑(用户报 993「Profile 文件非法」的根因,踩过必看)
+
+- **hvigor 的 `assembleApp` 打出来的 `.app` 里,HAP 是未签名的**。真机/验签都证过:
+  `unzip` 出内层 `entry-default.hap` 跑 `hap-sign-tool verify-app` → `signature not found`;
+  `hdc install xxx.app` → `code:9568320 error: no signature file`。debug/release 两种 buildMode
+  都一样(`SignApp` 任务只签外层壳,不签内层 HAP)。
+- **正确链路**(本机 FormatGo / TunBox 上架一直在用的那条,本仓库已封装成脚本):
+  1. `assembleHap -p buildMode=release` → `entry-default-unsigned.hap`
+  2. `--mode project -p buildMode=release assembleApp` → `build/outputs/default/*-unsigned.app`
+  3. `scripts/sign-release-agc.ps1`(口令走 `AGC_KEY_PASSWORD` 环境变量,材料在 `C:\Worker\AGC通用证书`):
+     解包 → 内层 HAP `sign-app`(带 `-compatibleVersion`=module.json 的 minAPIVersion)→ 重打包 → 外层 `.app` 再 `sign-app`,
+     并断言两层证书链落在 AGC 发布证书指纹上。
+- **发布证书 ≠ 能装到本机**:release profile 的 `app-identifier` 是 `6917616444077734656`,
+  而本机调试 profile 是 `6918742345030706269`(debug、`device-id-type: udid`)。两者身份不同 →
+  release 包 `hdc install` 报 `9568448 verify app signature failed` / `9568322 not trusted app source`。
+  **这台平板只装得进调试签名的 HAP**;`.app` 是上架 AppGallery 用的产物。
+- 因此 2.2.0 的交付分两种用途:`NekoBox-2.2.0-signed.hap`(调试签名,**装平板用**)、
+  `NekoBox-2.2.0-release-signed.app` + `.hap`(AGC 发布证书,上架用)。
+
+- **版本号统一**:`AppScope/app.json5` = `2200000` / `"2.2.0"`(编码规则 `major*1000000+minor*100000+patch`);
+  根 `oh-package.json5` 与 `entry/oh-package.json5` 的 `version` 由 `1.8.0`/`1.0.0` 统一为 `2.2.0`;
+  `pack.info` 由构建自动写入;关于页动态读 `bundleManager`,无硬编码版本字面量(全仓已复核)。
+- 内核版本字符串 `1.14.0-ohos-inproc`(`core/libsingbox14`)**不随应用版本变动**——它是 sing-box 版本。
+
+- 打包产物见 `dist/`(命名 `NekoBox-2.2.0-signed.hap` / `NekoBox4Harmony-2.2.0-unsigned.hap`)。
+
+## 2026-10-23 真机体验修复轮(开发包 2.1.11 → 2.1.18)
+
+> 全部改动都在 UI 进程(`entry/src/main/ets`)与资源层,**没有动内核**,无需重编 `.so`。
+> 每个版本都装到真机(MatePad mini MLR-AL00 / API 24)验证过,按 versionCode 递增覆盖安装。
+
+### 用户直报的 4 个问题
+
+1. **点「清除测试结果」后节点仍显示延迟,必须退出重进**(2.1.13)。
+   根因:`ForEach` 的 key 是 `profile.id`,结果是**原地改字段**,元素被复用、item 构建函数不重跑。
+   修法:`Index.ets` 加 `@State resultsRev`,由 `latencyText/latencyColor/groupMinLatency` 读取以登记元素级依赖;
+   `clearTestResults`、各类测试的前置重置、`flushPending`、`runUrlTest` 都调 `bumpResults()`。
+2. **底部速率条要么全透明糊在一起、要么完全不透**(2.1.14)。
+   根因:`backgroundBlurStyle(BlurStyle.COMPONENT_THICK)` 是"组件材质",自带近乎不透明的填充色,
+   把半透明底色吃掉。修法:换 `.backdropBlur(20)`(纯背景模糊)+ 资源控制的 72% 底色
+   (`statsbar_bg`:base `#B8FAFAF9` / dark `#B8101318`),深浅主题各一份。
+3. **常驻通知只显示节点名,要改成速率 + 运行时长**(2.1.15)。
+   `VpnExtAbility.showConnectedNotification()`:标题仍为"已连接",正文=实时速率,附加行=`已运行 h:mm:ss`;
+   去掉节点名/分组名/延迟,并**删掉设置页「通知显示分组名」开关**(字段保留仅为旧备份兼容)。
+   `notificationStartedAt` 记本次连接时刻,内容变化时打 `[vpn] 通知内容: …` 便于真机核对。
+   同时把格式化纯函数抽到 `utils/NotifyText.ets` + 新增 `tests/notify-text.cjs`(12 组断言,含 1 小时进位与单调性抽样)。
+4. **300ms / 1000ms 都显示绿色**(2.1.15)。
+   `latencyColor()` 原来对任意成功值一律返回 `success`。现在复用分组标签已有的
+   `latencyColorOfMs`:`<150ms` 绿 / `150~400ms` 琥珀 / `>400ms` 红,失败仍红。
+   真机截图核对:81/82/104ms 绿,224/236/257/264ms 琥珀,453/489/618/1057ms 红。
+
+### 后台保活整改(2.1.12,依据 `docs/REA-FLCLASH-KEEPALIVE.md`)
+
+- **`module.json5` 恢复 `"backgroundModes": ["dataTransfer"]`**。删掉后真机 `startBackgroundRunning` 直接失败
+  (`code=9800007`),此前日志只打到 `[object Object]` 才没被看见;现在 `utils/ErrText.ets` 会打印 code+msg。
+- 长时任务改为**传输作用域**:只在订阅/geo 下载期间 `KeepAliveManager.beginTransfer(reason)` 持有,
+  `TRANSFER_CANCEL_MS=10min`(SDK 上限)、`TRANSFER_WARN_MS=8min` 提示;VPN 会话本身不申请长时任务。
+- 新增 `core/KeepAlivePolicy.ets`(纯策略,`tests/keepalive-policy.cjs` 19 条断言全绿)与
+  `core/CrashGuard.ets`(被杀标记 + hiAppEvent `APP_KILLED/APP_CRASH/APP_FREEZE` 监听 + 启动时决定
+  `none/reconnect/prompt`)。`recoveryDecision` 是一次性消费,`initPromise` 记忆化修掉了 `ensureLoaded()` 竞态。
+- 移除 `READ_PASTEBOARD`(system_basic,个人开发者不可用);不引入 `TASK_KEEPING`。
+
+### 真机走查发现的两处 `[object Object]`(2.1.17)
+
+- **VPN 启动失败日志**:`e instanceof Error ? e.message : `${e}`` 在 ArkTS 里对业务错误永远走后者。
+  新增 `utils/ErrText.ets`(优先 code+msg → message → 字符串 → JSON),`VpnExtAbility` 的 catch 改用它。
+- **路由规则「网络」下拉显示 `[object Object]`**:`SelectOption.value` 传 `$r(...)` 在本机 SDK 上不解析。
+  改为 `aboutToAppear` 里 `resourceManager.getStringSync()` 取成纯字符串(`anyNetworkLabel`),选项与 `.value()` 都用它。
+
+### 新增的审计资料(本次交付)
+
+- `docs/MENU-PARITY-7.md`:7 个主菜单 vs 安卓 1.4.2 的排布/可用性/易用性对比(结论:0 页净差、2 页净优、5 页打平)。
+- `docs/menu-audit/android-side.md`(安卓侧事实)、`ours-side.md`(196 个可点项=161✅/30⚠️/5❌、D1~D12 死路清单)、
+  `device-checks.md`(7 页真机走查 + P1~P3 问题)。
+- 真机截图:`C:\Worker\rea-tmp\menu-audit\01-config.jpeg … 07-about.jpeg`。
+
 ## 订阅解析与延迟测试整改(2026-09-xx,本轮)
 
 > ⚠️ **必须重编内核**。本轮给 sing-box 加了**补丁 7**(URL Test 状态码校验 +
@@ -1373,3 +1611,124 @@ Existing notification files reviewed:
 - 测试: tests/subscription-parse.cjs 新增 3 项(Clash socks5 导入为 socks 且带凭据 / 旧写法 socks 仍可导入 / socks5:// 分享链接带凭据导入),41 项全过;全 15 套件 12 绿 + 3 个 2.1.6 路由页遗留失败(与本次无关)。
 - 重新发布: assembleHap + assembleApp release → AGC 通用证书双层签名(verify-app 通过),`dist/NekoBox-2.1.8-{signed.hap,signed.app}` 已更新(hap SHA256 `ED378AF1...C388D6`、app `778D666E...AA15F50`);GitHub v2.1.8 Release 附件已替换为新未签名 HAP(下载哈希核对一致,modules.abc 含 socks5 分支),发布说明补充 socks5 条目。debug 证书版已装真机;**正式签名包与设备上的 debug 签名包互不覆盖**(签名不同,换装需先卸载)。
 - 改动文件: `entry/src/main/ets/utils/Subscription.ets`、`tests/subscription-parse.cjs`。
+
+## 分应用代理修复 + 条目化重做(应用名+包名+勾选)+ 移除「读取应用」(2.1.10)—— 状态:✅ 已本机编译通过 + 真机安装迁移已验证,分应用生效性待用户回归
+
+用户报障(原话): "分应用代理不生效，填写包名没有完成分流。再有就是你帮我把操作逻辑改成截图这种，填写的时候填应用名+包名，这样容易区分是哪个应用，填写后，后面有一个复选框，可勾选，可不勾选。再有就是把分应用分流里面的读取应用的那一部分删掉，没有这个权限，留着也没用"
+
+### 1. 根因(为什么"填了包名却不分流")
+
+三条独立缺陷叠加,前两条都会让名单**根本没进 VpnConfig**:
+
+1. **跨进程 Preferences 读缓存不刷新(主因)**:`VpnExtensionAbility` 跑在独立的 `:vpn` 进程,而 Preferences 的读缓存是**进程内**的;扩展进程是常驻的("扩展保持待命"),UI 进程 `put+flush` 之后扩展进程里的旧快照不会失效 → `loadSettings()` 一直返回**旧名单**。本项目其实早就踩过这个坑:profileId 正因同样原因改走 Want 参数(`VpnExtAbility.ets` 原有注释"跨进程 Preferences 缓存不刷新，不可靠"),但 `perAppList`/`perAppMode` 当时仍走 Preferences。
+2. **UI 侧名单从未随启动请求下发**:`VpnService.wantFor()` 只带 `profileId`/`forceRestart`。
+3. **包名格式无人校验**:系统对含非法包名的名单会整体判为无效配置,表现为"设置了但完全不分流";而原界面只有一个逗号分隔输入框,没有应用名可供对照,用户极易填成 Android 包名(如 `com.tencent.mm` 而非 `com.tencent.hm.wechat`)。
+
+### 2. 修复
+
+- **Want 直达(权威通道)**:`VpnService.connect` 启动前读一次设置,把 `perAppMode`/`perAppList` 经 `want.parameters` 下发;扩展侧 `hookLifecycle` 接收。用 `perAppProvided` 标志区分"UI 明确下发(可为空=本次不限制)"与"UI 读取失败、请你自行读盘"—— 字段缺失时**绝不**覆盖磁盘上的有效名单。
+- **扩展侧强制刷新缓存**:`Store` 新增 `refreshStore(context)`,先 `removePreferencesFromCache` 再 `getPreferences`;`VpnExtAbility.tryStart` 每次启动改用它(不再用 `initStore`),这同时兜住了出站模式/DNS 等所有"改了不生效"类问题。
+- **双重合法性过滤**:`effectivePackages()` 在 UI 落盘时与扩展构造 `VpnConfig` 时各过滤一次(未勾选/格式非法/重复/超 256 上限),非法项不静默吞掉而是写日志 + 界面红字。
+- **可诊断**:连接时必打 `[vpn] 分应用: 模式=X 来源=want|settings 生效=N 个`;名单为空时明确记"本次不做应用级分流"。
+
+### 3. 交互重做(对齐用户提供的参考设计)
+
+- 新增 `entry/src/main/ets/model/PerApp.ets`:条目模型 `PerAppEntry{bundleName,label,enabled}` + 纯函数(解析/迁移/合并/删除/勾选/生效名单/输入解析/预置表),零 HarmonyOS 依赖,可被 node 测试直接转译执行。
+- `AppSettings` 新增 `perAppEntries`(JSON,权威数据);`perAppList` 改为**派生字段**(勾选项的逗号拼接),保持对 VpnConfig/备份的旧契约不变。
+- 首次载入迁移:`perAppEntries` 为空串 = 老装机 → 用「预置常用鸿蒙应用 + 旧 perAppList」初始化,旧包名**默认保持勾选**(不静默失效);用户显式清空后落盘为 `'[]'`,不会被预置项复活。
+- 界面:模式三按钮下方改为**条目列表**(应用名 + 包名 + 「预置」标签 + 「移除条目」+ 右侧复选框),支持按应用名/包名搜索;「添加 / 批量导入」对话框 = 名称备注(可选) + 每行一个包名(名称仅用于单个包名);勾选/取消/删除/导入即时落盘,运行中自动重连 VPN。
+- 「清除选择」改为只取消勾选、保留条目;剪贴板导入改为**合并**(原先整体替换),格式仍为安卓口径 `false\n<pkgs>`。
+
+### 4. 移除「读取应用」
+
+`SettingsPage.ets` 删除 `import bundle`、`InstalledAppItem` 类、`installedApps/appSearch/appListLoading/appListError/invertAppSelections` 等状态与方法、搜索+读取按钮行、反选按钮、错误行、应用列表 UI。三方普通应用无 `GET_BUNDLE_INFO_PRIVILEGED`,`getAllBundleInfo` 只能枚举到自身(2026-10-14 权限结案),真机验证其 `modules.abc` 已**不再含** `getAllBundleInfo`/`read_apps`。
+
+### 5. 验证
+
+- 新增 `tests/per-app.cjs`(21 条 PASS 断言线,覆盖:包名合法性/零宽字符/单条与批量导入语义/去重/旧数据迁移/勾选门控/非法项上报/256 上限/增删改/剪贴板口径/序列化往返 + 真实 Store 的迁移与派生契约 + 扩展侧解析);`tests/ipv6-store.cjs` 补齐 `./PerApp` 与 emitter 桩。
+- 全量 14 个 node 套件:**11 绿**;`parity-config`/`ipv6-modes`/`route-rules-ui` 三套失败 —— 已用 `git worktree` 在**未改动的 HEAD** 上复跑确认**同样失败,属既有失败**,非本轮引入。
+- 构建 `assembleHap -p buildMode=release` **BUILD SUCCESSFUL**(33 tasks);HAP 静态取证:`resources.index` 含全部新字符串键,`modules.abc` 含 `PerAppAddDialog/effectivePackages/refreshStore/entriesFromInput/isPresetBundleName/perAppEntries`,且**不含** `loadInstalledApps/InstalledAppItem/invertAppSelections/filteredInstalledApps/read_apps/getAllBundleInfo`。
+- 真机(MatePad mini,API 24):`hdc install -r` 成功;启动后日志 `[store] 分应用条目已初始化: 12 条(生效 0 个)`,落盘 `perAppEntries` 已写入 12 条预置(全部 `enabled:false`),`perAppMode=exclude` 与旧空名单保持不变;新 UI 在真机渲染正常(模式按钮/搜索/「添加 / 批量导入」/条目行/复选框/预置标签/操作按钮/说明文案均按设计显示)。
+- 产物:`dist/NekoBox-2.1.10-perapp-signed.hap`(14,425,762 字节,SHA256 `9cb3e30d58c8662a736cb911f999264c827179d30ff03bbd3d9dc5001b71292d`),已 `hdc install -r` 装真机;`AppScope/app.json5` 升 2.1.10 / 2100010(2100009 无法覆盖安装)。
+- **未验证**:勾选条目后隧道内是否真按应用分流(需用户在真机上点选后回归);`blockedApplications` 对内核线程出站无效属系统框架行为(既有记录,未变)。
+
+### 6. 分发包:AGC 正式签名 .app / .hap(2026-10-19,用户要求"打包.app包")
+
+- 链路:官方 `hvigorw --mode project -p product=default -p buildMode=release assembleApp`(BUILD SUCCESSFUL 42 tasks)→ 未签名骨架 `build/outputs/default/NekoBox4Harmony-default-unsigned.app`(内层 HAP **未签名**、`buildMode=release`、`debug=false`、minAPIVersion=60101024、pack.info 2.1.10/2100010)→ 新增 `scripts/sign-release-agc.ps1`(改编自 FormatGo 已验证流程):解包 → 内层 HAP `sign-app -compatibleVersion 60101024` 重签 → 放回 → `ZipFile.CreateFromDirectory(includeBaseDirectory=false)` 重打 → 签外壳(**不带** compatibleVersion);两层 `verify-app` 均 `Verify success`(外壳 block count 2;内层 codesign + permission sign 均通过)。
+- **为什么要单独签,不能直接用 hvigor 产物**:`build-profile.json5` 里是机器本地的 **debug** 签名段(`signingConfigs[].name=default`,`keyAlias=debugKey`),`assembleHap/assembleApp` 出来的都是 debug 签名包 —— 能 `hdc install` 装真机,但 AppGallery 会判「debug 版本」退回。本脚本改用 AGC 通用发布证书(`AGC通用证书/General.p12` 别名 `general` + `General.cer` + `NekoBoxRelease.p7b`,profile 内 bundle-name 已核对为 `com.nekobox.app.jynxen`、type=release)。口令只从环境变量 `AGC_KEY_PASSWORD` 取,不落盘、不入库。
+- 指纹断言(脚本内置、fail-closed):`verify-app` 只校验结构与摘要,拿 debug 证书一样会 "success"(它报的是 profile 里的链),所以脚本另比对**两层证书链是否包含 AGC 发布证书** `E3:5A:CF:02:BF:21:D9:06:31:1F:52:09:6C:F8:28:1F:36:90:0B:F8:C2:8E:4A:F0:77:B4:44:6F:30:53:ED:95`(链:`0D:AA:8A:…` Huawei CBG Root CA G2 → `DF:21:A3:…` → 上述叶子),不符即 throw。与历史交付的 2.1.9 `.app` **同一条叶子证书**,可证本轮确实是发布证书签名。
+- 产物:
+  - `dist/NekoBox-2.1.10-release-signed.app`(13,701,265 字节,SHA256 `0F01C9470F65438CEC6BB563D5F46CC70F938BEE80896C10E74C27BB66867A81`)
+  - `dist/NekoBox-2.1.10-release-signed.hap`(14,425,584 字节,SHA256 `D0137484DEFB5BD64D8D9F2C8D342A2E9444B7F839FA33E41CE53FAFC3AA2BEF`)
+- 内容取证(在**已签名的 .app** 内解开复核):`entry-default.hap` 位于包根(无多余 base 目录)+ `pack.info` + `pac.json`;module.json `versionName=2.1.10 / versionCode=2100010 / buildMode=release / debug=false / minAPIVersion=targetAPIVersion=60101024 / bundleName=com.nekobox.app.jynxen`;`modules.abc` 含 `PerAppAddDialog/effectivePackages/refreshStore/entriesFromInput/isPresetBundleName`,**不含** `loadInstalledApps/InstalledAppItem/invertAppSelections/read_apps/getAllBundleInfo`。
+- ⚠️ 与真机已装包的关系:`dist/NekoBox-2.1.10-perapp-signed.hap`(第 1 节那个)**是 debug 签名**(叶子 `F7:12:3F:…`),已 `hdc install -r` 装在设备上;正式签名的 release 包与它**签名不同、互不覆盖**,要装 release 版需先卸载(会清应用数据)。上架用 release 包。
+
+## 2026-10-23 订阅解析 + 节点测试 1:1 对齐安卓 —— 状态:✅ 已完成开发并本机编译通过(15 套件 12 绿/3 既有红,assembleHap release BUILD SUCCESSFUL),待真机回归
+
+- 用户要求:"不止是要求功能一样,更要求功能的实现方式……安卓版本如何实现的,我们也要完全一模一样的实现效果"。本轮以 NekoBoxForAndroid 1.4.2 源码为基准逐函数对照,订阅解析与节点测试两条链路按安卓实现方式重写。逐项对照:`docs/PARITY-ANDROID-1TO1.md`(总览)、`docs/PARITY-SUBSCRIPTION.md`(订阅 324 行,S1–S13 逐项)、`docs/PARITY-LATENCY-TEST.md`(测速 252 行,§1–§8 逐项)。
+
+### 订阅解析(基准:RawUpdater.kt / Formats.kt / GroupUpdater.kt / GroupInterfaceAdapter.kt / SubscriptionUpdater.kt / SubscriptionBean.java)
+- 默认 User-Agent 逐字安卓值 `NekoBox/Android/1.4.2 (Prefer ClashMeta Format)`(`Subscription.ets:25` ← Nets.kt:66)。机场按 UA 决定返回格式,UA 一致才能保证"同一订阅拿到同一份正文";自定义 UA 仍可覆盖。
+- 抓取语义 1:1:非 200 一律失败并带状态码(libcore/http.go:219-226 口径);content-disposition RFC5987 文件名(`decodeFilename`)用于「Subscription #」开头订阅的组名改写(RawUpdater.kt:78-87);订阅级「跳过证书校验」同语义。
+- Clash 解析 10 种 type 逐字段对齐(network 只认 h2/http/ws/grpc、http-opts、smux 字面值、ech-opts、anytls `_`→`-` 归一化、hysteria1 带宽默认值、tuic 默认 cubic);未知 type 与安卓一致**静默丢弃**(另计 skipped,鸿蒙超集)。
+- sing-box JSON 五分支逐字对齐(parseJSON):skip 名单只留 dns/block/direct/selector/urltest(`group`/`wireguard` 不再跳过,按 ConfigBean 原样保留);裸 ss/trojan-go/hysteria1 JSON;`server+server_port` 走 stringify;JSONArray 递归。
+- parseProxies 空格切分:按行 + 按空格双份解析、**取数量多者**(Formats.kt:107-108,230-239 逐字);`trojan-go://` 实现并映射 TROJAN+ws(安卓该协议走插件进程,无 encryption/plugin 字段时协议等价,文档偏差 2.18);`naive+://` 平台无出站(sandbox 禁 exec、sing-box 无 naive),显式 skipped+提示不静默。
+- 更新流程按 doUpdate 顺序重写(`Subscriptions.ets:527` 起):重名改名(`"name (n)"` 去旧后缀递增)→ forceResolve(5 并发,同 `(isInet4Address) xor ipv6First` 排序键、同 SNI 回填规则)→ 去重(键 = **无分隔符** `serverAddress+serverPort+javaClass`,LinkedHashSet 保首次,duplicate 名单两段式)→ nameMap → 逐条合并(保 id/pinned/流量/自定义 JSON,`existsBean != bean` 才更新,仅顺序变只重排)→ 删除不在名单里的旧节点 → 计数。
+- 安卓自身 bug **字面复刻**(文档"已知怪癖"):tuic `ip` 永不回填 SNI(安卓先覆盖 serverAddress 再判 isIpAddress,条件永假);ss v2ray-plugin 的 tls 只看 `mode=="true"`;去重键无分隔符可碰撞;vmess/vless 同 bean 同键;trojan-go ssl/websocket/shadowsocks 字段是死代码。
+- 订阅数据模型对齐 SubscriptionBean:`autoUpdate` 默认 **false**;间隔改分钟 `updateIntervalMinutes` 默认 **1440**(旧小时值 ×60 迁移、旧字段保留兼容备份;Backup 白名单加新字段);只做 ≥15 分钟下限钳制(WorkManager 语义);自动更新逐个判断到期、未连接时滤掉「仅连接时更新」。
+- 更新反馈对齐 GroupInterfaceAdapter:无变化→「%s:没有变化」;有变化→「%s:已更新 %d 个代理」+ 1 秒后 Diff 对话框(新增 `pages/SubUpdateFeedback.ets` 的 `SubDiffDialog`:Added/Updated(old=>new)/Deleted/Duplicate 四段,空段整段省略);未连接且 http:// 明文或「仅连接时更新」时先确认(`update_subscription_warning`);三处更新入口(首页 ⋮ / 分组页 / 订阅详情页)同语义。新增 9+2 条文案键(中英)。
+
+### 节点测试(基准:ConfigurationFragment.kt / TestInstance.kt / UrlTest.kt / Protocols.kt / libneko speedtest / BaseService.kt)
+- 结果模型与安卓 ProxyEntity 一致:`Profile` 新增 `status/ping/error` 三件套(0 未测/1 可用/2 已知失败/3 其它异常),`latencyMs` 变派生值;旧数据迁移(>0→status1、-1→status3/timeout、0→status0),备份/恢复兼容。
+- ⋮ 菜单拆成「TCPing」「URL Test」两个入口(与安卓 add_profile_menu.xml 一致),均作用于当前选中分组;测速中变「取消」,取消后已测结果照常落库(安卓 :807-823 语义)。
+- TCPing 1:1:按 `canTCPing` 过滤(hysteria/hysteria2/tuic/wireguard/custom/chain 不测);先解析域名取**首个**地址(不挑 v4/v6),解析失败 status2「域名解析失败」;超时固定 **3000**(不再吃设置);错误四分类 timeout/refused/unreachable/其它(安卓 :694-832 同判据)。
+- URL Test 1:1:不筛协议;超时默认 5000;默认**不判 HTTP 状态码**(expectStatus='any',libneko speedtest 不看 StatusCode);失败 status3 存内核原文,展示期走 `genFriendlyMsg`(timeout/deadline→超时、refused/closed pipe→连接被拒绝);单节点出站构建失败只红它自己,不拖垮整批。
+- 展示 1:1:节点卡延迟绿=任意成功值/红=失败(**删掉 150/400 阈值分档**,安卓无)/测试中次要色;status3 点击延迟文字弹内核原文(`connection_test_error_detail`);失败文案中英双语。
+- 默认值 1:1:测试网址 `http://cp.cloudflare.com/`(安卓 Constants.kt:3;Store 只兜空值,**删除 gstatic 迁移**);并发默认 **5**(DataStore.connectionTestConcurrent,删除 5→10 迁移);重试 0/取样 1;连接中测当前节点超时 **3000**(BaseService.kt:147)。
+- 保留的实现差异(已论证、文档在案):①测速会话仍是「整批一个临时实例 + 按 tag 并发探测」——安卓是每节点一个 TestInstance,但内核 `testInstance` 是包级单例(core/libsingbox14/main.go:180),逐节点建实例只能全局串行、有效并发退化为 1,反而改变可见效果;每次 probe 都经该节点自己的出站新建连接,节点间不共享状态,单节点配置非法只红自己。②单次探测口径:安卓 libneko = GET×2 暖连接 RTT、不看状态码;鸿蒙 = HEAD 单次(405/501 回退 GET)、含建连+TLS——同节点鸿蒙数值偏高,跨平台数值不可直接比较;逐字一致需移植 `urltest/rtt.go` 并重编 libsingbox.so(本机无 OHOS Go 工具链,本轮未做)。
+
+### 手动去重(Index.ets dedupGroup,安卓 ConfigurationFragment.kt:534-584)
+- 键改为 `serverAddress+serverPort+displayType`(**与更新期去重的 javaClass 键不同**——安卓两处本就不一致,已分别对齐);LinkedHashSet 保首次;确认框列出前 20 个重复名后接 "......",确认后删除;新增 `confirm`/`dedup_confirm_body` 键。
+
+### 测试 / 构建 / 真机
+- 新增 `tests/latency-parity.cjs`(17 断言)与 `tests/sub-parity-subscription.cjs`(48 断言);`clash-auth.cjs` 扩到 8。全量 15 套件 **12 绿 / 3 红**(3 红为 2.1.6 UI 重构既有失败:parity-config/ipv6-modes/route-rules-ui,断言的是重构前旧布局;未修、未变糟)。
+- `assembleHap -p buildMode=release` **BUILD SUCCESSFUL**;静态取证:`modules.abc` 含 SubDiffDialog/subUpdateDiffBodies/needDirectUpdateConfirm/runTcpTest/canTCPing/classifyConnectError/updateIntervalMinutes/parseTrojanGoLink/renameCollisions,`resources.index` 含本轮全部新字符串键。
+- AGENTS.md 口径同步更新(默认测试网址、菜单双入口、无 gstatic 迁移)。
+- **真机未验证**:`hdc list targets` 为 [Empty](无线重连失败)。待验证清单:docs/PARITY-LATENCY-TEST.md §14(7 项)、docs/PARITY-SUBSCRIPTION.md §15(订阅链路)。
+
+## 2026-10-23 后台保活 AGC 合规整改 —— 状态:✅ 已完成开发并本机编译通过(keepalive-policy 19/19 绿,assembleHap release BUILD SUCCESSFUL),待真机回归
+
+- 用户要求:按 FlClash-ohos 逆向结论整改保活(报告 `docs/REA-FLCLASH-KEEPALIVE.md`,SDK d.ts + PermissionDefinitions.json 取证),全部改走个人开发者可用的权限。
+- **保活机制重定**(撤销 2026-10-19 的"DATA_TRANSFER 会话级保活"):
+  - 结论 1:FlClash 用的 `TASK_KEEPING` 在 phone/tablet 上**必需**受限 ACL `KEEP_BACKGROUND_RUNNING_SYSTEM`(SDK d.ts:non-PC/2-in-1 设备需该 ACL;PermissionDefinitions.json level=system_basic),个人开发者拿不到 ⇒ 不申请、不使用。
+  - 结论 2:`DATA_TRANSFER` 的 SDK 语义是上传/下载,**进度通知 10 分钟不更新(live view)会被系统取消**,低速也会被取消(`SYSTEM_CANCEL_DATA_TRANSFER_LOW_SPEED=4`)⇒ 撤销"会话级保活"用法,改为**只在真实数据传输(订阅更新)期间短时持有**。
+  - 结论 3:`READ_PASTEBOARD` 为 system_basic 受限(FlClash 用它免"允许粘贴"弹窗)⇒ 从 module.json5 移除,剪贴板导入走系统"允许粘贴"授权弹窗(ClipboardHelper 已容错)。
+- **改动**:
+  - 新增 `core/KeepAlivePolicy.ets`(纯函数):`shouldHoldTransfer/transferNeedsWarn/transferRemainingMs/killRecoveryAction/encodeKillState/decodeKillState`;常量 `TRANSFER_WARN_MS=8min < TRANSFER_CANCEL_MS=10min`(SDK 取消线)。
+  - 重写 `core/KeepAliveManager.ets`:会话期不再挂长时任务;`beginTransfer(reason)/endTransfer(reason)` 仅接受 `subscription`/`geo` 传输场景,`continuousTaskCancel` 重挂只限传输期,8 分钟告警日志(提示后续接 live view 进度通知)。
+  - `core/VpnService.ets`:移除 connect/disconnect 处的会话保活调用(会话存活靠 VpnExtensionAbility 系统托管 + 常驻通知 + 被杀自愈)。
+  - 新增 `core/CrashGuard.ets`(被杀自愈,FlClash AppCrashWatcher 同款思路,零权限):VPN 启动落盘 `alive|profileId|ts`、显式断开落盘干净退出;启动时读回"上次带着开着的 VPN 被杀"标记并消费,按"启动自动连接"设置直接重连或弹框询问;hiAppEvent watcher(OS 域 `APP_KILLED/APP_CRASH/APP_FREEZE`)仅日志取证。
+  - `entryability/EntryAbility.ets`:onCreate 注入 context + `CrashGuard.init`;后台订阅更新改走 `KeepAliveManager.beginTransfer/endTransfer`(内联 wantAgent+startBackgroundRunning 撤销)。
+  - `pages/Index.ets`:onRunningChange 写被杀/干净退出标记;`maybeRecoverAfterKill()` 启动自愈(直接重连或确认框);新增 `crash_recovery_title/prompt/connect` 中英文案键。
+  - `module.json5`:删 `"backgroundModes": ["dataTransfer"]` 与 `ohos.permission.READ_PASTEBOARD`。
+- **测试**:新增 `tests/keepalive-policy.cjs`(19 断言:场景门控、8/10 分钟阈值、被杀决策矩阵、标记编码往返与坏数据容错)全绿。
+- **构建取证**:`assembleHap -p buildMode=release` BUILD SUCCESSFUL(22s);解开产物 HAP 复核 `module.json`:不含 `backgroundModes`/`dataTransfer`/`READ_PASTEBOARD`,保留 `KEEP_BACKGROUND_RUNNING`,`resources.index` 含 `crash_recovery_prompt`。
+- **已知限制 / 待真机回归**:
+  - 剪贴板导入的"允许粘贴"系统弹窗路径(无权限声明时)未在真机复验 —— 此前真机导入成功是在**已声明** READ_PASTEBOARD 的 debug 包上,不能证明弹窗路径可用。
+  - 超过 10 分钟的大文件传输(若将来有)需接 live view 进度通知(SDK 硬性要求),本轮未做并已留告警日志。
+  - 被杀自愈的"自动重连/弹框询问"路径与 hiAppEvent watcher 送达行为未真机验证;`hdc list targets` 为 [Empty]。
+  - FlClash 自身的 TASK_KEEPING 在无 ACL 设备上是否 201 静默失败,可用其 HAP 装平板做对照实验(未做,无设备)。
+
+## 2026-10-23 测速、分应用、路由及 sing-box 常用功能综合审计
+
+- **状态**：主机审计及本轮应用层修复完成；19套Node回归通过、16项Go主机测试通过、release assembleHap BUILD SUCCESSFUL。当前包内版本2.2.1/2200001，未改版本号；无设备，未安装或发布。
+- **修复**：测速按ID合并已完成结果以保留并发节点修改；存储异常保证释放testing；配置写盘异常显式降级；绑定/TCPing降级提示不被完成提示覆盖；拒绝非法API delay假0ms；分应用设置保存失败不重启；多行域名/IP解析一致且保留正则原文；规则卡状态key刷新并避免逐字输入重建。包名规则增加鸿蒙平台限制说明。
+- **改动文件**：`core/ConfigBuilder.ets`、`utils/LatencyTester.ets`、`utils/ClashApi.ets`、`pages/Index.ets`、`pages/SettingsPage.ets`、`pages/RouteRulesPage.ets`、base/en_US字符串；新增`tests/functional-audit.cjs`、`tests/hostprobe/functional_audit_test.go`，扩展/校正配置、鉴权、测速、IPv6回归；同步DEVPLAN与`docs/FUNCTIONAL-AUDIT-2026-10-23.md`。
+- **已知限制**：include空名单当前全部进入VPN；远程SRS无缓存首次下载失败会阻止启动；schema错误节点会使整批URL Test启动失败并回退TCPing；按包名指定出站没有鸿蒙连接归属实现。Go中的503和坏节点测试用于复现剩余缺陷，不表示修复。外网Geo源检查ECONNRESET跳过；真机流量/网络切换/后台待机未验。未改内核、权限、签名配置。
+
+## 2026-10-23 全面改造详细方案
+
+- **状态**：方案编写完成，应用改造尚未开始；本条不代表实现或真机验收通过。
+- **交付**：`docs/REDESIGN-PLAN-2026-10-23.md`，26节、24项需求、22个工作包、63个最低验收用例；覆盖上一轮全部建议及P0—P7实施路线、迁移/回滚、平台边界和发布门槛。
+- **改动文件**：新增上述方案；在`DEVPLAN.md`登记方案状态。本次没有修改应用代码、内核、权限、版本或签名配置。
+- **文档检查**：章节编号连续、需求和用例ID无重复、代码围栏闭合、本地引用存在。后续从P0基线及技术验证开始，所有需求最终须具备实现和实际证据。

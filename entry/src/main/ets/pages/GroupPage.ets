@@ -6,7 +6,9 @@ import { UiSpec } from '../common/UiSpec';
 import { illuminatedEffect, pressLightEffect } from '../common/Effects';
 import { Profile, ProfileGroup } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, LogStore } from '../model/Store';
-import { SubInfo, listSubs, saveSubs, removeSub, updateSubscription, markSubSuccess, markSubFailure } from '../core/Subscriptions';
+import { SubInfo, listSubs, saveSubs, removeSub, updateSubscription, markSubSuccess, markSubFailure,
+  SubUpdateResult, subUpdateHasChanges, needDirectUpdateConfirm } from '../core/Subscriptions';
+import { SubDiffDialog } from './SubUpdateFeedback';
 import { VpnService } from '../core/VpnService';
 import { subErrorText } from '../utils/Subscription';
 import { exportProfileLink } from '../utils/LinkExporter';
@@ -86,15 +88,53 @@ export struct GroupPage {
     return $r('app.string.sub_last_update', `${d.getMonth() + 1}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`);
   }
 
+  /** Diff 对话框控制器(每次按当次结果新建) */
+  private subDiffDialog: CustomDialogController | undefined = undefined;
+
+  /** 更新结果反馈(对齐 Android GroupInterfaceAdapter.kt:29-82,与首页同一套语义) */
+  private showSubUpdateFeedback(name: string, res: SubUpdateResult): void {
+    if (!subUpdateHasChanges(res)) {
+      promptAction.showToast({ message: $r('app.string.group_no_difference', name) });
+      return;
+    }
+    promptAction.showToast({ message: $r('app.string.group_updated', name, res.changed) });
+    setTimeout(() => {
+      this.subDiffDialog = new CustomDialogController({
+        builder: SubDiffDialog({ groupName: name, res: res }),
+        autoCancel: true
+      });
+      this.subDiffDialog.open();
+    }, 1000);
+  }
+
   async updateOne(sub: SubInfo): Promise<void> {
     if (this.updatingUrl.length > 0 || this.updatingAll) {
       return;
     }
+    // Android GroupUpdater.kt:142-148:未连接且(http:// 或 仅连接时更新)先确认
+    const connected: boolean = AppStorage.get<boolean>('vpnRunning') ?? false;
+    if (needDirectUpdateConfirm(sub.url, sub, connected)) {
+      AlertDialog.show({
+        message: $r('app.string.update_subscription_warning'),
+        primaryButton: { value: $r('app.string.cancel'), action: () => {} },
+        secondaryButton: {
+          value: $r('app.string.confirm'),
+          action: () => {
+            this.doUpdateOne(sub);
+          }
+        }
+      });
+      return;
+    }
+    await this.doUpdateOne(sub);
+  }
+
+  private async doUpdateOne(sub: SubInfo): Promise<void> {
     this.updatingUrl = sub.url;
     try {
       const r = await updateSubscription(sub.url);
       await markSubSuccess(sub.url);
-      promptAction.showToast({ message: $r('app.string.sub_update_result', r.added, r.removed) });
+      this.showSubUpdateFeedback(sub.name, r);
       await this.refresh();
       this.onDataChanged();
     } catch (e) {

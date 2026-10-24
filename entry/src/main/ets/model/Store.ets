@@ -2,6 +2,9 @@ import dataPreferences from '@ohos.data.preferences';
 import common from '@ohos.app.ability.common';
 import emitter from '@ohos.events.emitter';
 import { Profile, ProfileGroup, AppSettings } from './Profile';
+import {
+  PerAppEntry, parseEntries, serializeEntries, effectivePackages, initialEntries
+} from './PerApp';
 
 /** 持久化(Preferences) + 全局日志缓冲。 */
 
@@ -39,6 +42,25 @@ export async function initStore(context: common.Context): Promise<void> {
   prefInstance = await dataPreferences.getPreferences(context, PREF_NAME);
 }
 
+/**
+ * 强制丢弃本进程的 Preferences 内存缓存并重新从磁盘加载。
+ *
+ * 为什么必须要有它:VpnExtensionAbility 跑在独立的 ":vpn" 进程,Preferences 的
+ * 读缓存是**进程内**的 —— UI 进程 put+flush 之后,:vpn 进程里的旧快照不会自动失效。
+ * 扩展进程又是常驻的("扩展保持待命"),于是 UI 改完分应用名单再重启隧道,
+ * 扩展读到的仍是上一次的名单 → 真机表现就是「填了包名却不分流」。
+ * profileId 早就因为同一个坑改走 Want 参数(VpnExtAbility 注释),这里是通用兜底。
+ */
+export async function refreshStore(context: common.Context): Promise<void> {
+  prefInstance = null;
+  try {
+    await dataPreferences.removePreferencesFromCache(context, PREF_NAME);
+  } catch (e) {
+    // 缓存不存在 / 平台不支持都无所谓,下面 getPreferences 会正常打开文件
+  }
+  prefInstance = await dataPreferences.getPreferences(context, PREF_NAME);
+}
+
 async function requirePref(): Promise<dataPreferences.Preferences> {
   if (prefInstance === null) {
     throw new Error('store not initialized');
@@ -50,16 +72,56 @@ export async function loadProfiles(): Promise<Array<Profile>> {
   const pref = await requirePref();
   const raw: string = (await pref.get(KEY_PROFILES, '[]')) as string;
   try {
-    const parsed: Array<Profile> = JSON.parse(raw) as Array<Profile>;
+    // 先解析成"原始记录"再用 fillFrom 灌进 Profile:ArkTS 严格模式禁止把类实例
+    // (Profile)断言成 Record<string, Object>(缺 string 索引签名),所以这里的元素
+    // 类型必须是 Record,而不是 Array<Profile>。
+    const parsed: Array<Record<string, Object>> = JSON.parse(raw) as Array<Record<string, Object>>;
     const result: Array<Profile> = [];
     for (let i = 0; i < parsed.length; i++) {
       const p = new Profile();
       fillFrom(p, parsed[i]);
+      migrateProfileTestResult(p, parsed[i]);
       result.push(p);
     }
     return result;
   } catch (e) {
     return [];
+  }
+}
+
+/**
+ * 测试结果迁移:历史装机只存 latencyMs(0 未测 / -1 失败 / >0 延迟),
+ * 而 Android 的模型是 status(0/1/2/3) + ping + error(见 docs/PARITY-LATENCY-TEST.md §6)。
+ * - 已有 status 的:按 status 重算派生值 latencyMs,避免两套字段打架;
+ * - 只有 latencyMs 的:>0 → status1, -1 → status3/timeout(旧实现失败只有超时一种语义),
+ *   0 → status0。
+ */
+function migrateProfileTestResult(p: Profile, raw: Record<string, Object>): void {
+  if (raw !== undefined && raw !== null && raw['status'] !== undefined && raw['status'] !== null) {
+    if (p.status === 1) {
+      p.latencyMs = p.ping;
+    } else if (p.status >= 2) {
+      p.latencyMs = -1;
+    } else {
+      p.latencyMs = 0;
+      p.ping = 0;
+    }
+    return;
+  }
+  if (p.latencyMs > 0) {
+    p.status = 1;
+    p.ping = p.latencyMs;
+    p.error = '';
+  } else if (p.latencyMs < 0) {
+    p.status = 3;
+    p.ping = 0;
+    p.error = 'timeout';
+    p.latencyMs = -1;
+  } else {
+    p.status = 0;
+    p.ping = 0;
+    p.error = '';
+    p.latencyMs = 0;
   }
 }
 
@@ -156,26 +218,16 @@ export async function loadSettings(): Promise<AppSettings> {
   if (s.mixedPort !== 0) {
     s.mixedPort = Math.max(1024, Math.min(65535, s.mixedPort));
   }
+  // 并发数:默认 5 对齐 Android DataStore.connectionTestConcurrent(DataStore.kt:159)。
+  // 2.1.8 曾把默认改成 10 并迁移 5→10;1:1 对齐后回退为 5,不再做那段迁移。
   if (s.testConcurrent < 1 || s.testConcurrent > 32) {
-    s.testConcurrent = 10;
-  }
-  // 2.1.8 提速迁移:5 是历史默认值(测大订阅偏慢),迁到新默认 10;用户改过的其它值不动
-  if (s.testConcurrent === 5) {
-    s.testConcurrent = 10;
+    s.testConcurrent = 5;
   }
   if (s.testUrl.trim().length === 0) {
-    s.testUrl = 'http://www.gstatic.com/generate_204';
+    s.testUrl = 'http://cp.cloudflare.com/';
   }
-  // 迁移历史默认测试网址(cp.cloudflare.com 在部分网络下经代理也不通,易误红)
-  if (s.testUrl.trim() === 'http://cp.cloudflare.com/' || s.testUrl.trim() === 'https://cp.cloudflare.com/') {
-    s.testUrl = 'http://www.gstatic.com/generate_204';
-  }
-  // 2.1.8 测速口径对齐:历史默认是 HTTPS 204,数值含到目标站的 TLS 握手(比
-  // Clash 系客户端的 HTTP 204 口径高 1~2 个 RTT,用户对比两边的延迟会差好几倍)。
-  // 仅迁移"仍是历史默认值"的装机,用户自定义过的网址不动。
-  if (s.testUrl.trim() === 'https://www.gstatic.com/generate_204') {
-    s.testUrl = 'http://www.gstatic.com/generate_204';
-  }
+  // 1:1 对齐:Android 的默认探测网址就是 http://cp.cloudflare.com/(Constants.kt:3),
+  // 存量装机保存过的网址(含 2.1.8 时代的 gstatic)**一律不改写** —— 只兜空值。
   const TEST_MODES: Array<string> = ['url', 'tcp'];
   if (TEST_MODES.indexOf(s.latencyTestMode) < 0) {
     s.latencyTestMode = 'url';
@@ -186,8 +238,9 @@ export async function loadSettings(): Promise<AppSettings> {
   } else {
     s.testTimeoutMs = Math.max(1000, Math.min(30000, Math.floor(s.testTimeoutMs)));
   }
+  // 重试默认 0 对齐 Android(单次探测,不重试)。
   if (!(s.testRetries >= 0)) {
-    s.testRetries = 1;
+    s.testRetries = 0;
   } else {
     s.testRetries = Math.min(3, Math.floor(s.testRetries));
   }
@@ -196,9 +249,10 @@ export async function loadSettings(): Promise<AppSettings> {
   } else {
     s.testSamples = Math.min(5, Math.floor(s.testSamples));
   }
+  // 期望状态默认 'any' 对齐 Android(libneko 不看状态码)。
   const EXPECT_STATUS: Array<string> = ['2xx', 'any'];
   if (EXPECT_STATUS.indexOf(s.testExpectStatus) < 0) {
-    s.testExpectStatus = '2xx';
+    s.testExpectStatus = 'any';
   }
   if (!(s.latencyStaleMs > 0)) {
     s.latencyStaleMs = 6 * 3600 * 1000;
@@ -229,7 +283,29 @@ export async function loadSettings(): Promise<AppSettings> {
     await pref.put(KEY_SETTINGS, JSON.stringify(s));
     await pref.flush();
   }
+  // 分应用代理规范化(必须在 coverFix 落盘之后,避免迁移被后面的写回覆盖):
+  //   1) perAppEntries 为空串 = 首次载入本版本 → 用「预置应用 + 旧 perAppList」初始化;
+  //   2) perAppList 永远从 entries 的勾选项派生,保证下发内核的名单只含已勾选且合法的包名;
+  //   3) 模式非法值回退 off,防止脏数据让扩展构造出无意义的 VpnConfig。
+  s.perAppMode = normalizedPerAppMode(s.perAppMode);
+  const needsEntryInit = s.perAppEntries.trim().length === 0;
+  const entries = needsEntryInit
+    ? initialEntries(s.perAppList)
+    : parseEntries(s.perAppEntries);
+  s.perAppEntries = serializeEntries(entries);
+  s.perAppList = effectivePackages(entries).join(',');
+  if (needsEntryInit) {
+    await pref.put(KEY_SETTINGS, JSON.stringify(s));
+    await pref.flush();
+    LogStore.addLog(`[store] 分应用条目已初始化: ${entries.length} 条(生效 ${effectivePackages(entries).length} 个)`);
+  }
   return s;
+}
+
+/** 分应用模式白名单:off / exclude / include,其余(含旧脏值)一律回退 off。 */
+export function normalizedPerAppMode(value: string): string {
+  const modes: Array<string> = ['off', 'exclude', 'include'];
+  return modes.indexOf(value) >= 0 ? value : 'off';
 }
 
 /** Empty retains the legacy boolean fallback; explicit valid modes always win. */
@@ -244,6 +320,11 @@ export async function saveSettings(s: AppSettings): Promise<void> {
   const saved = new AppSettings();
   fillFrom(saved, s);
   saved.ipv6Mode = normalizedIpv6Mode(saved.ipv6Mode);
+  // 分应用:条目是权威数据,perAppList 一律派生 —— 这样任何写入路径(勾选/删除/
+  // 批量导入/剪贴板导入/备份恢复)都不可能把"未勾选"或"非法包名"漏进内核名单。
+  saved.perAppMode = normalizedPerAppMode(saved.perAppMode);
+  saved.perAppEntries = serializeEntries(parseEntries(saved.perAppEntries));
+  saved.perAppList = effectivePackages(parseEntries(saved.perAppEntries)).join(',');
   await pref.put(KEY_SETTINGS, JSON.stringify(saved));
   await pref.flush();
 }

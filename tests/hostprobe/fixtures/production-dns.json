@@ -37,11 +37,11 @@
             "domain": [
               "reject.parity.test"
             ],
-            "action": "predefined",
-            "rcode": 3
+            "action": "predefined"
           }
         ],
         "final": "remote",
+        "independent_cache": true,
         "strategy": "ipv4_only"
       },
       "outbounds": [
@@ -111,8 +111,7 @@
             "domain": [
               "reject.parity.test"
             ],
-            "action": "predefined",
-            "rcode": 3
+            "action": "predefined"
           },
           {
             "inbound": [
@@ -124,6 +123,7 @@
           }
         ],
         "final": "remote",
+        "independent_cache": true,
         "strategy": "ipv4_only"
       },
       "outbounds": [
@@ -176,11 +176,11 @@
             "domain": [
               "reject.parity.test"
             ],
-            "action": "predefined",
-            "rcode": 3
+            "action": "predefined"
           }
         ],
         "final": "remote",
+        "independent_cache": true,
         "strategy": "prefer_ipv4"
       },
       "outbounds": [
@@ -250,8 +250,7 @@
             "domain": [
               "reject.parity.test"
             ],
-            "action": "predefined",
-            "rcode": 3
+            "action": "predefined"
           },
           {
             "inbound": [
@@ -263,6 +262,7 @@
           }
         ],
         "final": "remote",
+        "independent_cache": true,
         "strategy": "prefer_ipv4"
       },
       "outbounds": [
@@ -315,11 +315,11 @@
             "domain": [
               "reject.parity.test"
             ],
-            "action": "predefined",
-            "rcode": 3
+            "action": "predefined"
           }
         ],
         "final": "remote",
+        "independent_cache": true,
         "strategy": "prefer_ipv6"
       },
       "outbounds": [
@@ -389,8 +389,7 @@
             "domain": [
               "reject.parity.test"
             ],
-            "action": "predefined",
-            "rcode": 3
+            "action": "predefined"
           },
           {
             "inbound": [
@@ -402,6 +401,7 @@
           }
         ],
         "final": "remote",
+        "independent_cache": true,
         "strategy": "prefer_ipv6"
       },
       "outbounds": [
@@ -454,11 +454,11 @@
             "domain": [
               "reject.parity.test"
             ],
-            "action": "predefined",
-            "rcode": 3
+            "action": "predefined"
           }
         ],
         "final": "remote",
+        "independent_cache": true,
         "strategy": "ipv6_only"
       },
       "outbounds": [
@@ -528,8 +528,7 @@
             "domain": [
               "reject.parity.test"
             ],
-            "action": "predefined",
-            "rcode": 3
+            "action": "predefined"
           },
           {
             "inbound": [
@@ -541,6 +540,7 @@
           }
         ],
         "final": "remote",
+        "independent_cache": true,
         "strategy": "ipv6_only"
       },
       "outbounds": [
