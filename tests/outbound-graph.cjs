@@ -43,7 +43,7 @@ test('W15: non-selected urltest group uses current defaults and shared members e
  check(c);
  const ut=c.outbounds.find(x=>x.tag==='group-s1');
  assert.ok(ut&&ut.type==='urltest');
- assert.equal(ut.interval,'10m');assert.equal(ut.tolerance,50);assert.equal(ut.interrupt_exist_connections,false);
+ assert.equal(ut.interval,'5m');assert.equal(ut.tolerance,50);assert.equal(ut.interrupt_exist_connections,false);
  assert.deepEqual([...ut.outbounds],['profile-g1']);
 });
 test('W15: empty group is not emitted and rule targeting it is skipped, not silently proxied',()=>{

@@ -147,13 +147,13 @@ function proxies(entries, ok = true) {
   console.log('PASS compileGroups resolves members to profile tags and skips plain groups');
 }
 
-// 10. compileGroups: urltest 组参数(§9.3 默认 10min/50ms/不中断)
+// 10. compileGroups: urltest 组参数(§9.3 默认 5min/50ms/不中断)
 {
   const groups = [group('g1', { autoSelect: true })];
   const entries = pg.compileGroups(groups, pg.buildTagMap(groups), [profile('p1', 'g1')]);
   assert.equal(entries[0].type, 'urltest');
-  assert.equal(entries[0].url, 'http://www.gstatic.com/generate_204'); // ConfigBuilder.ets:863 兜底
-  assert.equal(entries[0].interval, 600); // 10m
+  assert.equal(entries[0].url, 'http://cp.cloudflare.com/'); // 与 ConfigBuilder.DEFAULT_PROBE_URL 同一兜底
+  assert.equal(entries[0].interval, 300); // 5m
   assert.equal(entries[0].tolerance, 50); // ConfigBuilder.ets:870
   assert.equal(entries[0].interruptExisting, false); // ConfigBuilder.ets:871
   console.log('PASS compileGroups urltest defaults match current ConfigBuilder output');
@@ -262,11 +262,11 @@ function proxies(entries, ok = true) {
 // 20. autoSelectDefaults 数值(§9.3)
 {
   const d = pg.autoSelectDefaults();
-  assert.equal(d.url, 'http://www.gstatic.com/generate_204');
-  assert.equal(d.intervalSec, 600);
+  assert.equal(d.url, 'http://cp.cloudflare.com/');
+  assert.equal(d.intervalSec, 300);
   assert.equal(d.toleranceMs, 50);
   assert.equal(d.interruptExisting, false);
-  console.log('PASS autoSelectDefaults: 10min / 50ms / keep existing connections');
+  console.log('PASS autoSelectDefaults: 5min / 50ms / keep existing connections');
 }
 
 console.log('\nALL policy-groups checks passed');

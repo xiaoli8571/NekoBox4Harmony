@@ -14,6 +14,10 @@ import { RouteRule, RemoteRuleSet } from '../model/RouteRule';
  */
 
 const TUN_ADDR_V4 = '172.19.0.1/30';
+// url-test 兜底探测地址。与 AppSettings.testUrl 默认值(Profile.ets)/ ToolsPage / ClashApi.URL_TEST_TARGET
+// 统一为同一个常量值:此前 ConfigBuilder 兜底写 gstatic、其余入口写 cp.cloudflare.com,
+// 同一次会话里出现两套探测目标,gstatic 在国内常被污染/劫持,导致"明明能上网却整组测速失败"。
+export const DEFAULT_PROBE_URL: string = 'http://cp.cloudflare.com/';
 const TUN_ADDR_V6 = 'fdfe:dcba:9876::1/126';
 const FAKEIP_RANGE_V4 = '198.18.0.0/15';
 const FAKEIP_RANGE_V6 = 'fc00::/18';
@@ -926,11 +930,13 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     }
     if (selectedGroup.autoSelect) {
       // sing-box 1.14 urltest 出站:url/interval/tolerance/interrupt_exist_connections
-      const probeUrl = s.testUrl.trim().length > 0 ? s.testUrl.trim() : 'http://www.gstatic.com/generate_204';
+      const probeUrl = s.testUrl.trim().length > 0 ? s.testUrl.trim() : DEFAULT_PROBE_URL;
       const urlTestGroup: Record<string, Object> = {
         'type': 'urltest', 'tag': 'proxy', 'outbounds': memberTags,
         'url': probeUrl,
-        'interval': '10m',
+        // 5m:内核自动选路的最长滞后。原 10m(照抄安卓)在节点掉线后要等满一个周期才切换,
+        // 用户侧表现为"节点挂了但还卡着";5m 与 FlClash/Clash Verge 的 url-test 周期一致。
+        'interval': '5m',
         'idle_timeout': '30m',
         // tolerance:抖动小于该值就不换节点,避免在两个接近的节点之间来回跳
         'tolerance': 50,
@@ -968,10 +974,10 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
       memberTags.push(tag);
     }
     if (g.autoSelect) {
-      const probeUrl = s.testUrl.trim().length > 0 ? s.testUrl.trim() : 'http://www.gstatic.com/generate_204';
+      const probeUrl = s.testUrl.trim().length > 0 ? s.testUrl.trim() : DEFAULT_PROBE_URL;
       const urlTestGroup: Record<string, Object> = {
         'type': 'urltest', 'tag': groupTag, 'outbounds': memberTags,
-        'url': probeUrl, 'interval': '10m', 'idle_timeout': '30m',
+        'url': probeUrl, 'interval': '5m', 'idle_timeout': '30m',
         'tolerance': 50, 'interrupt_exist_connections': false
       };
       outbounds.push(urlTestGroup);

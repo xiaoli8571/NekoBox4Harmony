@@ -146,7 +146,7 @@ function buildDefs(): Array<SettingDef> {
     'settings_resolve_destination', '解析 目标 resolve destination 存档'));
   out.push(def('sniffMode', 'mode', APPLY_RECONNECT, 'enum', '"route"',
     'settings_sniff_mode', '嗅探 sniff route override 覆盖 off'));
-  out.push(def('bypassLan', 'mode', APPLY_RECONNECT, 'bool', 'false',
+  out.push(def('bypassLan', 'mode', APPLY_RECONNECT, 'bool', 'true',
     'settings_bypass_lan', '绕过 局域网 bypass lan 局域网地址'));
   // ---- dns（reconnect）
   out.push(def('remoteDns', 'dns', APPLY_RECONNECT, 'string', '"tcp://8.8.8.8"',

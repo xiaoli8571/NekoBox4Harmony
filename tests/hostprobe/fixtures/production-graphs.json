@@ -77,6 +77,10 @@
             "outbound": "profile-b"
           },
           {
+            "ip_is_private": true,
+            "outbound": "direct"
+          },
+          {
             "type": "logical",
             "mode": "or",
             "rules": [
@@ -197,6 +201,10 @@
               "target.test"
             ],
             "outbound": "profile-c"
+          },
+          {
+            "ip_is_private": true,
+            "outbound": "direct"
           },
           {
             "type": "logical",

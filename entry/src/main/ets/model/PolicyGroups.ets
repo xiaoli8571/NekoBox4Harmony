@@ -13,7 +13,7 @@ import type { ClashProxiesResult } from '../core/ClashApi';
  *    需要成员的函数都带 `profiles` 参数（可选；不给就不猜）。
  * 2) 内核口径(ConfigBuilder.ets:850-880)：只有"当前选中组"会被包成一个 wrapper，
  *    tag 恒为 `'proxy'`；isSelector → selector(+default)，autoSelect → urltest
- *    (url=testUrl 兜底 http://www.gstatic.com/generate_204、interval='10m'、
+ *    (url=testUrl 兜底 http://cp.cloudflare.com/、interval='5m'、
  *    idle_timeout='30m'、tolerance=50、interrupt_exist_connections=false)。
  *    两者互斥且 autoSelect 优先(:849-861)。
  * 3) 节点出站 tag 规则：`profileRootTag(id) = profile-<encodeURIComponent(id)>`
@@ -294,8 +294,9 @@ export function autoSelectDefaults(): AutoSelectDefaults {
 
 /** §9.3 默认值(与 ConfigBuilder.ets:863-871 现行生成一致；内核不支持的可选参数由调用方按能力显示)。 */
 export class AutoSelectDefaults {
-  url: string = 'http://www.gstatic.com/generate_204';
-  intervalSec: number = 600;
+  url: string = 'http://cp.cloudflare.com/';
+  // 300s = 5m,与 ConfigBuilder 下发的 urltest 'interval' 一致(原 600s/10m 掉线滞后太久)
+  intervalSec: number = 300;
   toleranceMs: number = 50;
   interruptExisting: boolean = false;
 }

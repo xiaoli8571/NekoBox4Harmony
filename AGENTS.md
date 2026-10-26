@@ -35,6 +35,17 @@ HarmonyOS NEXT 原生 VPN 客户端,参考 [NekoBoxForAndroid](https://github.co
   仍**不要**申请 `KEEP_BACKGROUND_RUNNING_SYSTEM` / `USE_FRAUD_APP_PICKER` / `KEEP_BACKGROUND_RUNNING_SPECIAL_SCENARIO`
   这类未获 ACL 的 system_basic;任何"新增保活手段"先核对
   `toolchains/lib/PermissionDefinitions.json` 的 `availableLevel`。
+- **体验修正口径(2026-10-26,有意偏离安卓 1:1,勿在"对齐安卓"名义下回退)**:
+  1. `bypassLan` 默认 **true**(安卓 `DataStore.bypassLan` 默认 false)。关闭时私网流量被送进代理,
+     真机日志实测 `192.168.8.1:80 → outbound/hysteria2 → i/o timeout`,用户侧是路由器后台/NAS/打印机/
+     SMB 全失联。存量装机由 `Store.loadSettings` 末尾的一次性修正(`KEY_DEFAULTS_V3`)翻成 true,
+     **必须写回 settings JSON**(只改内存会让先加载的 UI 进程把标记打掉、后加载的 :vpn 进程仍读旧值,
+     配置里就缺 `ip_is_private` 规则 —— 真机验证踩过)。
+  2. `urltest.interval` = **5m**(原 10m 照抄安卓),掉线切换最长滞后从 10 分钟降到 5 分钟,
+     与 FlClash/Clash Verge 的 url-test 周期一致;`PolicyGroups.AutoSelectDefaults.intervalSec` 同步 300。
+  3. 探测地址统一 `DEFAULT_PROBE_URL = http://cp.cloudflare.com/`(ConfigBuilder 兜底/Profile 默认/
+     ToolsPage/`ClashApi.URL_TEST_TARGET` 同一值);旧默认 gstatic 由同一次一次性修正迁移,
+     仅逐字符相等才改,自定义网址不动。
 - 1.14 升级过程中修掉的两个真机启动失败(务必留意回归):
   1. **ArkTS 层**:1.14 新式 DNS server 不允许 `detour` 到「空 direct outbound」(`detour to an empty direct outbound makes no sense`)。`ConfigBuilder` 已去掉 local DNS 的 `detour:"direct"`——1.12+ 不写 detour 即默认直连,语义不变。
   2. **内核层(补丁 5)**:1.14 的 direct outbound 新增 `fetchMyAddresses()`,在 `auto_detect_interface=false` 下会命中补丁 2 早退留下的 nil `InterfaceMonitor` → **SIGSEGV**(cppcrash 栈顶 `direct.(*Outbound).fetchMyAddresses`)。已在 `protocol/direct/outbound.go` 判空,构建脚本已固化该校验。

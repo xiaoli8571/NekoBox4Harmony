@@ -13,6 +13,8 @@ const KEY_PROFILES = 'profiles';
 const KEY_GROUPS = 'profile_groups';
 const KEY_SETTINGS = 'settings';
 const KEY_PENDING = 'pending_profile_id';
+/** 一次性默认值修正标记(私网直连开 + 测速网址换 cp.cloudflare.com,见 loadSettings 末尾)。 */
+const KEY_DEFAULTS_V3 = 'defaults_fix_v3';
 export const LOG_EVENT_ID: number = 1001;
 
 let prefInstance: dataPreferences.Preferences | null = null;
@@ -226,8 +228,8 @@ export async function loadSettings(): Promise<AppSettings> {
   if (s.testUrl.trim().length === 0) {
     s.testUrl = 'http://cp.cloudflare.com/';
   }
-  // 1:1 对齐:Android 的默认探测网址就是 http://cp.cloudflare.com/(Constants.kt:3),
-  // 存量装机保存过的网址(含 2.1.8 时代的 gstatic)**一律不改写** —— 只兜空值。
+  // 1:1 对齐:Android 的默认探测网址就是 http://cp.cloudflare.com/(Constants.kt:3)。
+  // 存量装机的旧默认 gstatic 由函数末尾的一次性修正(KEY_DEFAULTS_V3)迁移,自定义网址不改写。
   const TEST_MODES: Array<string> = ['url', 'tcp'];
   if (TEST_MODES.indexOf(s.latencyTestMode) < 0) {
     s.latencyTestMode = 'url';
@@ -298,6 +300,23 @@ export async function loadSettings(): Promise<AppSettings> {
     await pref.put(KEY_SETTINGS, JSON.stringify(s));
     await pref.flush();
     LogStore.addLog(`[store] 分应用条目已初始化: ${entries.length} 条(生效 ${effectivePackages(entries).length} 个)`);
+  }
+  // 一次性默认值修正(2026-10-26;标记落盘后不再重复,用户之后显式改回的值永久保留):
+  //   1) bypassLan false→true:关闭时私网流量被送进代理(真机日志实测 192.168.8.1:80 →
+  //      outbound/hysteria2 → i/o timeout),用户侧表现为路由器后台/NAS/打印机/SMB 全失联。
+  //   2) testUrl 旧默认 gstatic→cp.cloudflare.com:gstatic 在国内常被污染/劫持/运营商缓存,
+  //      表现为"能上网却整组测速失败";只迁移与旧默认值逐字符相等的地址,自定义网址不动。
+  //   ⚠ 必须在**函数末尾**做并把 settings 写回:只改内存值会让先加载的进程(UI)把标记打掉,
+  //   后加载的扩展进程(:vpn)仍读到旧值 —— 真机验证时配置里确实缺了 ip_is_private 规则。
+  if ((await pref.get(KEY_DEFAULTS_V3, '')) !== '1') {
+    s.bypassLan = true;
+    if (s.testUrl === 'http://www.gstatic.com/generate_204' || s.testUrl === 'https://www.gstatic.com/generate_204') {
+      s.testUrl = 'http://cp.cloudflare.com/';
+    }
+    await pref.put(KEY_SETTINGS, JSON.stringify(s));
+    await pref.put(KEY_DEFAULTS_V3, '1');
+    await pref.flush();
+    LogStore.addLog('[store] 默认值已修正: 私网直连=开, 测速网址=cp.cloudflare.com');
   }
   return s;
 }

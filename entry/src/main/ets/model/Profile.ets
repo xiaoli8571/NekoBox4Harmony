@@ -184,7 +184,11 @@ export class AppSettings {
   dnsRouting: boolean = true;          // DNS 路由:CN 域名用直连 DNS 解析
   fakeDns: boolean = false;            // FakeDNS(安卓默认 true;鸿蒙 system 栈真机验证前保守关,见 reaudit DEF-02「按平台能力恢复默认」)
   ipv6: boolean = false;
-  bypassLan: boolean = false;          // 对齐安卓 DataStore.bypassLan 默认 false
+  // 私网直连默认**开启**(2026-10-26 有意偏离安卓 DataStore.bypassLan 默认 false):
+  // 真机日志实测 bypassLan=false 时 192.168.8.1:80 被送进 outbound/hysteria2 → dial timeout,
+  // 用户侧表现为路由器后台/NAS/打印机/SMB 全失联。私网段经代理既无意义又必然失败,
+  // 故默认直连;需要「连局域网也走代理」的用户可在设置页自行关闭。
+  bypassLan: boolean = true;
   sniffMode: string = 'route';         // off / route(仅用于路由) / override(嗅探并覆盖目标)
   resolveDestination: boolean = false; // 解析目标地址(存档项,配置暂不消费)
   mixedPort: number = 2080;            // 混合代理端口,对齐安卓 getLocalPort 默认 2080,0=关闭
