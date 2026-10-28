@@ -110,8 +110,14 @@ DEVECO_SDK_HOME='C:\Program Files\Huawei\DevEco Studio\sdk' node hvigorw.js --mo
 
 ### 一键:重编 + 打包 + 签名(2026-09 新增)
 
-`scripts/build-and-sign.sh` 把上面第 1/2 步加上签名串成一条。签名材料放
-`签名材料/`(已在 `.gitignore` 里,严禁入库):
+`scripts/build-and-sign.sh` 把上面第 1/2 步加上签名串成一条。签名材料**不入库**(含私钥),
+按以下顺序自动探测,也可用 `SIG_DIR` 环境变量或 `-CertDir`(ps1)/手动放位覆盖:
+
+1. `<repo>/签名材料/` —— 本仓库专用材料 `{NekoBox-release.p12|NekoBox.p12, NekoBox.cer, NekoBoxRelease.p7b}`,别名 `nekobox`(
+   由 `scripts/fix-release-keystore.sh` 生成的 `NekoBox-release.p12` 装载华为发布证书;
+   **本机当前不存在此目录**)
+2. `C:\Worker\AGC通用证书/` —— 多项目共用的 AGC 发布材料 `{General.p12, General.cer, NekoBoxRelease.p7b}`,
+   别名 `general`;**本机实际可用的就是这一套**
 
 ```bash
 export PATH="/c/Program Files/Huawei/DevEco Studio/jbr/bin:$PATH"
@@ -119,8 +125,11 @@ SIGN_P12_PASS='<密钥库密码>' bash scripts/build-and-sign.sh
 # 产物 dist/NekoBox-<version>-signed.hap
 ```
 
-- **密码只从环境变量 `SIGN_P12_PASS` 取**,不写脚本、不写 `build-profile.json5`、
-  不提交仓库(旧版本文档曾把明文密码提交到 GitHub main,踩过)。
+- **密码只从环境变量取**(bash 脚本用 `SIGN_P12_PASS`,AGC 双层签名 ps1 用 `AGC_KEY_PASSWORD`),
+  不写脚本、不写 `build-profile.json5`、不提交仓库(旧版本文档曾把明文密码提交到 GitHub main,踩过)。
+- 发布包(.hap + .app)走 AGC 双层签名:
+  `pwsh -File scripts/sign-release-agc.ps1`(先 `assembleApp`;脚本从 `build/outputs/default/*-unsigned.app` 取料,
+  自动在 `C:\Worker` 下找含 `General.p12` 的目录,双层 verify + 发布证书链指纹断言,产物写 `dist/`)。
 - 脚本用 `scripts/inject-signing.js` 幂等地把签名段注入 `build-profile.json5`。
   还原成仓库基线:`node scripts/inject-signing.js --profile build-profile.json5 --reset`。
 - **注入后 `build-profile.json5` 是本地修改,别提交**(见「注意事项」)。

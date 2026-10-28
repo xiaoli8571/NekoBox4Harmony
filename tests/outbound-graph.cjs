@@ -5,7 +5,7 @@ const sdk=process.env.DEVECO_SDK_HOME||'C:\\Program Files\\Huawei\\DevEco Studio
 const ts=require(path.join(sdk,'default/openharmony/ets/build-tools/ets-loader/node_modules/typescript/lib/typescript.js'));
 function load(file,imports={}) { const exports={}; vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(root,file),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021}}).outputText,{exports,console,require:n=>{if(!(n in imports))throw Error(n);return imports[n];}});return exports; }
 const model=load('entry/src/main/ets/model/Profile.ets');
-const builder=load('entry/src/main/ets/core/ConfigBuilder.ets',{'../model/Profile':model,'../utils/TrafficStats':{CLASH_API_PORT:9090},'../model/RouteRule':{}});
+const builder=load('entry/src/main/ets/core/ConfigBuilder.ets',{'../model/Profile':model,'../utils/TrafficStats':{CLASH_API_PORT:9090},'../model/RouteRule':{},'./PreparedResource':load('entry/src/main/ets/core/PreparedResource.ets')});
 const p=(id,fields={})=>Object.assign(new model.Profile(),{id,type:'socks',server:'127.0.0.1',serverPort:1080,name:'same'},fields);
 const group=(id,fields={})=>Object.assign(new model.ProfileGroup(),{id},fields);
 const rule=id=>({enabled:true,outbound:'profile:'+id,domains:'full:target.test',ip:'',source:'',port:'',sourcePort:'',network:'',protocol:'',packages:'',config:''});

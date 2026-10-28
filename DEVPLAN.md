@@ -1,5 +1,7 @@
 # NekoBox for Harmony 开发计划(G 阶段,目标版本 1.6.0)
 
+## 版本 2.4.0 发布打包(2026-10-28)—— 状态:✅ release 构建完成,AGC 签名待密码:远程规则集启动解耦 + 会话资源固定 + 镜像字段修正,版本号统一 2.4.0/2400000(app.json5 与两个 oh-package.json5),Node 43 套件全 PASS。
+
 ## 版本 2.3.0 发布打包(2026-10-24)—— 状态:✅ 已构建 + AGC 双层签名(真机待验):复审修复 4 项后升 2.3.0/2300000,产物与 SHA256 见 CHANGES.md 顶部条目;Node 42 套件 + Go PASS。历史:全面体验与功能改造方案(2026-10-23)—— 状态：P0–P6 已完成(2026-10-24;P6=适配与回归 W21,见 `docs/p6-foundation/README.md`),P7 发布检查文档轮完成(真机项全部「待验」,`docs/p7-release/README.md`)。各阶段详见 `docs/p0-baseline/README.md`、`docs/p1-foundation/README.md`、`docs/p2-foundation/README.md`、`docs/p3-foundation/README.md`、`docs/p4-foundation/README.md`、`docs/p5-foundation/README.md`
 
 - 用户要求上一轮全部建议纳入改造，先写详细方案。统一依据：`docs/REDESIGN-PLAN-2026-10-23.md`。

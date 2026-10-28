@@ -1,6 +1,7 @@
 import { Profile, ProfileGroup, AppSettings, ProfileType, supportsTransport, needsTlsByDefault } from '../model/Profile';
 import { CLASH_API_PORT } from '../utils/TrafficStats';
-import { RouteRule, RemoteRuleSet } from '../model/RouteRule';
+import { RouteRule } from '../model/RouteRule';
+import { PreparedRuleSet, RULESET_FORMAT_SOURCE } from './PreparedResource';
 
 /**
  * sing-box 1.14 配置生成器。
@@ -106,7 +107,11 @@ function buildTls(p: Profile, s: AppSettings): Object | undefined {
     utls['fingerprint'] = p.fingerprint.length > 0 ? p.fingerprint : 'chrome';
     tls['utls'] = utls;
   }
-  if (hasEch) {
+  // 修复: 部分订阅会仅开启 ECH 标志但不提供 echConfig。
+  // sing-box 会尝试在线获取 ECH config, 在 remote DNS 走代理时容易触发
+  // "fetch ECH config list: DNS query loopback in transport[remote]"。
+  // 无配置时直接禁用 ECH, 保持与普通 TLS 一致, 避免整条代理链异常。
+  if (hasEch && p.echConfig.trim().length > 0) {
     const ech: Record<string, Object> = { 'enabled': true };
     setIf(ech, 'config', p.echConfig.trim());
     tls['ech'] = ech;
@@ -726,33 +731,24 @@ function kernelWatchablePath(path: string): string {
   return path;
 }
 
-/** geo 规则集下载源(primary;实际几乎不会拉取,见下) */
-/* 用 jsdelivr 镜像而不是 raw.githubusercontent(国内可达):内核 initial_path 加载不写
- * lastUpdated,更新循环会「立即到期」拉一次;拉成功才写缓存(LastUpdated=now)此后不再拉。
- * 源不可达 ⇒ 每次连接一条 fetch ERROR 红字,jsdelivr 能拉成一次就永久安静。 */
-const GEO_SITE_SOURCE: string = 'https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-cn.srs';
-const GEO_IP_SOURCE: string = 'https://cdn.jsdelivr.net/gh/SagerNet/sing-geoip@rule-set/geoip-cn.srs';
-
-/** 生成 geo rule-set 定义(sing-geo* rule-set 分支的 *.srs 为编译二进制)。
- *  ⚠️ 用 **remote + initial_path** 而不是 local(2026-10-24 真机定稿):
- *  - local 类型内核会对文件做 fswatch,而 OHOS 应用存储别名(/data/storage/el2/*)
- *    不支持 inotify ⇒ 每次启动刷两条 permission denied ERROR 红字(内核冻结,无开关);
- *  - 「别名→真实路径」换算不可行:扩展进程命名空间里 /data/app/el2/100/... 不存在,
- *    内核 open 直接失败拒绝启动(真机证伪);
- *  - remote 启动顺序 = cache_file 缓存 → **initial_path 本地文件(离线可用)** → 才网络拉取,
- *    且不做 fswatch。update_interval 放 10 年,实际永不主动拉;
- *  - URL 带 ?v=<mtime>-<size>:geo 资产更新后 URL 变 ⇒ 缓存键变 ⇒ 下次启动重读
- *    initial_path 的新文件(内核 remote 缓存按 URL 哈希存,不绕会一直用旧缓存)。 */
-function buildGeoRuleSet(tag: string, path: string, version: string): Record<string, Object> {
+/**
+ * 生成 geo rule-set 定义(sing-geo* rule-set 分支的 *.srs 为编译二进制)。
+ *
+ * 阶段六统一口径:**一律 type:'local'**(docs/REMOTE_RULESET_ARCHITECTURE_REFACTOR_PLAN.md):
+ *  - 启动与网络彻底解耦:旧写法 remote+initial_path 虽然本地优先,内核仍持有一个 remote
+ *    规则集(更新循环存在联网可能,且配置里出现 remote 类型),验收 A4/A5 都不允许;
+ *  - 文件路径直接用应用存储别名(/data/storage/el2/base/haps/...):内核同进程能 open,
+ *    不要换算成 /data/app/el2/100/... —— 扩展进程命名空间里那条路径不存在(真机证伪);
+ *  - 已知代价:local 类型内核会挂 fswatch,OHOS 别名不支持 inotify ⇒ 启动日志会多两条
+ *    "watch rule-set file: permission denied" ERROR 红字(内核对 Start() 失败只记日志,不影响启动)。
+ *    这是「配置里零 remote」必需付出的日志噪声,不影响连通性。
+ */
+function buildGeoRuleSet(tag: string, path: string): Record<string, Object> {
   const def: Record<string, Object> = {};
   def['tag'] = tag;
-  def['type'] = 'remote';
+  def['type'] = 'local';
   def['format'] = 'binary';
-  const base = tag.startsWith('geoip') ? GEO_IP_SOURCE : GEO_SITE_SOURCE;
-  def['url'] = version.length > 0 ? `${base}?v=${version}` : base;
-  def['download_detour'] = 'direct';
-  def['update_interval'] = '87600h';
-  def['initial_path'] = path;
+  def['path'] = path;
   return def;
 }
 
@@ -836,11 +832,18 @@ function profileRootTag(id: string): string {
   return `profile-${encodeURIComponent(id)}`;
 }
 
+/**
+ * 生成 sing-box 主配置。
+ *
+ * ⚠️ 资源边界(方案第三阶段):本函数**不下载、不联网、不落盘**,只消费已准备好的本地资源:
+ *   - geositePath / geoIpPath:ResourceResolver 校验过的本地 .srs 路径(空 = 未就绪);
+ *   - preparedRuleSets:ResourceResolver.prepareResources 的产出,只有 available=true 的条目
+ *     才会生成 `type:'local'` 定义与路由引用;不可用的规则集**整条跳过**(绝不下发 remote)。
+ */
 export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: string,
   logPath: string = '', geositePath: string = '', geoIpPath: string = '',
-  customRules: Array<RouteRule> = [], remoteRuleSets: Array<RemoteRuleSet> = [],
-  cachePath: string = '', allProfiles: Array<Profile> = [], groups: Array<ProfileGroup> = [],
-  geositeVersion: string = '', geoIpVersion: string = ''): string {
+  customRules: Array<RouteRule> = [], preparedRuleSets: Array<PreparedRuleSet> = [],
+  cachePath: string = '', allProfiles: Array<Profile> = [], groups: Array<ProfileGroup> = []): string {
   if (p.type !== ProfileType.CUSTOM && p.type !== ProfileType.CHAIN && p.server.length === 0) {
     throw new Error('服务器地址为空');
   }
@@ -1275,21 +1278,21 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
       routeRules.push(geoipRule);
     }
 
-    for (const item of remoteRuleSets) {
-      if (!item.enabled || item.id.length === 0 || item.url.length === 0) {
+    // 远程规则集:**只消费已准备资源**,一律 local;不可用的(GitHub 不可达/URL 错/无缓存)
+    // 整条跳过 —— 这是「下载失败永不拖垮 VPN 启动」的落点(方案 A1/A2/A3)。
+    for (const item of preparedRuleSets) {
+      if (!item.available || item.path.length === 0 || item.tag.length === 0) {
         continue;
       }
       const definition: Record<string, Object> = {};
-      definition['tag'] = `remote_${item.id}`;
-      definition['type'] = 'remote';
-      definition['format'] = 'binary';
-      definition['url'] = item.url;
-      definition['download_detour'] = 'direct';
-      definition['update_interval'] = '24h';
+      definition['tag'] = item.tag;
+      definition['type'] = 'local';
+      definition['format'] = item.format === RULESET_FORMAT_SOURCE ? RULESET_FORMAT_SOURCE : 'binary';
+      definition['path'] = item.path;
       ruleSetDefinitions.push(definition);
 
       const reference: Record<string, Object> = {};
-      reference['rule_set'] = [`remote_${item.id}`];
+      reference['rule_set'] = [item.tag];
       reference['outbound'] = item.outbound;
       routeRules.push(reference);
     }
@@ -1303,10 +1306,10 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     for (const tag of referencedRuleSetTags) {
       if (tag === 'geosite:cn' && geositePath.length > 0) {
         cnTags.push(tag);
-        pendingDefs.push(buildGeoRuleSet(tag, geositePath, geositeVersion));
+        pendingDefs.push(buildGeoRuleSet(tag, geositePath));
       } else if (tag === 'geoip:cn' && geoIpPath.length > 0) {
         cnTags.push(tag);
-        pendingDefs.push(buildGeoRuleSet(tag, geoIpPath, geoIpVersion));
+        pendingDefs.push(buildGeoRuleSet(tag, geoIpPath));
       }
     }
     for (const tag of referencedRuleSetTags) {
@@ -1327,10 +1330,10 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   // 1.14:顶层 route.geoip/geosite 仅支持 legacy geo.db;本项目下载的是
   // sing-geo* rule-set 分支的编译二进制,改为 local rule_set 定义(geo 规则按 tag 引用)
   if (geositePath.length > 0) {
-    ruleSetDefinitions.unshift(buildGeoRuleSet('geosite_cn', geositePath, geositeVersion));
+    ruleSetDefinitions.unshift(buildGeoRuleSet('geosite_cn', geositePath));
   }
   if (geoIpPath.length > 0) {
-    ruleSetDefinitions.unshift(buildGeoRuleSet('geoip_cn', geoIpPath, geoIpVersion));
+    ruleSetDefinitions.unshift(buildGeoRuleSet('geoip_cn', geoIpPath));
   }
   if (ruleSetDefinitions.length > 0) {
     route['rule_set'] = ruleSetDefinitions;

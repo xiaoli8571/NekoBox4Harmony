@@ -23,13 +23,31 @@ DEVECO_SDK_HOME="${DEVECO_SDK_HOME:-C:\Program Files\Huawei\DevEco Studio\sdk}"
 DEVECO_SDK_HOME_WIN="$(cygpath -w "$DEVECO_SDK_HOME" 2>/dev/null || echo "$DEVECO_SDK_HOME")"
 GO126="${GO126:-/c/Program Files/Go/bin/go}"
 VERSION="$(sed -n 's/.*"versionName"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' AppScope/app.json5 | head -1)"
+# 签名材料**不入库**(含私钥),两个可能的位置,按顺序探测:
+#   A) <repo>/签名材料/        —— 旧的本仓库专用材料(NekoBox*.p12/cer/p7b)
+#   B) C:/Worker/AGC通用证书/  —— 多个项目共用的 AGC 发布材料(General.p12/cer + NekoBoxRelease.p7b)
+# 本机实测只有 B;早期文档只写了 A,导致脚本找不到材料。
 SIG_DIR="$ROOT/签名材料"
+DEFAULT_ALIAS="nekobox"
+if [ ! -f "$SIG_DIR/NekoBox.p12" ] && [ ! -f "$SIG_DIR/NekoBox-release.p12" ]; then
+  for cand in "/c/Worker/AGC通用证书" "/c/Worker/AGC通用证书/material"; do
+    if [ -f "$cand/General.p12" ]; then SIG_DIR="$cand"; DEFAULT_ALIAS="general"; break; fi
+  done
+fi
 # 优先用"装了华为发布证书"的密钥库(由 scripts/fix-release-keystore.sh 生成)。
 # 原始 NekoBox.p12 里装的是自签证书 CN=nekobox,不是发布证书。
-P12="$SIG_DIR/NekoBox-release.p12"
-[ -f "$P12" ] || P12="$SIG_DIR/NekoBox.p12"
-CER="$SIG_DIR/NekoBox.cer"
-P7B="$SIG_DIR/NekoBoxRelease.p7b"
+if [ -f "$SIG_DIR/General.p12" ]; then
+  P12="$SIG_DIR/General.p12"
+  CER="$SIG_DIR/General.cer"
+  [ -f "$CER" ] || CER="$(ls "$SIG_DIR"/*.cer 2>/dev/null | head -1)"
+  P7B="$SIG_DIR/NekoBoxRelease.p7b"
+else
+  P12="$SIG_DIR/NekoBox-release.p12"
+  [ -f "$P12" ] || P12="$SIG_DIR/NekoBox.p12"
+  CER="$SIG_DIR/NekoBox.cer"
+  P7B="$SIG_DIR/NekoBoxRelease.p7b"
+fi
+echo "签名材料目录: $SIG_DIR (默认别名 $DEFAULT_ALIAS)"
 
 say() { printf '\n==> %s\n' "$1"; }
 die() { printf 'ERROR: %s\n' "$1" >&2; exit 1; }
@@ -76,8 +94,8 @@ done
 [ -n "$SIGN_TOOL" ] || die "找不到 hap-sign-tool.jar(上面几个候选是实测路径)"
 
 # 密钥别名以 keytool -list 实际输出为准,不要按文件名猜。
-# 实测:签名材料/NekoBox.p12 的别名是 nekobox(全小写),不是 NekoBox。
-KEY_ALIAS="${KEY_ALIAS:-nekobox}"
+# 实测:NekoBox.p12 的别名是 nekobox(全小写);AGC通用证书/General.p12 的别名是 general。
+KEY_ALIAS="${KEY_ALIAS:-$DEFAULT_ALIAS}"
 if command -v keytool >/dev/null 2>&1; then
   ALIASES="$(keytool -list -keystore "$P12" -storetype PKCS12 -storepass "$SIGN_P12_PASS" 2>/dev/null \
     | iconv -f GBK -t UTF-8 2>/dev/null | sed -n 's/^别名: *//p' | head -5)"

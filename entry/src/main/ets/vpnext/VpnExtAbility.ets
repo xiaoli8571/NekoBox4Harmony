@@ -2,7 +2,6 @@ import { VpnExtensionAbility, vpnExtension } from '@kit.NetworkKit';
 import Want from '@ohos.app.ability.Want';
 import connection from '@ohos.net.connection';
 import common from '@ohos.app.ability.common';
-import fs from '@ohos.file.fs';
 import notificationManager from '@ohos.notificationManager';
 import notification from '@ohos.notification';
 import wantAgent from '@ohos.app.ability.wantAgent';
@@ -15,6 +14,10 @@ import { readPrefString } from '../model/Store';
 import { buildCoreConfig, effectiveIpv6Mode } from '../core/ConfigBuilder';
 import { loadRouteRules, RouteRule, loadRemoteRuleSets, RemoteRuleSet } from '../model/RouteRule';
 import { CoreManager } from '../core/CoreManager';
+import {
+  ResourceResolver, PrepareOptions
+} from '../core/ResourceResolver';
+import { PreparedRuleSet, PreparedResources } from '../core/PreparedResource';
 import { entriesFromLegacyList, serializeEntries } from '../model/PerApp';
 import { evaluatePerAppPolicy, perAppBlockMessage } from '../model/PerAppPolicy';
 import deviceInfo from '@ohos.deviceInfo';
@@ -22,7 +25,6 @@ import { publishVpnLog, publishVpnStatusEx, publishVpnTraffic, VPN_EVENT_LATENCY
   subscribeVpnCommands, VpnCommand, VpnEnvelope, publishVpnApplied } from '../core/VpnIpc';
 import { SnapshotStore } from '../core/SnapshotStore';
 import { parseSnapshot, SnapshotParseResult, ConfigSnapshot } from '../model/ConfigSnapshot';
-import { geoReady, geoSitePath as geoSiteFile, geoIpPath as geoIpFile } from '../utils/GeoAssets';
 import { fetchTrafficTotals } from '../utils/TrafficStats';
 import { errText } from '../utils/ErrText';
 import { formatUptimeText } from '../utils/NotifyText';
@@ -73,17 +75,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<
 }
 
 export default class VpnExtAbility extends VpnExtensionAbility {
-
-  /* geo 资产文件身份(mtime-size):拼进 rule-set URL,内核 remote 缓存按版本失效;
-   * 读取失败给空串 ⇒ URL 不带版本,行为与旧版一致(见 ConfigBuilder.buildGeoRuleSet) */
-  private geoAssetVersion(path: string): string {
-    try {
-      const stat = fs.statSync(path);
-      return `${stat.mtime ?? 0}-${stat.size}`;
-    } catch (e) {
-      return '';
-    }
-  }
 
   private vpnConnection: vpnExtension.VpnConnection | null = null;
   private starting: boolean = false;
@@ -407,13 +398,16 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.stopNotificationTrafficPoller();
     this.cancelNotification();
     try {
-      // 内核长时间闲置后可能无响应,stopCore 回调若永不触发会卡死 starting,
-      // 导致之后所有启动请求被队列吞掉——这里必须带超时兜底。
+      // 先停内核再解除 pin。
+      // 否则 stopCore 期间若后台刷新/GC 运行，已解除固定的旧版本文件理论上可能被回收。
+      // 会话资源稳定性的生命周期应覆盖到内核完全停止为止。
       await withTimeout(CoreManager.stopCore(), 8000, '停止内核超时');
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
       LogStore.addLog(`[vpn] 停止内核失败,继续销毁隧道: ${msg}`);
     }
+    // stopCore 已返回(成功或超时兜底)后再解除资源固定。
+    ResourceResolver.releaseSessionFiles();
     if (this.vpnConnection !== null) {
       try {
         await withTimeout(this.vpnConnection.destroy(), 5000, '销毁隧道超时');
@@ -615,6 +609,31 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     }
   }
 
+  /**
+   * 启动前配置校验(K1 `CoreManager.checkConfig`:只解析 schema,不启动实例、不联网)。
+   * 通过 = 返回;'unsupported' = 旧 .so 无导出,能力降级放行(如实记日志);
+   * 其余 = 抛错 → tryStart 捕获后 teardown 并报 connect_failed,**不会创建 TUN**。
+   */
+  private async checkConfigGate(configPath: string): Promise<void> {
+    let res = '';
+    try {
+      res = await withTimeout(CoreManager.checkConfig(configPath), 15000, '配置校验');
+    } catch (e) {
+      LogStore.addLog(`[vpn] 配置校验不可用,跳过(能力降级): ${errText(e)}`);
+      return;
+    }
+    if (res.length === 0) {
+      LogStore.addLog('[vpn] 配置校验通过');
+      return;
+    }
+    if (res === 'unsupported') {
+      LogStore.addLog('[vpn] 内核无 checkConfig 导出(旧 .so),跳过配置校验');
+      return;
+    }
+    const detail = res.startsWith('err:') ? res.substring('err:'.length) : res;
+    throw new Error(`配置校验未通过(未启动 VPN): ${detail}`);
+  }
+
   private async tryStart(): Promise<void> {
     if (this.starting) {
       this.restartRequested = true;
@@ -778,28 +797,17 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       LogStore.addLog(`[vpn] 分应用(仅这些): ${policy.effectivePackages.join(', ')}`);
     }
 
-    // ---- 3. 生成配置文件(内核日志写 log.output 文件,由日志页直读) ----
+    // ---- 3. 资源预处理 → 生成配置(启动与网络解耦) ----
+    // 方案 docs/REMOTE_RULESET_ARCHITECTURE_REFACTOR_PLAN.md:
+    //   load settings → prepareResources → build config(local rule_set) → checkConfig → startCore
     const logPath = CoreManager.resetLogFile(context);
-    let geositePath = '';
-    let geoIpPath = '';
-    /* geo 资产版本(mtime-size):拼进 rule-set URL 让内核 remote 缓存按文件版本失效 */
-    let geositeVersion = '';
-    let geoIpVersion = '';
-    if (settings.mode === 'rule') {
-      try {
-        if (geoReady(context)) {
-          geositePath = geoSiteFile(context);
-          geoIpPath = geoIpFile(context);
-          geositeVersion = this.geoAssetVersion(geositePath);
-          geoIpVersion = this.geoAssetVersion(geoIpPath);
-          LogStore.addLog('[vpn] Geo 分流数据就绪,cn 直连分流已启用');
-        } else {
-          LogStore.addLog('[vpn] Geo 数据未下载,规则模式仅私网/自定义直连');
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
+
+    // :vpn 扩展是**独立进程**(静态字段不共享),资源仓库必须在本进程 init;
+    // 目录(应用私有 filesDir/config/resources)与 UI 进程共用。validator 桥接让扩展侧
+    // 下载的规则集能拿到「已验证」资格,否则默认策略下永远不可用。
+    ResourceResolver.ensureRepository(context,
+      (path: string): Promise<string> => CoreManager.validateSrs(path));
+
     // 自定义路由规则(仅追加注入,不改变 DNS 与出站结构)
     let customRules: Array<RouteRule> = [];
     try {
@@ -816,16 +824,68 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       remoteRuleSets = await loadRemoteRuleSets();
       const enabledRuleSetCount = remoteRuleSets.filter((item: RemoteRuleSet) => item.enabled).length;
       if (enabledRuleSetCount > 0) {
-        LogStore.addLog(`[vpn] 注入远程规则集 ${enabledRuleSetCount} 个`);
+        LogStore.addLog(`[vpn] 读取远程规则集 ${enabledRuleSetCount} 个(启动前统一准备本地缓存)`);
       }
     } catch (e) {
       LogStore.addLog('[vpn] 读取远程规则集失败,本次连接忽略');
     }
+
+    // 统一资源准备:geosite/geoip + 远程规则集。
+    // 启动阶段严格只读本地资源，不执行 HTTP/DNS/TLS；缺失资源在内核启动后后台刷新。
+    const prepareOptions = new PrepareOptions();
+    prepareOptions.allowDownload = false;
+    prepareOptions.withGeo = settings.mode === 'rule';
+    prepareOptions.budgetMs = 0;
+    let prepared: PreparedResources = new PreparedResources();
+    try {
+      prepared = await ResourceResolver.prepareResources(context, remoteRuleSets, prepareOptions);
+    } catch (e) {
+      LogStore.addLog(`[vpn] 资源准备异常(已降级为无规则集启动): ${errText(e)}`);
+    }
+    if (prepared.geoEnabled) {
+      LogStore.addLog('[vpn] Geo 分流数据就绪,cn 直连分流已启用');
+    } else if (settings.mode === 'rule') {
+      LogStore.addLog('[vpn] Geo 数据不可用,规则模式仅私网/自定义直连' +
+        (prepared.warning.length > 0 ? `(${prepared.warning})` : ''));
+    }
+    if (remoteRuleSets.length > 0) {
+      let enabledCount = 0;
+      for (const item of remoteRuleSets) {
+        if (item.enabled) {
+          enabledCount++;
+        }
+      }
+      LogStore.addLog(`[vpn] 规则集准备完成: 可用 ${prepared.availableCount}/${enabledCount}` +
+        ` 不可用 ${prepared.unavailableCount} 本次补缓存 ${prepared.downloadedCount}`);
+      if (prepared.warning.length > 0) {
+        LogStore.addLog(`[vpn] 规则集降级说明: ${prepared.warning}`);
+      }
+      for (let i = 0; i < prepared.ruleSets.length; i++) {
+        const item: PreparedRuleSet = prepared.ruleSets[i];
+        const source = remoteRuleSets[i];
+        if (!item.available) {
+          const label = source !== undefined && source.name.length > 0 ? source.name : item.resourceId;
+          LogStore.addLog(`[vpn] 规则集不可用,本次不进入配置: ${label}` +
+            `(${item.reason}${item.error.length > 0 ? ` ${item.error}` : ''})`);
+        } else if (item.fromCache) {
+          LogStore.addLog(`[vpn] 规则集使用本地缓存: ${item.tag} → ${item.path}`);
+        } else {
+          LogStore.addLog(`[vpn] 规则集已就绪: ${item.tag} → ${item.path}`);
+        }
+      }
+    }
+
     const cachePath = logPath.length > 0 ? logPath.substring(0, logPath.lastIndexOf('/') + 1) + 'cache.db' : '';
-    const configJson = buildCoreConfig(node, settings, ifname, logPath, geositePath, geoIpPath,
-      customRules, remoteRuleSets, cachePath, profiles, groups, geositeVersion, geoIpVersion);
+    const configJson = buildCoreConfig(node, settings, ifname, logPath, prepared.geositePath,
+      prepared.geoIpPath, customRules, prepared.ruleSets, cachePath, profiles, groups);
     const configPath = CoreManager.writeConfigFile(context, configJson);
     LogStore.addLog(`[vpn] sing-box 配置已写入 ${configPath}`);
+    // ---- 3.2 固定本次会话使用的资源文件(方案 §7) ----
+    // 后台刷新会写入新版本目录，但内核仍可能在读旧文件；固定后版本裁剪/GC 不会删它们。
+    ResourceResolver.pinSessionFiles(prepared);
+
+    // ---- 3.5 启动前配置校验(K1 纯解析):不通过则直接报错,不建 TUN、不启动 VPN ----
+    await this.checkConfigGate(configPath);
 
     // ---- 4. 创建 TUN ----
     if (this.vpnConnection === null) {
@@ -877,6 +937,8 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.currentRunId = pendingId;
     this.currentNodeName = node.name;
     await setRunningProfileId(pendingId);
+    // ---- 5.5 后台刷新(方案第五阶段):只补缓存,失败保留旧缓存,不影响当前会话 ----
+    void ResourceResolver.refreshInBackground(remoteRuleSets);
     this.notificationLatencyMs = -1;
     this.notificationStartedAt = Date.now();
     this.lastNotificationLine = '';

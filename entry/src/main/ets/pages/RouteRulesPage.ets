@@ -18,6 +18,7 @@ import {
 import {
   RuleSetResource, ResourceAvailability, RuleSetRepository, sanitizeResourceId
 } from '../core/RuleSetRepository';
+import { ResourceResolver } from '../core/ResourceResolver';
 import {
   LegacyRuleView, RuleTarget, availableTargets,
   ruleSummary, conditionCount, matchDescription, moveRule, legacyViews, applyLegacyAction,
@@ -56,6 +57,12 @@ class RuleSetMeta {
   capability: string = '';
   currentHash: string = '';
   versionCount: number = 0;
+  /** 'ready' | 'unverified' | 'unavailable' */
+  state: string = 'unavailable';
+  /** 仓库生效的失败策略:'block' | 'allow-unverified' */
+  failurePolicy: string = 'block';
+  /** 启动时会用本地哪个文件(可用时非空) */
+  cachedPath: string = '';
 }
 
 /** 列表行视图(编译顺序来自 compileManifest,不是名称排序) */
@@ -264,6 +271,9 @@ export struct RouteRulesPanel {
         const entity: RuleSetResource | null = RuleSetRepository.get(sid);
         meta.available = avail.available;
         meta.blockedReason = avail.reason;
+        meta.state = avail.state;
+        meta.failurePolicy = avail.failurePolicy;
+        meta.cachedPath = avail.available ? RuleSetRepository.cachedFilePath(sid) : '';
         if (entity !== null) {
           meta.lastAttemptAt = entity.lastAttemptAt;
           meta.lastSuccessfulDownloadAt = entity.lastSuccessfulDownloadAt;
@@ -664,7 +674,8 @@ export struct RouteRulesPanel {
     this.persistRemote();
   }
 
-  /** 下载/更新规则集:URL 先校验,再 ensureResource(下载→校验→落盘→提交清单) */
+  /** 下载/更新规则集:URL 先校验,再 ensureResource(下载→校验→落盘→提交清单)。
+   *  启动链路不再下载:这里只是用户主动补缓存,启动时 ResourceResolver 只消费本地文件。 */
   private async downloadRuleSet(rs: RemoteRuleSet): Promise<void> {
     const sid = sanitizeResourceId(rs.id);
     if (sid.length === 0) {
@@ -678,7 +689,15 @@ export struct RouteRulesPanel {
     }
     this.busyRuleSetId = sid;
     try {
-      const avail: ResourceAvailability = await RuleSetRepository.ensureResource(sid, rs.url);
+      const avail: ResourceAvailability = await RuleSetRepository.ensureResource(sid, rs.url,
+        ResourceResolver.repositoryFormat(rs), rs.failurePolicy);
+      // 用户意图(模型)与仓库结论对齐:**可用性只认仓库清单**。
+      // lastSyncAt/cachedHash 只是展示镜像(方案 §3.1):cachedAt 为 0(从未成功)时
+      // 不伪造「刚刚同步」,否则卡片会把失败的下载当成已同步。
+      rs.cachedHash = avail.currentHash;
+      rs.lastSyncAt = avail.cachedAt;
+      rs.lastError = avail.available ? '' : `${avail.reason} ${avail.error}`.trim();
+      this.persistRemote();
       this.refreshRuleSetMetas();
       if (avail.available) {
         promptAction.showToast({ message: '规则集已下载并校验通过' });
@@ -693,15 +712,19 @@ export struct RouteRulesPanel {
     }
   }
 
-  private toggleRuleSetPolicy(rs: RemoteRuleSet, blocked: boolean): void {
+  /** 设置失败策略(用户显式修改):写入仓库清单,并同步模型字段(UI 进程写盘安全)。 */
+  private setRuleSetPolicy(rs: RemoteRuleSet, policy: string): void {
     const sid = sanitizeResourceId(rs.id);
     if (sid.length === 0) {
       return;
     }
-    const policy = blocked ? 'allow-unverified' : 'block';
     void RuleSetRepository.setFailurePolicy(sid, policy).then((ok: boolean) => {
+      if (ok) {
+        rs.failurePolicy = policy;
+        this.persistRemote();
+      }
       this.refreshRuleSetMetas();
-      promptAction.showToast({ message: ok ? '失败策略已更新' : '失败策略更新失败' });
+      promptAction.showToast({ message: ok ? '失败策略已更新' : '失败策略更新失败(先下载一次再改)' });
     });
   }
 
@@ -1081,6 +1104,23 @@ export struct RouteRulesPanel {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
+  /** 规则集启动状态文案(仓库可用性结论的中文投影) */
+  private ruleSetStateText(meta: RuleSetMeta): string {
+    if (meta.state === 'ready') {
+      return '已验证缓存';
+    }
+    if (meta.state === 'unverified') {
+      return '未验证(需放行策略)';
+    }
+    if (meta.blockedReason === 'no-cache') {
+      return '无本地缓存';
+    }
+    if (meta.blockedReason === 'cache-missing') {
+      return '缓存文件丢失';
+    }
+    return meta.blockedReason.length > 0 ? meta.blockedReason : '不可用';
+  }
+
   private capabilityText(): string {
     if (this.ruleSetCapability === 'kernel-k1') {
       return '内核校验可用（下载后做 SRS 内容校验）';
@@ -1130,6 +1170,14 @@ export struct RouteRulesPanel {
           .fontSize(10)
           .fontColor(meta.validatedAt > 0 ? $r('app.color.mono') : $r('app.color.warning'))
           .width('100%')
+        Text(meta.available
+          ? `启动可用：本地 ${meta.cachedPath.length > 0 ? '已就绪' : '缓存缺失'} · 失败策略 ${meta.failurePolicy === 'allow-unverified' ? '放行未验证' : '阻断'}`
+          : `启动不可用：${this.ruleSetStateText(meta)} · 失败策略 ${meta.failurePolicy === 'allow-unverified' ? '放行未验证' : '阻断'}`)
+          .fontSize(10)
+          .fontColor(meta.available ? $r('app.color.mono') : $r('app.color.warning'))
+          .width('100%')
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
         if (meta.lastError.length > 0) {
           Text(`上次错误：${meta.lastError}`)
             .fontSize(10)
@@ -1147,9 +1195,11 @@ export struct RouteRulesPanel {
           `rs:dl:${rs.id}`, () => {
             void this.downloadRuleSet(rs);
           })
-        this.rowAction('下载失败时放行', `rs:pol:${rs.id}`, () => {
-          this.toggleRuleSetPolicy(rs, meta.blockedReason.length > 0);
-        })
+        this.rowAction(meta.failurePolicy === 'allow-unverified' ? '改为阻断失败' : '下载失败时放行',
+          `rs:pol:${rs.id}`, () => {
+            this.setRuleSetPolicy(rs,
+              meta.failurePolicy === 'allow-unverified' ? 'block' : 'allow-unverified');
+          })
         this.rowAction('上移', `rs:up:${rs.id}`, () => this.moveRemoteRuleSet(index, -1))
         this.rowAction('下移', `rs:down:${rs.id}`, () => this.moveRemoteRuleSet(index, 1))
         this.rowAction('删除', `rs:del:${rs.id}`, () => this.removeRemoteRuleSet(index))

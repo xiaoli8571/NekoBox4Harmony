@@ -14,3 +14,9 @@ local.properties
 nb_*.jpeg
 layout.json
 l2.json
+
+# 签名材料含私钥/发布 profile,严禁入库(AGENTS.md「一键:重编+打包+签名」)
+签名材料/
+*.p12
+*.p7b
+*.csr

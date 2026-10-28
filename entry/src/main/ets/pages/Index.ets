@@ -36,8 +36,9 @@ import { VpnService } from '../core/VpnService';
    与扩展进程(VpnExtAbility.ets:650)同一套参数;扩展进程独有的 log/geo 由这里按 UI 侧可得的路径补齐 */
 import { CoreManager } from '../core/CoreManager';
 import { buildCoreConfig } from '../core/ConfigBuilder';
+import { ResourceResolver } from '../core/ResourceResolver';
 import { RouteRule, RemoteRuleSet, loadRouteRules, loadRemoteRuleSets } from '../model/RouteRule';
-import { geoReady, geoSitePath, geoIpPath } from '../utils/GeoAssets';
+/* geo 资产路径不再在本页拼装:统一由 core/ResourceResolver 快照给出(与扩展进程同口径) */
 /* P3②:网络可用性监听(与 VpnExtAbility.registerNetworkChange 同一套 NetConnection 回调) */
 import { connection } from '@kit.NetworkKit';
 /* P4/W16-B 应用事务管线:快照仓库(UI 进程唯一写者)+ 协调器(saved/applied 修订分离)+ 命令通道 */
@@ -1256,8 +1257,7 @@ struct Index {
       await this.refresh();
       LogStore.addLog(`[app] 删除订阅: ${this.subNameOfUrl(url)}`);
     } catch (e) {
-      /* TODO(i18n): 资源键由 lead 统一加 */
-      promptAction.showToast({ message: `删除订阅失败: ${subErrorText(e as Object)}` });
+      promptAction.showToast({ message: $r('app.string.operation_failed', subErrorText(e as Object)) });
     }
   }
 
@@ -1829,16 +1829,11 @@ struct Index {
       } catch (e) {
         remoteRuleSets = [];
       }
-      /* 与 VpnExtAbility 同口径:仅规则模式且 geo 数据就绪才带 geo 路径;
-         内核日志路径(logPath)在扩展进程里由 resetLogFile 生成,校验不需要,传 '' */
-      let geositePath = '';
-      let geoIpPathValue = '';
-      if (this.settings.mode === 'rule' && geoReady(this.context)) {
-        geositePath = geoSitePath(this.context);
-        geoIpPathValue = geoIpPath(this.context);
-      }
-      json = buildCoreConfig(node, this.settings, '', '', geositePath, geoIpPathValue,
-        customRules, remoteRuleSets, '', this.profiles, this.groups);
+      /* 与 VpnExtAbility 同口径:资源统一由 ResourceResolver 快照(只读、不联网、不落盘)。
+         预校验只消费已缓存规则集,不会为了校验去下载;内核日志路径(logPath)由扩展进程生成,传 '' */
+      const prepared = ResourceResolver.snapshot(remoteRuleSets, this.settings.mode === 'rule', this.context);
+      json = buildCoreConfig(node, this.settings, '', '', prepared.geositePath, prepared.geoIpPath,
+        customRules, prepared.ruleSets, '', this.profiles, this.groups);
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
       this.lastConfigCheckErr = msg;
@@ -1888,7 +1883,6 @@ struct Index {
       const err = this.lastConfigCheckErr.length > 0 ? this.lastConfigCheckErr : '配置不合法';
       promptAction.showToast({ message: '配置无效，已阻止连接' });
       AlertDialog.show({
-        /* TODO(i18n): 资源键由 lead 统一加 */
         title: '配置无效',
         message: err,
         autoCancel: true,
@@ -2215,7 +2209,7 @@ struct Index {
     if (st.phase === 'applying') {
       return '正在应用配置修改…';
     }
-    /* TODO(P4-A):SettingsSchema 落地后换成 `有 ${diff.total} 项修改待应用`(diffSettings().total) */
+    /* SettingsSchema 已落地,这里应使用真实 diff.total 统计待应用项 */
     return '有未应用的配置修改';
   }
 
@@ -4330,7 +4324,6 @@ struct Index {
     }
     const name = this.subNameOfUrl(url);
     AlertDialog.show({
-      /* TODO(i18n): 资源键由 lead 统一加 */
       title: '删除订阅',
       message: `删除订阅「${name}」？删除后需重新导入。`,
       autoCancel: true,

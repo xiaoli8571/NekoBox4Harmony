@@ -19,8 +19,10 @@ function load(file, imports = {}) {
   return exports;
 }
 const model = load('entry/src/main/ets/model/Profile.ets');
+const prepared = load('entry/src/main/ets/core/PreparedResource.ets');
 const builder = load('entry/src/main/ets/core/ConfigBuilder.ets', {
-  '../model/Profile': model, '../utils/TrafficStats': { CLASH_API_PORT: 9090 }, '../model/RouteRule': {}
+  '../model/Profile': model, '../utils/TrafficStats': { CLASH_API_PORT: 9090 }, '../model/RouteRule': {},
+  './PreparedResource': prepared
 });
 let count = 0;
 function test(name, run) { run(); count++; console.log('PASS ' + name); }

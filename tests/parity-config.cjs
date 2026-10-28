@@ -19,7 +19,8 @@ function load(file, imports = {}) {
 }
 const model = load('entry/src/main/ets/model/Profile.ets');
 const builder = load('entry/src/main/ets/core/ConfigBuilder.ets', {
-  '../model/Profile': model, '../utils/TrafficStats': { CLASH_API_PORT: 9090 }, '../model/RouteRule': {}
+  '../model/Profile': model, '../utils/TrafficStats': { CLASH_API_PORT: 9090 }, '../model/RouteRule': {},
+  './PreparedResource': load('entry/src/main/ets/core/PreparedResource.ets')
 });
 const plain = value => JSON.parse(JSON.stringify(value));
 const rule = fields => ({ domains: '', ip: '', source: '', port: '', sourcePort: '', network: '', protocol: '', packages: '', config: '', outbound: 'direct', enabled: true, ...fields });
@@ -192,18 +193,23 @@ test('geoip:cn reference gets a same-tag local definition', () => {
   const tags = c.route.rule_set.map(d => d.tag);
   assert.ok(tags.includes('geoip:cn'), `expected geoip:cn definition, got ${tags}`);
 });
-test('geosite:cn and geoip:cn map to distinct asset files', () => {
+test('geosite:cn and geoip:cn map to distinct local asset files', () => {
   const c = config({}, [rule({ domains: 'geosite:cn' }), rule({ ip: 'geoip:cn' })]);
-  // 2026-10-24:geo 规则集改 remote+initial_path(local 的 fswatch 在 OHOS 存储别名上
-  // permission denied 刷红字;remote 启动顺序 = cache → initial_path 本地文件 → 才网络)
+  // 2026-10-26 方案 A4:geo 规则集从 remote+initial_path 改回 **local + 本地绝对路径**。
+  // 理由:remote 让内核在启动时联网下载(内网/无网/更新地址变更都可能拖垮整次启动),
+  // 配置层面必须零 type:'remote'(守卫:tests/ruleset-local-startup.cjs)。
+  // 代价:local 会触发内核 fswatch,OHOS 存储别名不支持 inotify ⇒ 启动日志多 2 行
+  // "watch rule-set file: permission denied" ERROR(非致命,已知取舍,见 docs/REMOTE_RULESET_ARCHITECTURE_REFACTOR_PLAN.md)。
   const defs = Object.fromEntries(c.route.rule_set.map(d => [d.tag, d]));
-  assert.equal(defs['geosite:cn'].type, 'remote');
-  assert.equal(defs['geoip:cn'].type, 'remote');
-  assert.equal(defs['geosite:cn'].initial_path, '/test/site.srs');
-  assert.equal(defs['geoip:cn'].initial_path, '/test/ip.srs');
-  assert.notEqual(defs['geosite:cn'].initial_path, defs['geoip:cn'].initial_path);
-  assert.ok(defs['geosite:cn'].url.includes('geosite'), 'URL 指向 geosite 源');
-  assert.ok(defs['geoip:cn'].url.includes('geoip'), 'URL 指向 geoip 源');
+  assert.equal(defs['geosite:cn'].type, 'local');
+  assert.equal(defs['geoip:cn'].type, 'local');
+  assert.equal(defs['geosite:cn'].format, 'binary');
+  assert.equal(defs['geoip:cn'].format, 'binary');
+  assert.equal(defs['geosite:cn'].path, '/test/site.srs');
+  assert.equal(defs['geoip:cn'].path, '/test/ip.srs');
+  assert.notEqual(defs['geosite:cn'].path, defs['geoip:cn'].path);
+  assert.ok(!('initial_path' in defs['geosite:cn']) && !('url' in defs['geosite:cn']),
+    'local 定义不应再带 initial_path/url');
 });
 test('unsupported region reference is rejected, not silently dangling', () => {
   const p = new model.Profile(); p.server = 'example.invalid';

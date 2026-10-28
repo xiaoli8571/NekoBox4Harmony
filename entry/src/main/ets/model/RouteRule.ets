@@ -28,7 +28,13 @@ export class RouteRule {
   remark: string = '';
 }
 
-/** 远程 sing-box SRS 规则集订阅。 */
+/** 远程 sing-box 规则集订阅。
+ *
+ * 生命周期契约(docs/REMOTE_RULESET_ARCHITECTURE_REFACTOR_PLAN.md):
+ *   本实体只是**用户意图**(URL/开关/失败策略);内容的下载、校验、缓存、版本由
+ *   core/RuleSetRepository 负责,启动时由 core/ResourceResolver 统一准备成本地文件,
+ *   ConfigBuilder 只消费 `type:'local'` 的定义 —— 启动链路不再向内核下发 remote rule_set,
+ *   因此首次下载失败/URL 配错永远不会拖垮 VPN 启动。 */
 export class RemoteRuleSet {
   id: string = '';
   name: string = '';
@@ -38,6 +44,15 @@ export class RemoteRuleSet {
   enabled: boolean = true;
   updatedAt: number = 0;
   lastError: string = '';
+  /** 首次失败且无缓存时的启动策略:'block'(默认,不进入配置生成)| 'allow-unverified'。
+   *  仓库清单里的 failurePolicy 才是生效值,这里只是用户意图的镜像。 */
+  failurePolicy: string = 'block';
+  /** 源格式:'binary'(sing-box .srs)| 'source'(JSON 规则集)。 */
+  format: string = 'binary';
+  /** 最近一次成功同步到本地缓存的时间(0 = 从未);仅展示/后台刷新判定用。 */
+  lastSyncAt: number = 0;
+  /** 最近一次成功同步的内容 SHA-256(与仓库 currentHash 同源);仅展示用。 */
+  cachedHash: string = '';
 }
 
 const KEY_RULES = 'route_rules';
@@ -161,6 +176,10 @@ export async function loadRemoteRuleSets(): Promise<Array<RemoteRuleSet>> {
       item.enabled = value.enabled ?? true;
       item.updatedAt = value.updatedAt ?? 0;
       item.lastError = value.lastError ?? '';
+      item.failurePolicy = value.failurePolicy === 'allow-unverified' ? 'allow-unverified' : 'block';
+      item.format = value.format === 'source' ? 'source' : 'binary';
+      item.lastSyncAt = value.lastSyncAt ?? 0;
+      item.cachedHash = value.cachedHash ?? '';
       result.push(item);
     }
     return result;

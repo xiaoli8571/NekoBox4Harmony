@@ -3299,6 +3299,10 @@
     {
       "name": "app_page_system",
       "value": "系统"
+    },
+    {
+      "name": "operation_failed",
+      "value": "操作失败: %s"
     }
   ]
 }

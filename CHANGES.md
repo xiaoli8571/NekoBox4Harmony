@@ -1,5 +1,27 @@
 # Phase A-D Implementation Status
 
+## 版本 2.4.0 打包(2026-10-28)—— 远程规则集整改 + 用户修复轮
+
+- **版本号统一**:`AppScope/app.json5` → `versionCode 2400000` / `versionName 2.4.0`;`oh-package.json5`(根)与 `entry/oh-package.json5` → `2.4.0`(此前二者停在 2.3.0,与 app.json5 的 2.3.1 不一致)。UI 的关于/工具页版本号取自 `bundleManager` 运行时读取,无需改文案。
+- **内容**:本轮全部改动 = 远程规则集启动解耦(见下一条目:配置层零 `type:'remote'`、`PreparedResource`/`ResourceResolver`、会话资源固定、镜像字段不得伪造)+ 用户在设备上自测修复的一轮。
+- **构建**:`assembleHap`(release)+ `assembleApp`(project/release)BUILD SUCCESSFUL;未签名产物 `dist/NekoBox4Harmony-2.4.0-unsigned.hap`(15,023,465 B,sha256 `2b482988…`)、`dist/NekoBox4Harmony-2.4.0-unsigned.app`(13,965,547 B,sha256 `754302c2…`);包内 `module.json` 为 `buildMode:"release"`、`debug:false`、`versionName 2.4.0` / `versionCode 2400000` / minAPI 60101024。
+- **测试**:Node **43 套件全 PASS**(含 `ruleset-local-startup` 25 断言、`ruleset-repository` 会话固定用例)。
+- **AGC 双层签名完成**(`AGC_KEY_PASSWORD`,双层 `verify-app` 通过 + 发布证书链指纹断言):`dist/NekoBox-2.4.0-release-signed.hap`(15,077,756 B,SHA256 `4632E32E…`)、`dist/NekoBox-2.4.0-release-signed.app`(14,035,837 B,SHA256 `FFCA4A66…`);包内 `.so` 仍为 `9b05c0bfccad124f`(冻结内核)。
+- **新增打包 MCP**:`tools/nekobox-pack-mcp/`(零依赖手写 stdio MCP,9 个工具:`pack_env`/`pack_set_version`/`pack_build`/`pack_sign`/`pack_release`/`pack_install`/`pack_test`/`pack_artifacts`/`pack_store_password`),已注册到 `~/.pi/agent/mcp.json`;口令只从参数/`AGC_KEY_PASSWORD`/`~/.nekobox-pack/secret.json` 解析,仓库内永不出现。
+
+## 远程规则集启动解耦:配置层彻底禁止 remote rule_set(2026-10-26,方案见 docs/REMOTE_RULESET_ARCHITECTURE_REFACTOR_PLAN.md)
+
+- **根因(P1)**:订阅里的远程规则集以 `type:'remote'` 直接下发内核,由 sing-box 在**启动时**自己下载;GitHub/DNS/TLS/URL 任一环节失败 → 整份配置校验失败 → VPN 起不来。`RuleSetRepository`(下载/校验/缓存/版本/failurePolicy)在 EntryAbility 里早就接好了,但主启动链路从未消费它(半迁移)。
+- **修复**:新增 `core/PreparedResource.ets`(纯数据契约,零 import)+ `core/ResourceResolver.ets`(`ensureRepository`/`snapshot`/`prepareResources`/`refreshInBackground`);`ConfigBuilder.buildGeoRuleSet` 与远程规则集统一输出 `type:'local' + format + path`,不可用规则集的**定义与引用一起跳过**(不留悬空 tag,否则报 rule-set not found 等价于换个地方炸);`VpnExtAbility` 启动顺序改为 `prepareResources`(规则模式含 geo,下载预算 20s)→ `buildCoreConfig` → `checkConfigGate`(`CoreManager.checkConfig`,15s,`unsupported` 放行)→ 建 TUN,结束后 `refreshInBackground`(24h 最小年龄,失败保留旧缓存);`Index.checkConfigBeforeConnect` 改用 `ResourceResolver.snapshot`(只读不下载),不再自己拼 geo 路径;规则集页下载改走 `ensureResource(sid,url,format,policy)` 并在卡片展示 state/失败策略/缓存路径。
+- **验收**:`node tests/ruleset-local-startup.cjs` 新增 25 条断言(执行 production ConfigBuilder:混合三态/全部不可用/direct 模式均为 0 个 `type:'remote'`、不可用项无定义无引用、PreparedResource 零 import、扩展进程调用顺序 + 会话资源固定静态守卫);`tests/parity-config.cjs` 的 geo 断言从 remote+initial_path 改为 local+binary+path;`tests/ruleset-repository.cjs` 新增会话固定用例。**Node 43 套件全 PASS + assembleHap BUILD SUCCESSFUL**(debug HAP 17,631,236 B,sha256 `f2d0e324…`)。
+- **按整体规范二次整改**(docs/REMOTE_RULESET_FINAL_REMEDIATION_SPEC.md,10 条硬性要求逐条对齐):
+  1. **会话资源稳定(r7)**:新增 `RuleSetRepository.pinSessionFiles/releaseSessionFiles/pinnedSessionFiles`;`trimVersions`/`collectGarbage` 跳过被固定路径(`removeVersionFile` 只记日志不删)。`VpnExtAbility` 写完 config.json 后 `ResourceResolver.pinSessionFiles(prepared)`(规则集 + geo 路径,早于 `checkConfigGate`/建 TUN/`startCore`),`doTeardown` 里 `releaseSessionFiles()`。补上了「会话跨两次后台刷新时旧版本被 GC 删掉」的缺口。
+  2. **镜像字段不得伪造(r2/r5)**:规则集页下载失败不再把 `lastSyncAt` 写成 `Date.now()`,一律取仓库 `cachedAt`(从未成功即 0);模型 `lastSyncAt/cachedHash` 明确只作展示镜像。
+  3. **全链路复核**:RemoteRuleSet 仅保留用户意图(下载/校验/版本/失败策略归仓库清单)、MigrationV5 只补 id 不改写实体、ConfigSnapshot/Backup 的 `remote_rule_sets` 原文透传新字段、CGo 版本化导出缺失一律 `unsupported` 能力降级、仓库损坏/文件缺失/下载失败只降级为 `manifest-corrupt`/`cache-missing`/`no-cache`(`prepareResources` 永不抛)。
+  4. 文档同步:规范文档追加「落地状态」表(10 条要求 → 位置/状态),方案文档补会话固定小节。
+- **已知取舍(知情项)**:local rule_set 会触发内核 fswatch,OHOS 存储别名不支持 inotify ⇒ 启动日志多 2 行 `watch rule-set file: permission denied` ERROR(非致命)。这是 2026-10-24 曾把 geo 改回 remote 的原因;本轮按方案 A4 接受该代价换取"配置零 remote",回退点集中在 `buildGeoRuleSet()` 一处。
+- **未 commit**。
+
 ## 真机反馈第五轮:横幅说谎/压状态栏/稍后死按钮(2026-10-24,用户已验证)
 
 - **横幅在连接后冒出来谎称"点应用立即生效"**:链路 = 分应用勾选即时保存(VPN 未运行 → 标记"下次连接生效",r16–r20 五连存)→ 用户连接(扩展启动加载磁盘快照,**配置实际已生效**)→ 但壳层 `pendingChanges` 计数未在连接成功路径清账 → `pendingChanges>0 && isRunning` 横幅亮出且文案错误。修复:`ApplyCoordinator.markAllAppliedOnConnect()`(连接成功 ⇒ appliedRevision 对齐 savedRevision、pendingChanges 清零、phase 收敛 applied;**phase=applying 时不抢裁决**,回执在途交给 acceptAck/超时),`onVpnStatusWatch` connected 分支调用。

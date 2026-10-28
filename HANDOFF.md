@@ -1,6 +1,8 @@
 # NekoBox for Harmony —— 当前交接(2026-10-24 / 全面改造 P0–P5 已完成)
 
 > 接手 agent 先读这一节。下面「历史交接(G 阶段 → 1.6.0)」为旧内容,仅作存档,已被本节取代。
+> **2026-10-28 版本 2.4.0**:远程规则集启动解耦(配置层零 type:remote)+ 会话资源固定 + 规则集页镜像字段修正;版本号统一 2.4.0/2400000;release 未签名产物见 dist/(AGC 签名待密码)。Node 43 套件全 PASS。权威方案 docs/REMOTE_RULESET_FINAL_REMEDIATION_SPEC.md。
+
 > 权威方案:`docs/REDESIGN-PLAN-2026-10-23.md`(7 页 IA / 三模型分离 / 探测重构 / 配置快照 / 应用事务 / 阶段划分 W01–W22、REQ-01–REQ-24)。
 > 进度真值:`docs/req-traceability.md`(24 条需求逐条状态 + 证据)。写任何"已完成"前必须先看它,不得凭印象。
 

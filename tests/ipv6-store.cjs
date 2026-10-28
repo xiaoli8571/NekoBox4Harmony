@@ -68,7 +68,8 @@ const store=load('entry/src/main/ets/model/Store.ets',{
  console.log('PASS legacy route rule with packages but no flag loads as enabled');
  // ConfigBuilder gating: unchecked packages must not produce process_name
  const builder=load('entry/src/main/ets/core/ConfigBuilder.ets',{
-  '../model/Profile':model,'../utils/TrafficStats':{CLASH_API_PORT:9090},'../model/RouteRule':routes
+  '../model/Profile':model,'../utils/TrafficStats':{CLASH_API_PORT:9090},'../model/RouteRule':routes,
+  './PreparedResource':load('entry/src/main/ets/core/PreparedResource.ets')
  });
  const unchecked=new routes.RouteRule();
  unchecked.packages='com.example.a'; unchecked.packagesEnabled=false; unchecked.domains='example.com';

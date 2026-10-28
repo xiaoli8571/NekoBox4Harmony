@@ -449,5 +449,35 @@ const readManifestJson = () => JSON.parse(memFS.files.get(`${RES}/manifest.json`
   assert.ok(noFetcher.error.includes('未配置'), 'error must say the fetcher is not wired');
   console.log('PASS unwired fetcher fails explicitly with a clear message');
 
+  // ---- 14. 方案 §7 会话资源稳定：固定文件不被版本裁剪/GC 删除 ----
+  await freshStore();
+  repo.setValidator(validatorMod.ResourceValidator.fromKernelBridge(async () => ''));
+  repo.setFetcher(okFetch(srsBytes(0xb1)));
+  const pinnedRes = await repo.ensureResource('pin', 'https://raw.example.test/pin.srs');
+  assert.equal(pinnedRes.available, true);
+  const v1Path = repo.cachedFilePath('pin');
+  assert.ok(memFS.files.has(v1Path), 'first version file must exist');
+  repo.pinSessionFiles([v1Path, v1Path, '']);
+  assert.equal(repo.pinnedSessionFiles().join('|'), v1Path,
+    'pins must be deduped and ignore empty paths');
+  // 会话进行中连续刷新两次：版本裁剪 + GC 都不得删掉正在用的 v1
+  repo.setFetcher(okFetch(srsBytes(0xb2)));
+  const v2 = await repo.ensureResource('pin', 'https://raw.example.test/pin.srs');
+  assert.notEqual(v2.currentHash, pinnedRes.currentHash, 'refresh must produce a new hash');
+  repo.setFetcher(okFetch(srsBytes(0xb3)));
+  const v3 = await repo.ensureResource('pin', 'https://raw.example.test/pin.srs');
+  assert.equal(v3.available, true);
+  assert.ok(memFS.files.has(v1Path), 'pinned in-session file must survive version trim + GC');
+  const v3Path = repo.cachedFilePath('pin');
+  assert.ok(memFS.files.has(v3Path), 'current version file must exist');
+  assert.equal(readManifestJson().resources['pin'].versions.length, 2, 'manifest keeps only the last two versions');
+  // 会话结束：解除固定后旧版本才会被清理（当前版本永远保留）
+  repo.releaseSessionFiles();
+  assert.equal(repo.pinnedSessionFiles().length, 0, 'release must clear all pins');
+  repo.collectGarbage();
+  assert.equal(memFS.files.has(v1Path), false, 'unpinned dropped version is collected once the session ends');
+  assert.ok(memFS.files.has(repo.cachedFilePath('pin')), 'current version must never be collected');
+  console.log('PASS session pins survive trim+GC while running and are collected after release');
+
   console.log('\nALL ruleset-repository checks passed');
 })().catch((e) => { console.error('FAIL', e); process.exit(1); });

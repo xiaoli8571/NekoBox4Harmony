@@ -384,6 +384,12 @@ export class RuleSetRepository {
   private static dir: string = '';
   private static fetcher: ResourceFetcher = new ResourceFetcher();
   private static validator: ResourceValidator = ResourceValidator.unsupported();
+  /**
+   * §7「会话资源稳定性」：当前 VPN 会话正在使用的文件绝对路径。
+   * 内容寻址目录保证后台更新不会原地覆盖文件；这里再挡住**删除**路径
+   * (版本裁剪 + GC)，避免「会话还在读、文件已被新版本清理掉」。
+   */
+  private static pinnedPaths: Array<string> = [];
 
   /** 初始化资源根目录(幂等)。不改变已注入的 fetcher/validator。 */
   static init(context: common.Context): void {
@@ -412,6 +418,52 @@ export class RuleSetRepository {
 
   static getValidator(): ResourceValidator {
     return RuleSetRepository.validator;
+  }
+
+  /**
+   * 登记当前 VPN 会话使用的资源文件(启动成功后由 ResourceResolver 调用)。
+   * 之后直到 releaseSessionFiles()，这些文件不会被版本裁剪/GC 删除。
+   */
+  static pinSessionFiles(paths: Array<string>): void {
+    const next: Array<string> = [];
+    for (let i = 0; i < paths.length; i++) {
+      const p = paths[i];
+      if (p.length > 0 && next.indexOf(p) < 0) {
+        next.push(p);
+      }
+    }
+    RuleSetRepository.pinnedPaths = next;
+    if (next.length > 0) {
+      LogStore.addLog(`[ruleset] 会话资源已固定 ${next.length} 个文件(GC/版本裁剪不删)`);
+    }
+  }
+
+  /** 会话结束(断开/销毁/重连)时解除固定；下一次 GC 才会真正清理旧版本。 */
+  static releaseSessionFiles(): void {
+    if (RuleSetRepository.pinnedPaths.length === 0) {
+      return;
+    }
+    LogStore.addLog(`[ruleset] 会话资源解除固定 ${RuleSetRepository.pinnedPaths.length} 个文件`);
+    RuleSetRepository.pinnedPaths = [];
+  }
+
+  static pinnedSessionFiles(): Array<string> {
+    return RuleSetRepository.pinnedPaths.slice();
+  }
+
+  private static isPinned(path: string): boolean {
+    return RuleSetRepository.pinnedPaths.indexOf(path) >= 0;
+  }
+
+  /** 删除一个版本文件，但当它属于当前会话时保留(留给会话结束后的 GC)。 */
+  private static removeVersionFile(sid: string, file: string): boolean {
+    const path = RuleSetRepository.versionPath(sid, file);
+    if (RuleSetRepository.isPinned(path)) {
+      LogStore.addLog(`[ruleset] 保留会话在用文件: ${path}`);
+      return false;
+    }
+    SnapshotStore.removeFile(path);
+    return true;
   }
 
   /** 当前内核 SRS 验证能力：'kernel-k1' | 'unsupported' | 'unknown'(§16.3 能力查询)。 */
@@ -659,6 +711,10 @@ export class RuleSetRepository {
         if (referenced.indexOf(name) >= 0) {
           continue;
         }
+        // 会话在用的文件绝不在此删除：后台刷新换版本后，内核可能仍持有旧文件句柄
+        if (RuleSetRepository.isPinned(`${dir}/${name}`)) {
+          continue;
+        }
         SnapshotStore.removeFile(`${dir}/${name}`);
         deleted++;
       }
@@ -824,7 +880,14 @@ export class RuleSetRepository {
     const dir = RuleSetRepository.resourceDir(sid);
     const names = RuleSetRepository.listFileNames(dir);
     for (let i = 0; i < names.length; i++) {
-      SnapshotStore.removeFile(`${dir}/${names[i]}`);
+      const path = `${dir}/${names[i]}`;
+      // 用户可在 VPN 运行期间删除订阅，但当前会话已经下发给内核的内容寻址文件
+      // 必须活到 teardown；仅移除 manifest，实际文件留给 release 后的 GC。
+      if (RuleSetRepository.isPinned(path)) {
+        LogStore.addLog(`[ruleset] 删除资源时保留会话在用文件: ${path}`);
+        continue;
+      }
+      SnapshotStore.removeFile(path);
     }
   }
 
@@ -1101,7 +1164,7 @@ export class RuleSetRepository {
       return out;
     }
     for (let i = 0; i < dropped.length; i++) {
-      SnapshotStore.removeFile(RuleSetRepository.versionPath(sid, dropped[i].file));
+      RuleSetRepository.removeVersionFile(sid, dropped[i].file);
     }
     RuleSetRepository.collectGarbage();
     LogStore.addLog(`[ruleset] ${sid} 资源已更新: hash=${hash}, ` +
