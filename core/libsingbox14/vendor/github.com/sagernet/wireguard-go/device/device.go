@@ -50,6 +50,7 @@ type Device struct {
 		port          uint16 // listening port
 		fwmark        uint32 // mark value (0 = disabled)
 		brokenRoaming bool
+		rebindPending atomic.Bool
 	}
 
 	staticIdentity struct {
@@ -64,8 +65,9 @@ type Device struct {
 		lookupFunc   PeerLookupFunc // or nil if unused
 	}
 
-	peerStateFn   atomic.Pointer[PeerSessionStateFunc]    // observes peer session state changes, nil if unset
-	priorityMsgFn atomic.Pointer[PeerPriorityMessageFunc] // returns a priority message to be sent around session establishment, nil if unset
+	peerStateFn        atomic.Pointer[PeerSessionStateFunc]     // observes peer session state changes, nil if unset
+	priorityMsgFn      atomic.Pointer[PeerPriorityMessageFunc]  // returns a priority message to be sent around session establishment, nil if unset
+	endpointResolverFn atomic.Pointer[PeerEndpointResolverFunc] // resolves candidate endpoints on handshake initiation, nil if unset
 
 	rate struct {
 		underLoadUntil atomic.Int64
@@ -400,6 +402,7 @@ func (device *Device) LookupPeer(pk NoisePublicKey) *Peer {
 		return nil
 	}
 	p.SetAllowedIPs(conf.AllowedIPs)
+	p.SetPresharedKey(conf.PresharedKey)
 	p.deleteOnIdle = true
 	if conf.Endpoint != nil {
 		p.SetEndpointFromPacket(conf.Endpoint)
@@ -467,6 +470,10 @@ func (device *Device) RemoveMatchingPeers(shouldRemove func(NoisePublicKey) bool
 type NewPeerConfig struct {
 	// AllowedIPs is the initial set of allowed IPs for the new peer.
 	AllowedIPs []netip.Prefix
+
+	// PresharedKey is the initial pre-shared key for the new peer. The zero
+	// value disables the optional WireGuard pre-shared-key layer.
+	PresharedKey NoisePresharedKey
 
 	// Endpoint, if non-nil, sets the initial endpoint for newly
 	// created peers.
@@ -591,6 +598,35 @@ func (device *Device) SetPriorityMessageOnEstablishmentFunc(f PeerPriorityMessag
 	device.priorityMsgFn.Store(&f)
 }
 
+// PeerEndpointResolverFunc is called on every handshake initiation to obtain the
+// candidate endpoints for a peer. The initiation is sent to the peer's current
+// endpoint and every candidate; the source of the first valid reply becomes the
+// current endpoint via roaming. When it fails, the candidates from its last
+// successful invocation for that peer are reused.
+//
+// It is called from the goroutine initiating the handshake, which blocks until
+// it returns, including when the initiation originates from within [Device.IpcSet].
+//
+// The callback must be concurrent-safe and must not call back into [Device].
+type PeerEndpointResolverFunc func(peer NoisePublicKey) ([]conn.Endpoint, error)
+
+// SetEndpointResolverFunc sets the function used to resolve peer endpoints. See
+// [PeerEndpointResolverFunc] docs for more details. A nil value clears any
+// previously set value.
+//
+// Because it is keyed by public key rather than held per peer, it can be set
+// before the peers exist. Setting it before the [Device.IpcSet] that creates
+// them is the only way a peer configured without an endpoint can resolve one in
+// time for the handshake initiation that same IpcSet triggers, for a peer with
+// persistent keepalives on an up device.
+func (device *Device) SetEndpointResolverFunc(f PeerEndpointResolverFunc) {
+	if f == nil {
+		device.endpointResolverFn.Store(nil)
+		return
+	}
+	device.endpointResolverFn.Store(&f)
+}
+
 func (device *Device) Close() {
 	device.state.Lock()
 	defer device.state.Unlock()
@@ -641,7 +677,7 @@ func (device *Device) SendKeepalivesToPeersWithCurrentKeypair() {
 	device.peers.RLock()
 	for _, peer := range device.peers.keyMap {
 		peer.keypairs.RLock()
-		sendKeepalive := peer.keypairs.current != nil && !peer.keypairs.current.created.Add(RejectAfterTime).Before(time.Now())
+		sendKeepalive := peer.keypairs.current != nil && sinceIncludingSleep(peer.keypairs.current.created) <= RejectAfterTime
 		peer.keypairs.RUnlock()
 		if sendKeepalive {
 			peers = append(peers, peer)
@@ -699,6 +735,22 @@ func (device *Device) BindSetMark(mark uint32) error {
 	device.peers.RUnlock()
 
 	return nil
+}
+
+// scheduleBindUpdate reopens the bind from a new goroutine: the send and
+// receive paths that report conn.ErrRebindRequired run under the net read
+// lock or are waited for by closeBindLocked.
+func (device *Device) scheduleBindUpdate() {
+	if !device.net.rebindPending.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer device.net.rebindPending.Store(false)
+		err := device.BindUpdate()
+		if err != nil {
+			device.log.Errorf("Failed to reopen bind: %v", err)
+		}
+	}()
 }
 
 func (device *Device) BindUpdate() error {

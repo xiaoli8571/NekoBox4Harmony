@@ -8,6 +8,8 @@
 package conn
 
 import (
+	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"sync"
@@ -40,7 +42,6 @@ type msghdrX struct {
 
 type msgXState struct {
 	singlePeer  atomic.Bool
-	disabled    atomic.Bool // permanent fallback to the generic paths
 	connected4  atomic.Bool
 	connected6  atomic.Bool
 	endpoint    atomic.Pointer[StdNetEndpoint]
@@ -50,7 +51,6 @@ type msgXState struct {
 // reset clears per-socket state; must be called when the bind (re)opens,
 // as the connected state belongs to the previous sockets.
 func (m *msgXState) reset() {
-	m.disabled.Store(false)
 	m.connected4.Store(false)
 	m.connected6.Store(false)
 	m.endpoint.Store(nil)
@@ -95,22 +95,20 @@ func sockaddrFromAddrPort(addrPort netip.AddrPort, isV6 bool, storage4 *unix.Raw
 }
 
 // ensureConnected connects the family socket to the single peer on first use.
-// A false return only means the caller has to address every message itself;
-// msgx as a whole is given up on only when the socket is left connected to a
-// peer we are no longer sending to.
-func (s *StdNetBind) ensureConnected(rawConn syscall.RawConn, isV6 bool, destination netip.AddrPort) bool {
+// A false return means the caller has to address every message itself.
+func (s *StdNetBind) ensureConnected(rawConn syscall.RawConn, isV6 bool, destination netip.AddrPort) (bool, error) {
 	if !s.msgx.singlePeer.Load() {
-		return false
+		return false, nil
 	}
 	connected := s.msgx.connectedFlag(isV6)
+	if connected.Load() && s.msgx.endpoint.Load().AddrPort == destination {
+		return true, nil
+	}
+	s.msgx.connectLock.Lock()
+	defer s.msgx.connectLock.Unlock()
 	if connected.Load() {
 		if s.msgx.endpoint.Load().AddrPort == destination {
-			return true
-		}
-		s.msgx.connectLock.Lock()
-		defer s.msgx.connectLock.Unlock()
-		if !connected.Load() {
-			return false
+			return true, nil
 		}
 		s.msgx.singlePeer.Store(false)
 		var disconnected bool
@@ -125,20 +123,17 @@ func (s *StdNetBind) ensureConnected(rawConn syscall.RawConn, isV6 bool, destina
 			_, peerErr := unix.Getpeername(int(fd))
 			disconnected = peerErr == unix.ENOTCONN
 		})
-		if controlErr != nil || !disconnected {
-			s.msgx.disabled.Store(true)
-			return false
+		if controlErr != nil {
+			return false, controlErr
+		}
+		if !disconnected {
+			return false, ErrRebindRequired
 		}
 		connected.Store(false)
-		return false
-	}
-	s.msgx.connectLock.Lock()
-	defer s.msgx.connectLock.Unlock()
-	if connected.Load() {
-		return s.msgx.endpoint.Load().AddrPort == destination
+		return false, nil
 	}
 	if !s.msgx.singlePeer.Load() {
-		return false
+		return false, nil
 	}
 	var (
 		storage4   unix.RawSockaddrInet4
@@ -150,13 +145,25 @@ func (s *StdNetBind) ensureConnected(rawConn syscall.RawConn, isV6 bool, destina
 		//nolint:staticcheck
 		_, _, connectErr = unix.Syscall(unix.SYS_CONNECT, fd, uintptr(unsafe.Pointer(name)), uintptr(nameLen))
 	})
-	if controlErr != nil || connectErr != 0 {
-		s.msgx.singlePeer.Store(false)
-		return false
+	if controlErr != nil {
+		return false, controlErr
+	}
+	if connectErr != 0 {
+		return false, connectErr
 	}
 	s.msgx.endpoint.Store(&StdNetEndpoint{AddrPort: destination})
 	connected.Store(true)
-	return true
+	return true, nil
+}
+
+// rebindErrno reports the send and receive errors that leave a connected
+// socket unusable until the bind is reopened.
+func rebindErrno(errno unix.Errno) bool {
+	switch errno {
+	case unix.EADDRNOTAVAIL, unix.ENETUNREACH, unix.EHOSTUNREACH, unix.ENETDOWN, unix.EHOSTDOWN:
+		return true
+	}
+	return false
 }
 
 type sendMsgXState struct {
@@ -174,10 +181,8 @@ var sendMsgXPool = sync.Pool{New: func() any {
 }}
 
 // sendMsgX sends msgs with a single syscall, over a connected socket when the
-// bind has one and by addressing every message otherwise. handled == false
-// means nothing was sent and the caller must use the generic path; msgs are
-// never partially consumed in that case.
-func (s *StdNetBind) sendMsgX(conn *net.UDPConn, msgs []ipv6.Message) (bool, error) {
+// bind has one and by addressing every message otherwise.
+func (s *StdNetBind) sendMsgX(conn *net.UDPConn, msgs []ipv6.Message) error {
 	var (
 		rawConn syscall.RawConn
 		isV6    bool
@@ -190,20 +195,18 @@ func (s *StdNetBind) sendMsgX(conn *net.UDPConn, msgs []ipv6.Message) (bool, err
 		rawConn = s.ipv4RC
 	}
 	s.mu.Unlock()
-	if rawConn == nil || s.msgx.disabled.Load() {
-		return false, nil
-	}
 	destination := M.AddrPortFromNet(msgs[0].Addr)
+	connected, err := s.ensureConnected(rawConn, isV6, destination)
+	if err != nil {
+		return err
+	}
 	state := sendMsgXPool.Get().(*sendMsgXState)
 	defer sendMsgXPool.Put(state)
 	var (
 		name    *byte
 		nameLen uint32
 	)
-	if !s.ensureConnected(rawConn, isV6, destination) {
-		if s.msgx.disabled.Load() {
-			return false, nil
-		}
+	if !connected {
 		name, nameLen = sockaddrFromAddrPort(destination, isV6, &state.storage4, &state.storage6)
 	}
 	for i := range msgs {
@@ -229,43 +232,23 @@ func (s *StdNetBind) sendMsgX(conn *net.UDPConn, msgs []ipv6.Message) (bool, err
 			return errno != unix.EAGAIN
 		})
 		if writeErr != nil {
-			return true, writeErr
+			return writeErr
 		}
 		if errno != 0 {
-			if sent == 0 {
-				// The syscall is refusing this socket entirely (sandbox,
-				// disconnected by the system, ...): disable and let the
-				// caller resend everything on the generic path.
-				s.msgx.disabled.Store(true)
-				return false, nil
+			if connected && rebindErrno(errno) {
+				return fmt.Errorf("%w: %w", ErrRebindRequired, errno)
 			}
-			return true, errno
+			return errno
 		}
 		sent += int(n)
 	}
-	return true, nil
+	return nil
 }
 
 type receiveMsgXState struct {
-	hdrs     []msghdrX
-	iovs     []unix.Iovec
-	names    []unix.RawSockaddrInet6
-	fallback bool
-}
-
-func (s *StdNetBind) receiveSingle(conn *net.UDPConn, bufs [][]byte, sizes []int, eps []Endpoint) (int, error) {
-	n, _, _, addr, err := conn.ReadMsgUDPAddrPort(bufs[0], nil)
-	if err != nil {
-		return 0, err
-	}
-	sizes[0] = n
-	if n > 3 {
-		bufs[0][1] = 0
-		bufs[0][2] = 0
-		bufs[0][3] = 0
-	}
-	eps[0] = &StdNetEndpoint{AddrPort: addr}
-	return 1, nil
+	hdrs  []msghdrX
+	iovs  []unix.Iovec
+	names []unix.RawSockaddrInet6
 }
 
 func (s *StdNetBind) makeReceiveMsgX(conn *net.UDPConn, isV6 bool) (ReceiveFunc, error) {
@@ -279,9 +262,6 @@ func (s *StdNetBind) makeReceiveMsgX(conn *net.UDPConn, isV6 bool) (ReceiveFunc,
 		names: make([]unix.RawSockaddrInet6, msgXBatchSize),
 	}
 	return func(bufs [][]byte, sizes []int, eps []Endpoint) (int, error) {
-		if state.fallback || s.msgx.disabled.Load() {
-			return s.receiveSingle(conn, bufs, sizes, eps)
-		}
 		// The endpoint is stored before the flag is raised, so reading the flag
 		// first never pairs a connected socket with a stale endpoint.
 		var connectedEndpoint *StdNetEndpoint
@@ -317,11 +297,18 @@ func (s *StdNetBind) makeReceiveMsgX(conn *net.UDPConn, isV6 bool) (ReceiveFunc,
 			return 0, readErr
 		}
 		if errno != 0 {
-			// recvmsg_x is refusing this socket (sandbox, protocol, ...):
-			// serve this and all future calls with a plain single read so
-			// the receive routine keeps running.
-			state.fallback = true
-			return s.receiveSingle(conn, bufs, sizes, eps)
+			// A connected UDP socket reports ICMP unreachable from the peer as
+			// ECONNREFUSED on the next read; the handshake retries cover it.
+			if errno == unix.ECONNREFUSED {
+				return 0, nil
+			}
+			if connectedEndpoint != nil && rebindErrno(errno) {
+				return 0, fmt.Errorf("%w: %w", ErrRebindRequired, errno)
+			}
+			return 0, errno
+		}
+		if n == 0 {
+			return 0, fmt.Errorf("%w: %w", ErrRebindRequired, io.EOF)
 		}
 		numMsgs := int(n)
 		for i := 0; i < numMsgs; i++ {

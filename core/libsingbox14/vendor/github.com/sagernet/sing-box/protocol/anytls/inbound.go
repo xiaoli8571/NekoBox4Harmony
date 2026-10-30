@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/sagernet/sing-anytls"
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/inbound"
 	"github.com/sagernet/sing-box/common/listener"
@@ -19,9 +20,6 @@ import (
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-
-	anytls "github.com/anytls/sing-anytls"
-	"github.com/anytls/sing-anytls/padding"
 )
 
 func RegisterInbound(registry *inbound.Registry) {
@@ -34,7 +32,7 @@ type Inbound struct {
 	router    adapter.ConnectionRouterEx
 	logger    logger.ContextLogger
 	listener  *listener.Listener
-	service   *anytls.Service
+	service   *anytls.MultiService[string]
 }
 
 func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.AnyTLSInboundOptions) (adapter.Inbound, error) {
@@ -52,19 +50,23 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 		inbound.tlsConfig = tlsConfig
 	}
 
-	paddingScheme := padding.DefaultPaddingScheme
+	var paddingScheme []byte
 	if len(options.PaddingScheme) > 0 {
 		paddingScheme = []byte(strings.Join(options.PaddingScheme, "\n"))
 	}
 
-	service, err := anytls.NewService(anytls.ServiceConfig{
-		Users: common.Map(options.Users, func(it option.AnyTLSUser) anytls.User {
-			return anytls.User(it)
-		}),
+	service, err := anytls.NewMultiService[string](anytls.ServiceOptions{
 		PaddingScheme: paddingScheme,
 		Handler:       (*inboundHandler)(inbound),
 		Logger:        logger,
 	})
+	if err != nil {
+		return nil, err
+	}
+	err = service.UpdateUsers(
+		common.Map(options.Users, func(it option.AnyTLSUser) string { return it.Name }),
+		common.Map(options.Users, func(it option.AnyTLSUser) string { return it.Password }),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +81,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	return inbound, nil
 }
 
-func (h *Inbound) Start(stage adapter.StartStage) error {
+func (h *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -88,12 +90,14 @@ func (h *Inbound) Start(stage adapter.StartStage) error {
 		if err != nil {
 			return err
 		}
+		scope.Add(h.tlsConfig.Close)
 	}
-	return h.listener.Start()
-}
-
-func (h *Inbound) Close() error {
-	return common.Close(h.listener, h.tlsConfig)
+	err := h.listener.Start()
+	if err != nil {
+		return err
+	}
+	scope.Add(h.listener.Close)
+	return nil
 }
 
 func (h *Inbound) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {

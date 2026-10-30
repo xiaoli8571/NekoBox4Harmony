@@ -11,7 +11,8 @@ function load(file,imports={}) {
  return exports;
 }
 const model=load('entry/src/main/ets/model/Profile.ets');
-const builder=load('entry/src/main/ets/core/ConfigBuilder.ets',{'../model/Profile':model,'../utils/TrafficStats':{CLASH_API_PORT:9090},'../model/RouteRule':{}});
+const prepared=load('entry/src/main/ets/core/PreparedResource.ets');
+const builder=load('entry/src/main/ets/core/ConfigBuilder.ets',{'../model/Profile':model,'../utils/TrafficStats':{CLASH_API_PORT:9090},'../model/RouteRule':{},'./PreparedResource':prepared});
 const fixtures=[];
 for(const mode of ['disable','enable','prefer','only']) for(const fake of [false,true]) {
  const p=Object.assign(new model.Profile(),{server:'example.invalid'});

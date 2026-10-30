@@ -93,13 +93,14 @@ function validateSettings(value: Object): void {
     ['stack', 'mode', 'directDomains', 'directIpCidrs', 'remoteDns', 'directDns', 'remoteDnsStrategy',
       'directDnsStrategy', 'serverDnsStrategy', 'sniffMode', 'logLevel', 'testUrl', 'latencyTestMode', 'appearance',
       'profileSortMode', 'navLayout', 'clashApiSecret', 'perAppMode', 'perAppList', 'perAppEntries',
+      'lanAuthUser', 'lanAuthPass', 'themeAccent', 'homeHiddenSections',
       'globalCustomConfig', 'ipv6Mode', 'testExpectStatus'],
     ['mtu', 'mixedPort', 'testConcurrent', 'subscriptionUpdateIntervalHours', 'clashApiPort', 'speedIntervalMs',
       'testTimeoutMs', 'testRetries', 'testSamples', 'latencyStaleMs'],
     ['dnsRouting', 'fakeDns', 'ipv6', 'bypassLan', 'resolveDestination', 'allowAccess', 'allowInsecureAll',
       'subAllowInsecure', 'alwaysShowAddress', 'notificationGroup', 'autoUpdateSubs', 'autoConnect',
       'hapticFeedback', 'clashApiEnabled', 'liquidGlass', 'networkChangeResetConnections', 'wakeResetConnections',
-      'profileTrafficStatistics', 'showBottomBar', 'testBypassTunnel']);
+      'profileTrafficStatistics', 'showBottomBar', 'testBypassTunnel', 'autoStartOnBoot']);
 }
 
 function validateProfile(value: Object): void {
@@ -117,7 +118,7 @@ function validateProfile(value: Object): void {
       'fingerprint', 'realityPublicKey', 'realityShortId', 'certificates', 'echConfig', 'obfs', 'serverPorts',
       'congestionControl', 'udpRelayMode', 'localAddress', 'privateKey', 'peerPublicKey', 'preSharedKey',
       'reserved', 'sshAuthType', 'privateKeyPassphrase', 'hostKey', 'muxProtocol', 'extra', 'customOutbound',
-      'chainIds', 'subUrl', 'groupId', 'dialerProxyName', 'dialerProxyId'],
+      'chainIds', 'subUrl', 'groupId', 'dialerProxyName', 'dialerProxyId', 'alias', 'icon'],
     ['alterId', 'wsEarlyData', 'upMbps', 'downMbps', 'hopInterval', 'wgMtu', 'shadowtlsVersion',
       'muxMaxStreams', 'sortOrder', 'latencyMs', 'latencyTestedAt', 'updatedAt'],
     ['tls', 'allowInsecure', 'ech', 'reduceRtt', 'disableSni', 'mux', 'muxPadding', 'pinned']);

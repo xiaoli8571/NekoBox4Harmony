@@ -8,7 +8,6 @@ import { Profile, ProfileGroup } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, LogStore } from '../model/Store';
 import { SubInfo, listSubs, saveSubs, removeSub, updateSubscription, markSubSuccess, markSubFailure,
   SubUpdateResult, subUpdateHasChanges, needDirectUpdateConfirm } from '../core/Subscriptions';
-import { SubDiffDialog } from './SubUpdateFeedback';
 import { VpnService } from '../core/VpnService';
 import { subErrorText } from '../utils/Subscription';
 import { exportProfileLink } from '../utils/LinkExporter';
@@ -88,9 +87,6 @@ export struct GroupPage {
     return $r('app.string.sub_last_update', `${d.getMonth() + 1}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`);
   }
 
-  /** Diff 对话框控制器(每次按当次结果新建) */
-  private subDiffDialog: CustomDialogController | undefined = undefined;
-
   /** 更新结果反馈(对齐 Android GroupInterfaceAdapter.kt:29-82,与首页同一套语义) */
   private showSubUpdateFeedback(name: string, res: SubUpdateResult): void {
     if (!subUpdateHasChanges(res)) {
@@ -98,13 +94,7 @@ export struct GroupPage {
       return;
     }
     promptAction.showToast({ message: $r('app.string.group_updated', name, res.changed) });
-    setTimeout(() => {
-      this.subDiffDialog = new CustomDialogController({
-        builder: SubDiffDialog({ groupName: name, res: res }),
-        autoCancel: true
-      });
-      this.subDiffDialog.open();
-    }, 1000);
+    /* 2026-10-26 明细对话框已下线:变化数量用这一条 toast 概述,逐项明细看消息中心。 */
   }
 
   async updateOne(sub: SubInfo): Promise<void> {
@@ -468,8 +458,8 @@ export struct GroupPage {
           .onChange((v: string) => { this.newGroupName = v; })
         Button($r('app.string.add_group'))
           .height(UiSpec.BTN_HEIGHT)
-          .backgroundColor($r('app.color.primary'))
-          .fontColor($r('app.color.surface'))
+          .backgroundColor(this.litKey === 'group:add' ? $r('app.color.primary') : $r('app.color.surface'))
+          .fontColor(this.litKey === 'group:add' ? $r('app.color.surface') : $r('app.color.text_1'))
           /* 这一行固定在列表之上(不跟滚动跑位)⇒ 点光源 + 按下轻微缩放兜底 */
           .visualEffect(pressLightEffect(this.litKey === 'group:add', true))
           .scale({ x: this.litKey === 'group:add' ? 0.96 : 1.0, y: this.litKey === 'group:add' ? 0.96 : 1.0 })
@@ -595,8 +585,8 @@ export struct GroupPage {
                       .onClick(() => { this.settingsGroupId = ''; })
                     Button($r('app.string.save'))
                       .layoutWeight(1)
-                      .backgroundColor($r('app.color.primary'))
-                      .fontColor($r('app.color.surface'))
+                      .backgroundColor(this.litKey === 'group:settings:save' ? $r('app.color.primary') : $r('app.color.surface'))
+                      .fontColor(this.litKey === 'group:settings:save' ? $r('app.color.surface') : $r('app.color.text_1'))
                       .visualEffect(pressLightEffect(this.litKey === 'group:settings:save', true))
                       .onTouch((event: TouchEvent) => {
                         if (event.type === TouchType.Down) {

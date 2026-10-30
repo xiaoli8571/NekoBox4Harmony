@@ -1198,7 +1198,7 @@
     },
     {
       "name": "settings_geo_import_hint",
-      "value": "Import geoip.db / geosite.db from a file (overrides built-in cn databases)"
+      "value": "Import geoip.db / geosite.db from a file"
     },
     {
       "name": "settings_geo_site",
@@ -1314,7 +1314,7 @@
     },
     {
       "name": "settings_theme_note",
-      "value": "Theme options are saved as app preferences; due to SDK limitations, some pages refresh after re-entering."
+      "value": "Theme options are saved; some pages refresh after re-entering"
     },
     {
       "name": "settings_per_app_hint_exclude",
@@ -2110,11 +2110,19 @@
     },
     {
       "name": "about_license_body",
-      "value": "sing-box is GPL-3.0; the app icon comes from NekoBoxForAndroid (GPL-3.0)."
+      "value": "sing-box is GPL-3.0."
     },
     {
       "name": "settings_general",
       "value": "General"
+    },
+    {
+      "name": "settings_advanced",
+      "value": "Advanced"
+    },
+    {
+      "name": "settings_advanced_desc",
+      "value": "Collapsed by default: log level, probe options, custom config, inbound and Clash API."
     },
     {
       "name": "settings_auto_connect",
@@ -2130,7 +2138,7 @@
     },
     {
       "name": "latency_test_mode_desc",
-      "value": "URL Test fetches the URL below through the node and only counts as up when the whole chain works; TCPing only measures the TCP handshake (fixed 3000ms, skips Hysteria/TUIC/WireGuard and other protocols that do not support it), so a broken node can still show green."
+      "value": "URL Test counts green only when the whole chain works; TCPing only tests the port handshake"
     },
     {
       "name": "settings_route",
@@ -2154,7 +2162,7 @@
     },
     {
       "name": "settings_test_url_desc",
-      "value": "URL Test fetches this URL through the node. Default is http://cp.cloudflare.com/ (same as the Android app); an HTTPS URL adds the TLS handshake to the target site and will read higher."
+      "value": "URL Test fetches this URL through the node; HTTPS adds the TLS handshake, so it reads higher"
     },
     {
       "name": "settings_test_concurrent",
@@ -2222,7 +2230,7 @@
     },
     {
       "name": "settings_server_dns_strategy_hint",
-      "value": "IP preference used when resolving the proxy server's own domain (matches Android domain_strategy_for_server)"
+      "value": "IP preference when resolving the proxy server domain"
     },
     {
       "name": "strategy_default",
@@ -2262,7 +2270,7 @@
     },
     {
       "name": "settings_fakedns_desc",
-      "value": "Speed up domain routing with fake IPs (verify on device)"
+      "value": "Speed up domain routing with fake IPs"
     },
     {
       "name": "settings_mixed_port",
@@ -2414,7 +2422,7 @@
     },
     {
       "name": "settings_resolve_destination_desc",
-      "value": "Resolve domains before matching IP rules (e.g. geoip)"
+      "value": "Resolve domains before matching IP rules"
     },
     {
       "name": "settings_global_custom_config",
@@ -2422,7 +2430,7 @@
     },
     {
       "name": "settings_global_custom_config_desc",
-      "value": "Shallow-merged into the generated sing-box config; invalid JSON is ignored"
+      "value": "Shallow-merged into the generated config; invalid JSON is ignored"
     },
     {
       "name": "show_bottom_bar",
@@ -3301,8 +3309,592 @@
       "value": "System"
     },
     {
+      "name": "app_page_about",
+      "value": "About"
+    },
+    {
       "name": "operation_failed",
       "value": "Operation failed: %s"
+    },
+    {
+      "name": "per_app_installed_title",
+      "value": "Installed apps"
+    },
+    {
+      "name": "per_app_installed_include_system",
+      "value": "System apps"
+    },
+    {
+      "name": "per_app_installed_refresh",
+      "value": "Refresh"
+    },
+    {
+      "name": "per_app_installed_loading",
+      "value": "Reading installed apps…"
+    },
+    {
+      "name": "per_app_installed_failed",
+      "value": "Unable to read installed apps: %1$s (you can still add bundle names manually)"
+    },
+    {
+      "name": "per_app_installed_empty",
+      "value": "No matching apps"
+    },
+    {
+      "name": "per_app_system_tag",
+      "value": "System"
+    },
+    {
+      "name": "per_app_entries_title",
+      "value": "Added entries"
+    },
+    {
+      "name": "settings_notification_profile",
+      "value": "Show node name in notification"
+    },
+    {
+      "name": "sub_filter_title",
+      "value": "Node filter"
+    },
+    {
+      "name": "sub_filter_summary",
+      "value": "Filter by node name (case-insensitive, regex supported; applies on next update)"
+    },
+    {
+      "name": "sub_filter_placeholder",
+      "value": "Keyword or regex"
+    },
+    {
+      "name": "sub_filter_mode_off",
+      "value": "Off"
+    },
+    {
+      "name": "sub_filter_mode_include",
+      "value": "Keep matches"
+    },
+    {
+      "name": "sub_filter_mode_exclude",
+      "value": "Exclude matches"
+    },
+    {
+      "name": "sub_retain_valid",
+      "value": "Retain valid nodes"
+    },
+    {
+      "name": "sub_retain_valid_summary",
+      "value": "Keep nodes that are in use, tested OK, or have traffic after they disappear upstream"
+    },
+    {
+      "name": "diag_title",
+      "value": "Service diagnostics"
+    },
+    {
+      "name": "diag_subtitle",
+      "value": "Landing IP · AI tools · Streaming · Common"
+    },
+    {
+      "name": "diag_test_all",
+      "value": "Test all"
+    },
+    {
+      "name": "diag_landing_ip",
+      "value": "Landing IP"
+    },
+    {
+      "name": "diag_landing_loading",
+      "value": "Querying egress IP…"
+    },
+    {
+      "name": "diag_landing_failed",
+      "value": "Query failed, check the network and retry"
+    },
+    {
+      "name": "diag_landing_idle",
+      "value": "Not queried yet"
+    },
+    {
+      "name": "diag_mode_tunnel",
+      "value": "via proxy"
+    },
+    {
+      "name": "diag_mode_direct",
+      "value": "direct"
+    },
+    {
+      "name": "diag_refresh",
+      "value": "Refresh"
+    },
+    {
+      "name": "diag_direct_hint",
+      "value": "VPN is off: results reflect this device's direct connection, not the node's egress"
+    },
+    {
+      "name": "diag_cat_all",
+      "value": "All"
+    },
+    {
+      "name": "diag_cat_ai",
+      "value": "AI tools"
+    },
+    {
+      "name": "diag_cat_streaming",
+      "value": "Streaming"
+    },
+    {
+      "name": "diag_cat_common",
+      "value": "Common"
+    },
+    {
+      "name": "diag_state_idle",
+      "value": "Idle"
+    },
+    {
+      "name": "diag_state_testing",
+      "value": "Testing…"
+    },
+    {
+      "name": "diag_state_available",
+      "value": "Available"
+    },
+    {
+      "name": "diag_state_restricted",
+      "value": "Region locked"
+    },
+    {
+      "name": "diag_state_unavailable",
+      "value": "Unavailable"
+    },
+    {
+      "name": "diag_running_hint",
+      "value": "Testing…"
+    },
+    {
+      "name": "diag_footer_note",
+      "value": "Verdicts follow OwnBox: AI services check region blocklists and risk-control text, streaming checks region-locked pages and country codes. Results describe the current egress only — retest after switching nodes."
+    },
+    {
+      "name": "tools_diag_title",
+      "value": "Service diagnostics"
+    },
+    {
+      "name": "tools_diag_desc",
+      "value": "13 services + landing IP: whether AI tools, streaming and common services work and which regions are locked"
+    },
+    {
+      "name": "tools_diag_open",
+      "value": "Open diagnostics"
+    },
+    {
+      "name": "traffic_title",
+      "value": "Traffic & speed"
+    },
+    {
+      "name": "traffic_subtitle",
+      "value": "Live chart · session totals · download/upload test"
+    },
+    {
+      "name": "traffic_resume",
+      "value": "Resume"
+    },
+    {
+      "name": "traffic_pause",
+      "value": "Pause"
+    },
+    {
+      "name": "traffic_paused_hint",
+      "value": "Sampling paused"
+    },
+    {
+      "name": "traffic_live_hint",
+      "value": "Sampling 1/s"
+    },
+    {
+      "name": "traffic_down",
+      "value": "Download"
+    },
+    {
+      "name": "traffic_up",
+      "value": "Upload"
+    },
+    {
+      "name": "traffic_peak",
+      "value": "Peak"
+    },
+    {
+      "name": "traffic_session",
+      "value": "This session"
+    },
+    {
+      "name": "traffic_reset",
+      "value": "Reset"
+    },
+    {
+      "name": "traffic_footer_note",
+      "value": "The chart uses the kernel's 1 Hz rate report. Speed tests move real bytes (10 MB down / 2 MB up, 20 s cap). While disconnected both reflect the direct connection, not the node."
+    },
+    {
+      "name": "speed_down_title",
+      "value": "Download test"
+    },
+    {
+      "name": "speed_down_hint",
+      "value": "Fetch 10 MB of random data, measured by bytes actually received"
+    },
+    {
+      "name": "speed_up_title",
+      "value": "Upload test"
+    },
+    {
+      "name": "speed_up_hint",
+      "value": "Upload 2 MB of random data (incompressible, so the number isn't inflated)"
+    },
+    {
+      "name": "speed_start",
+      "value": "Start"
+    },
+    {
+      "name": "speed_failed",
+      "value": "Speed test failed: %1$s"
+    },
+    {
+      "name": "speed_verdict_slow",
+      "value": "Slow"
+    },
+    {
+      "name": "speed_verdict_fair",
+      "value": "Fair"
+    },
+    {
+      "name": "speed_verdict_good",
+      "value": "Good"
+    },
+    {
+      "name": "speed_verdict_fast",
+      "value": "Fast"
+    },
+    {
+      "name": "tools_traffic_title",
+      "value": "Traffic chart & speed test"
+    },
+    {
+      "name": "tools_traffic_desc",
+      "value": "Last-minute up/down curves, session totals, and real byte-throughput tests"
+    },
+    {
+      "name": "tools_traffic_open",
+      "value": "Open traffic"
+    },
+    {
+      "name": "nodes_show_more",
+      "value": "Showing %1$d of %2$d nodes · tap to load more"
+    },
+    {
+      "name": "shortcut_nodes",
+      "value": "Nodes"
+    },
+    {
+      "name": "shortcut_traffic",
+      "value": "Traffic & speed"
+    },
+    {
+      "name": "shortcut_diagnostics",
+      "value": "Diagnostics"
+    },
+    {
+      "name": "shortcut_logs",
+      "value": "Logs"
+    },
+    {
+      "name": "form_status_name",
+      "value": "Status"
+    },
+    {
+      "name": "form_status_desc",
+      "value": "Home screen card: one tap to traffic & speed"
+    },
+    {
+      "name": "form_status_hint",
+      "value": "The card has no background process; the app holds the real state"
+    },
+    {
+      "name": "form_status_open",
+      "value": "Tap to open traffic & speed"
+    },
+    {
+      "name": "sub_row_home_off",
+      "value": "Show only this subscription on Home"
+    },
+    {
+      "name": "sub_row_home_on",
+      "value": "✓ Home shows only this subscription (tap to undo)"
+    },
+    {
+      "name": "home_scope_all",
+      "value": "Home now shows all subscriptions again"
+    },
+    {
+      "name": "home_scope_one",
+      "value": "Home now shows only groups from %1$s"
+    },
+    {
+      "name": "home_scope_tip",
+      "value": "Subscription page → More → \"Show only this subscription\" isolates groups. Now: %1$s"
+    },
+    {
+      "name": "home_scope_count",
+      "value": "Showing %1$d selected subscriptions on Home"
+    },
+    {
+      "name": "sub_home_check_on",
+      "value": "Checked: this subscription is shown on Home"
+    },
+    {
+      "name": "sub_home_check_off",
+      "value": "Check to show only checked subscriptions on Home"
+    },
+    {
+      "name": "web_ui_title",
+      "value": "Web panel"
+    },
+    {
+      "name": "web_ui_back",
+      "value": "Back"
+    },
+    {
+      "name": "web_ui_reload",
+      "value": "Reload panel"
+    },
+    {
+      "name": "web_ui_retry",
+      "value": "Retry"
+    },
+    {
+      "name": "tools_webui_title",
+      "value": "Web panel (yacd)"
+    },
+    {
+      "name": "tools_webui_desc",
+      "value": "Traffic/connections/rules panel served by the core. Opens in-app; enable Clash API and connect first."
+    },
+    {
+      "name": "tools_webui_open",
+      "value": "Open panel"
+    },
+    {
+      "name": "probe_notify_title",
+      "value": "Node test finished"
+    },
+    {
+      "name": "probe_notify_cancelled",
+      "value": "Test cancelled"
+    },
+    {
+      "name": "lan_title",
+      "value": "LAN Sharing"
+    },
+    {
+      "name": "lan_saved",
+      "value": "Saved. Takes effect after reconnect"
+    },
+    {
+      "name": "lan_copied",
+      "value": "Proxy address copied"
+    },
+    {
+      "name": "lan_copy_failed",
+      "value": "Copy failed"
+    },
+    {
+      "name": "lan_enable",
+      "value": "Allow LAN devices"
+    },
+    {
+      "name": "lan_enable_desc",
+      "value": "Other devices on your LAN can use this proxy"
+    },
+    {
+      "name": "lan_address",
+      "value": "Local address"
+    },
+    {
+      "name": "lan_copy",
+      "value": "Copy"
+    },
+    {
+      "name": "lan_port",
+      "value": "Proxy port"
+    },
+    {
+      "name": "lan_reconnect_note",
+      "value": "Port and switch changes apply after reconnect"
+    },
+    {
+      "name": "lan_auth_title",
+      "value": "Authentication"
+    },
+    {
+      "name": "lan_auth_desc",
+      "value": "Only enforced when a username is set"
+    },
+    {
+      "name": "lan_auth_user",
+      "value": "Username"
+    },
+    {
+      "name": "lan_auth_pass",
+      "value": "Password"
+    },
+    {
+      "name": "cfg_edit_title",
+      "value": "Raw config"
+    },
+    {
+      "name": "cfg_edit_copy",
+      "value": "Copy"
+    },
+    {
+      "name": "cfg_edit_no_profile",
+      "value": "No nodes yet"
+    },
+    {
+      "name": "cfg_edit_override_on",
+      "value": "Custom config active"
+    },
+    {
+      "name": "cfg_edit_generated",
+      "value": "Auto-generated config"
+    },
+    {
+      "name": "cfg_edit_clear",
+      "value": "Clear"
+    },
+    {
+      "name": "cfg_edit_save",
+      "value": "Save"
+    },
+    {
+      "name": "cfg_edit_warning",
+      "value": "Saved config is used on connect; invalid JSON falls back to generated config"
+    },
+    {
+      "name": "cfg_edit_empty",
+      "value": "Config is empty"
+    },
+    {
+      "name": "cfg_edit_invalid",
+      "value": "Invalid JSON or missing outbounds"
+    },
+    {
+      "name": "cfg_edit_saved",
+      "value": "Custom config saved"
+    },
+    {
+      "name": "cfg_edit_cleared",
+      "value": "Reverted to generated config"
+    },
+    {
+      "name": "cfg_edit_copied",
+      "value": "Config copied"
+    },
+    {
+      "name": "messages_title",
+      "value": "Messages"
+    },
+    {
+      "name": "messages_read_all",
+      "value": "Read all"
+    },
+    {
+      "name": "messages_clear",
+      "value": "Clear"
+    },
+    {
+      "name": "messages_empty",
+      "value": "No messages"
+    },
+    {
+      "name": "messages_sub_updated",
+      "value": "Subscriptions updated"
+    },
+    {
+      "name": "messages_added",
+      "value": "Added"
+    },
+    {
+      "name": "messages_failed",
+      "value": "Failed"
+    },
+    {
+      "name": "tools_open",
+      "value": "Open"
+    },
+    {
+      "name": "tools_lan_desc",
+      "value": "Share this proxy with devices on your LAN"
+    },
+    {
+      "name": "tools_cfg_edit_desc",
+      "value": "View and edit the generated sing-box config"
+    },
+    {
+      "name": "tools_messages_desc",
+      "value": "History of subscription and probe events"
+    },
+    {
+      "name": "settings_auto_start_boot",
+      "value": "Connect on boot"
+    },
+    {
+      "name": "settings_auto_start_boot_desc",
+      "value": "After a reboot, connect to the last node on first launch"
+    },
+    {
+      "name": "settings_theme_accent",
+      "value": "Accent color"
+    },
+    {
+      "name": "settings_home_sections",
+      "value": "Home sections"
+    },
+    {
+      "name": "home_sec_groups",
+      "value": "Group bar"
+    },
+    {
+      "name": "home_sec_nodes",
+      "value": "Node list"
+    },
+    {
+      "name": "home_sec_bottombar",
+      "value": "Bottom bar and connect button"
+    },
+    {
+      "name": "profile_alias",
+      "value": "Alias"
+    },
+    {
+      "name": "profile_alias_placeholder",
+      "value": "Display name only"
+    },
+    {
+      "name": "profile_icon",
+      "value": "Icon"
+    },
+    {
+      "name": "profile_icon_placeholder",
+      "value": "A single emoji or character"
+    },
+    {
+      "name": "probe_notify_body",
+      "value": "Latency test finished"
+    },
+    {
+      "name": "settings_lan_auth_user",
+      "value": "LAN username"
+    },
+    {
+      "name": "settings_lan_auth_pass",
+      "value": "LAN password"
     }
   ]
 }

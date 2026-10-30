@@ -9,13 +9,7 @@ build:
 	GOOS=windows GOARCH=amd64 go build -v -tags with_gvisor .
 
 fmt:
-	@gofumpt -l -w .
-	@gofmt -s -w .
-	@gci write --custom-order -s standard -s "prefix(github.com/sagernet/)" -s "default" .
-
-fmt_install:
-	go install -v mvdan.cc/gofumpt@latest
-	go install -v github.com/daixiang0/gci@latest
+	@golangci-lint fmt
 
 lint:
 	GOOS=linux golangci-lint --max-same-issues=0 --max-issues-per-linter=0 run ./...
@@ -29,4 +23,4 @@ lint_install:
 test:
 	go build -v .
 	#go test -bench=. ./internal/checksum_test
-	go test -v .
+	go test -v $(TEST_FLAGS) .

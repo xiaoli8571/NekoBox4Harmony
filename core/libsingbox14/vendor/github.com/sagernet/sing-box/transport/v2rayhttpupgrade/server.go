@@ -8,18 +8,20 @@ import (
 	"strings"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/badhttp"
 	"github.com/sagernet/sing-box/common/tls"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/transport/v2rayhttp"
 	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	aTLS "github.com/sagernet/sing/common/tls"
-	sHttp "github.com/sagernet/sing/protocol/http"
 )
 
 var _ adapter.V2RayServerTransport = (*Server)(nil)
@@ -107,12 +109,23 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		s.invalidRequest(writer, request, http.StatusInternalServerError, E.New("invalid connection, maybe HTTP/2"))
 		return
 	}
-	conn, _, err := hijacker.Hijack()
+	conn, reader, err := hijacker.Hijack()
 	if err != nil {
 		s.invalidRequest(writer, request, http.StatusInternalServerError, E.Cause(err, "hijack failed"))
 		return
 	}
-	s.handler.NewConnectionEx(v2rayhttp.DupContext(request.Context()), conn, sHttp.SourceAddress(request), M.Socksaddr{}, nil)
+	if cacheLen := reader.Reader.Buffered(); cacheLen > 0 {
+		cache := buf.NewSize(cacheLen)
+		_, err = cache.ReadFullFrom(reader.Reader, cacheLen)
+		if err != nil {
+			cache.Release()
+			conn.Close()
+			s.invalidRequest(writer, request, 0, E.Cause(err, "read cache"))
+			return
+		}
+		conn = bufio.NewCachedConn(conn, cache)
+	}
+	s.handler.NewConnectionEx(v2rayhttp.DupContext(request.Context()), conn, badhttp.SourceAddress(request), M.Socksaddr{}, nil)
 }
 
 func (s *Server) invalidRequest(writer http.ResponseWriter, request *http.Request, statusCode int, err error) {

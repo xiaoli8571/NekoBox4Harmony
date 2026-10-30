@@ -18,14 +18,15 @@ function load(file, imports = {}) {
 const nav = load('entry/src/main/ets/core/Navigation.ets', {});
 
 (async () => {
-  // 1. six pages, stable drawer order(2026-10-24 用户指示:工具+关于合并为「系统」)
+  // 1. 7 页，稳定抽屉顺序(2026-10-30 用户要求:工具与关于拆回两个独立页面)
   const defs = nav.pageDefs();
-  assert.equal(defs.length, 6);
-  assert.deepEqual(defs.map((d) => d.id).join(','), 'nodes,subscriptions,routing,settings,logs,system');
-  assert.deepEqual(defs.map((d) => d.titleFallback).join(','), '节点,订阅,分流,设置,日志,系统');
+  assert.equal(defs.length, 7);
+  assert.deepEqual(defs.map((d) => d.id).join(','), 'nodes,subscriptions,routing,settings,logs,system,about');
+  assert.deepEqual(defs.map((d) => d.titleFallback).join(','), '节点,订阅,分流,设置,日志,工具,关于');
   assert.equal(pageDef(defs[0]).drawerIndex, 0);
   assert.equal(pageDef(defs[5]).drawerIndex, 5);
-  console.log('PASS six pages in drawer order 节点/订阅/分流/设置/日志/系统');
+  assert.equal(pageDef(defs[6]).drawerIndex, 6);
+  console.log('PASS seven pages in drawer order 节点/订阅/分流/设置/日志/工具/关于');
 
   function pageDef(d) { return d; }
 
@@ -34,10 +35,10 @@ const nav = load('entry/src/main/ets/core/Navigation.ets', {});
   assert.equal(nav.pageByLegacyTab(1).id, nav.PAGE_SUBSCRIPTIONS);
   assert.equal(nav.pageByLegacyTab(2).id, nav.PAGE_ROUTING);
   assert.equal(nav.pageByLegacyTab(3).id, nav.PAGE_SETTINGS);
-  assert.equal(nav.pageByLegacyTab(5).id, nav.PAGE_SYSTEM, 'legacy 工具 tab → 系统');
-  assert.equal(nav.pageByLegacyTab(6).id, nav.PAGE_SYSTEM, 'legacy 关于 tab → 系统(合并兼容)');
+  assert.equal(nav.pageByLegacyTab(5).id, nav.PAGE_SYSTEM, 'legacy 工具 tab → 工具页');
+  assert.equal(nav.pageByLegacyTab(6).id, nav.PAGE_ABOUT, 'legacy 关于 tab → 关于页');
   assert.equal(nav.pageByLegacyTab(99).id, nav.PAGE_NODES);
-  console.log('PASS legacy activeTab 0..6 maps to new pages(5/6→system); unknown falls back to nodes');
+  console.log('PASS legacy activeTab 0..6 maps to new pages(5→system,6→about); unknown falls back to nodes');
 
   // 3. pageById unknown → null
   assert.equal(nav.pageById('nope'), null);
@@ -66,8 +67,9 @@ const nav = load('entry/src/main/ets/core/Navigation.ets', {});
   assert.equal(nodeActions, 'search,probe', 'node page: search + probe');
   const subActions = nav.topBarActions(nav.PAGE_SUBSCRIPTIONS, ctx).map((a) => a.id).join(',');
   assert.equal(subActions, 'add,updateAll', 'subscriptions page: add + update all');
-  assert.equal(nav.topBarActions(nav.PAGE_SYSTEM, ctx).length, 0, 'system page has no placeholder actions (§3.3)');
-  console.log('PASS top bar actions per page (system has no placeholder actions)');
+  assert.equal(nav.topBarActions(nav.PAGE_SYSTEM, ctx).length, 0, 'tools page has no placeholder actions (§3.3)');
+  assert.equal(nav.topBarActions(nav.PAGE_ABOUT, ctx).length, 0, 'about page has no placeholder actions (§3.3)');
+  console.log('PASS top bar actions per page (tools/about have no placeholder actions)');
 
   // 6. probe action replaced by progress/cancel while probing (§3.3)
   const probing = new nav.TopBarContext();

@@ -7,6 +7,7 @@ import { initStore, loadSettings, saveSettings, LogStore } from '../model/Store'
 import { geoReady, downloadGeoAssets, importGeoAssetFromFile, geoAssetInfos, downloadGeoAsset, deleteGeoAsset, GeoAssetInfo } from '../utils/GeoAssets';
 import { formatBytes } from '../utils/TrafficStats';
 import { pressLightEffect } from '../common/Effects';
+import { publishAccent } from '../common/Theme';
 import window from '@ohos.window';
 /* P4/W16-A:设置 Schema + 待应用差异模型(纯模型,无 I/O;§12.1/§12.2/§12.4) */
 import {
@@ -58,6 +59,7 @@ const SETTING_LABELS: Map<string, ResourceStr> = new Map<string, ResourceStr>([
   ['settings_liquid_glass', $r('app.string.settings_liquid_glass')],
   ['settings_always_show_address', $r('app.string.settings_always_show_address')],
   ['settings_notification_group', $r('app.string.settings_notification_group')],
+  ['settings_notification_profile', $r('app.string.settings_notification_profile')],
   ['settings_show_bottom_bar', $r('app.string.settings_show_bottom_bar')],
   ['settings_nav_layout', $r('app.string.settings_nav_layout')],
   ['settings_profile_sort', $r('app.string.settings_profile_sort')],
@@ -75,7 +77,12 @@ const SETTING_LABELS: Map<string, ResourceStr> = new Map<string, ResourceStr>([
   ['settings_clash_port', $r('app.string.settings_clash_port')],
   ['settings_clash_secret', $r('app.string.settings_clash_secret')],
   ['settings_global_custom', $r('app.string.settings_global_custom')],
-  ['settings_coexist_fix', $r('app.string.settings_coexist_fix')]
+  ['settings_coexist_fix', $r('app.string.settings_coexist_fix')],
+  ['settings_auto_start_boot', $r('app.string.settings_auto_start_boot')],
+  ['settings_lan_auth_user', $r('app.string.settings_lan_auth_user')],
+  ['settings_lan_auth_pass', $r('app.string.settings_lan_auth_pass')],
+  ['settings_theme_accent', $r('app.string.settings_theme_accent')],
+  ['settings_home_sections', $r('app.string.settings_home_sections')]
 ]);
 
 /** SectionDef.labelToken → 本地化(9 分区;与 SETTING_LABELS 同口径,tests/i18n-keys.cjs 守键存在) */
@@ -96,7 +103,6 @@ function draftToRecord(s: AppSettings): Record<string, Object> {
   return JSON.parse(JSON.stringify(s)) as Record<string, Object>;
 }
 
-const STACKS: Array<string> = ['system'];
 const MODES: Array<string> = ['rule', 'global', 'direct'];
 const MODE_LABELS: Array<Resource> = [$r('app.string.mode_rule'), $r('app.string.mode_global'), $r('app.string.mode_direct')];
 const MODE_SWITCH_TOASTS: Array<Resource> = [$r('app.string.settings_mode_switched_rule'), $r('app.string.settings_mode_switched_global'), $r('app.string.settings_mode_switched_direct')];
@@ -110,6 +116,16 @@ const STRATEGY_LABELS: Array<Resource> = [$r('app.string.strategy_default'), $r(
 // Android IPv6Mode 四档(values/arrays.xml ipv6_mode)
 const IPV6_MODES: Array<string> = ['disable', 'enable', 'prefer', 'only'];
 const IPV6_MODE_LABELS: Array<Resource> = [$r('app.string.ipv6_mode_disable'), $r('app.string.ipv6_mode_enable'), $r('app.string.ipv6_mode_prefer'), $r('app.string.ipv6_mode_only')];
+
+/* SETTINGS_TYPO_V4 2026-10-27:全页排版度量单源(用户反馈行距/框体/字号/颜色不齐)。
+   改这里即可整页缩放,不要在构件里再写魔法数字。 */
+const ROW_TITLE_SIZE: number = 14;    // 行标题
+const ROW_DESC_SIZE: number = 11;     // 行说明 / 提示 / 备注
+const GROUP_LABEL_SIZE: number = 12;  // 分区内分组小标题
+const CONTROL_LABEL_SIZE: number = 12; // 小按钮文字(Geo 更新/删除/导入)
+const ROW_HEIGHT: number = 48; /* SETTINGS_TYPO_V5 */        // 一行式行高:所有行一致,行距才齐
+const CONTROL_HEIGHT: number = 34;    // 右侧控件(输入框/按钮/分段)统一高度
+const SELECT_WIDTH: number = 150;     // 下拉统一宽度
 
 @Component
 export struct SettingsPage {
@@ -129,12 +145,11 @@ export struct SettingsPage {
   /** 应用进行中(等扩展回执期间禁用应用按钮) */
   @State applying: boolean = false;
   @State proxyExpanded: boolean = false;
-  @State generalExpanded: boolean = false;
-  @State networkExpanded: boolean = false;
-  @State dnsExpanded: boolean = false;
-  @State inboundExpanded: boolean = false;
-  @State appearanceExpanded: boolean = false;
-  @State apiExpanded: boolean = false;
+  /* SETTINGS_HEADER_TYPO_V2 2026-10-26:用户要求默认全部展开(折叠只作为"收起长页面"的手段) */
+  @State generalExpanded: boolean = true;
+  @State appearanceExpanded: boolean = true;
+  @State networkExpanded: boolean = true;
+  @State advancedExpanded: boolean = true;
   /**
    * HDS 点按光效的"当前光源 key":同一时刻只有一个宿主处于按下态。
    * 口径与 Index.ets 的 `litKey` 一致(按下写 key、抬起/取消清空),不挂常亮光源
@@ -270,6 +285,7 @@ export struct SettingsPage {
   private async applyAppearance(): Promise<void> {
     try {
       await saveSettings(this.s);
+      publishAccent(this.s.themeAccent);
       this.dirty = false;
       const colorMode = this.s.appearance === 'dark'
         ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
@@ -418,7 +434,7 @@ export struct SettingsPage {
       return $r('app.color.mono');
     }
     if (cls === APPLY_NEXT_TASK) {
-      return $r('app.color.text_3');
+      return $r('app.color.text_2');
     }
     return $r('app.color.warning');
   }
@@ -514,16 +530,15 @@ export struct SettingsPage {
 
   /** 设置分区跳转(搜索结果点击用):展开承载该 schema 分区的页内折叠区 */
   private jumpToSchemaSection(sectionId: string): void {
+    /* 2026-10-26 重排后只有四个折叠区:通用 / 外观 / 网络(含 DNS) / 高级(含入站+Clash) */
     if (sectionId === 'appearance') {
       this.appearanceExpanded = true;
-    } else if (sectionId === 'dns' || sectionId === 'ipv6') {
-      this.dnsExpanded = true;
-    } else if (sectionId === 'inbound') {
-      this.inboundExpanded = true;
-    } else if (sectionId === 'mode') {
+    } else if (sectionId === 'dns' || sectionId === 'ipv6' || sectionId === 'mode') {
       this.networkExpanded = true;
+    } else if (sectionId === 'inbound' || sectionId === 'advanced') {
+      this.advancedExpanded = true;
     } else {
-      /* startup / probe / advanced:字段落在「通用」区 */
+      /* startup / probe:字段落在「通用」区 */
       this.generalExpanded = true;
     }
   }
@@ -540,19 +555,19 @@ export struct SettingsPage {
   private settingsSearchRow() {
     Row({ space: 8 }) {
       SymbolGlyph($r('sys.symbol.magnifyingglass'))
-        .fontSize(14)
-        .fontColor([$r('app.color.text_3')])
+        .fontSize(ROW_TITLE_SIZE)
+        .fontColor([$r('app.color.text_2')])
       TextInput({ text: this.settingsQuery, placeholder: $r('app.string.settings_search_hint') })
-        .height(36)
+        .height(CONTROL_HEIGHT)
         .layoutWeight(1)
         .backgroundColor(Color.Transparent)
-        .fontSize(13)
+        .fontSize(ROW_TITLE_SIZE)
         .onChange((v: string) => {
           this.settingsQuery = v;
         })
       if (this.settingsQuery.length > 0) {
         Text($r('app.string.settings_clear_search'))
-          .fontSize(12)
+          .fontSize(GROUP_LABEL_SIZE)
           .fontColor($r('app.color.primary'))
           .onClick(() => {
             this.settingsQuery = '';
@@ -575,27 +590,27 @@ export struct SettingsPage {
         Row({ space: 8 }) {
           Column({ space: 2 }) {
             Text(this.settingLabelOf(def.labelToken))
-              .fontSize(13)
+              .fontSize(ROW_TITLE_SIZE)
               .fontColor($r('app.color.text_1'))
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
             Text(`${this.resText(this.sectionLabelOf(def.section))} · ${def.key}`)
-              .fontSize(10)
-              .fontColor($r('app.color.text_3'))
+              .fontSize(ROW_DESC_SIZE)
+              .fontColor($r('app.color.text_2'))
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
           }
           .alignItems(HorizontalAlign.Start)
           .layoutWeight(1)
           Text(this.displayValue(this.draftValueOf(def.key)))
-            .fontSize(11)
+            .fontSize(ROW_DESC_SIZE)
             .fontColor($r('app.color.text_2'))
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .constraintSize({ maxWidth: '40%' })
         }
         .width('100%')
-        .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+        .padding({ left: 12, right: 12, top: 9, bottom: 9 })
         .onClick(() => {
           this.jumpToSchemaSection(def.section);
           this.settingsQuery = '';
@@ -621,22 +636,23 @@ export struct SettingsPage {
     Row({ space: 6 }) {
       Row({ space: 10 }) {
         /* 字符图标换成系统符号:SymbolGlyph 没有 textAlign,靠固定 width(24) 与标题左边距对齐 */
+        /* SETTINGS_HEADER_TYPO_V2:分类名是页面骨架,12/700 太弱看不清 ⇒ 16/800 + 主文字色 */
         SymbolGlyph(icon)
-          .fontSize(17)
-          .fontColor([$r('app.color.mono')])
-          .width(24)
+          .fontSize(20)
+          .fontColor([$r('app.color.text_1')])
+          .width(28)
         Text(title)
-          .fontSize(12)
-          .fontWeight(700)
-          .fontColor($r('app.color.text_3'))
-          .letterSpacing(2)
+          .fontSize(16)
+          .fontWeight(800)
+          .fontColor($r('app.color.text_1'))
+          .letterSpacing(0.5)
           .layoutWeight(1)
         SymbolGlyph(expanded ? $r('sys.symbol.chevron_up') : $r('sys.symbol.chevron_down'))
-          .fontSize(14)
-          .fontColor([$r('app.color.text_3')])
+          .fontSize(16)
+          .fontColor([$r('app.color.text_2')])
       }
       .layoutWeight(1)
-      .padding({ top: 14, bottom: 6 })
+      .padding({ top: 20, bottom: 12 })
       /* HDS 点按光效:这一块本来就可点(onClick(onToggle)),只补"按下那一刻发光"。
          光源宿主白名单里有 Row、没有 Text —— 所以宿主保持 Row(图标 Text 已换成 SymbolGlyph)。
          key 用 icon.id(Resource.id 是必填 number,每个章节的符号资源 id 唯一)。 */
@@ -651,9 +667,10 @@ export struct SettingsPage {
       .onClick(onToggle)
       if (sectionId.length > 0) {
         Text($r('app.string.settings_restore_defaults'))
-          .fontSize(11)
+          .fontSize(12)
+          .fontWeight(500)
           .fontColor($r('app.color.primary'))
-          .padding({ top: 14, bottom: 6, left: 4, right: 2 })
+          .padding({ top: 20, bottom: 12, left: 4, right: 2 })
           .onClick(() => {
             this.restoreSectionDefaults(sectionId);
           })
@@ -661,6 +678,139 @@ export struct SettingsPage {
     }
     .width('100%')
     .border({ width: { bottom: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
+  }
+
+  /* ---- SETTINGS_TYPO_V4 2026-10-27:统一"标题在左、控件在右"的一行式行构件 ---- */
+
+  /** 分区内的分组小标题(DNS / 入站 / Clash API / 流量嗅探) */
+  @Builder
+  private subLabel(text: ResourceStr) {
+    Text(text)
+      .fontSize(GROUP_LABEL_SIZE)
+      .fontWeight(600)
+      .fontColor($r('app.color.text_1'))
+      .width('100%')
+      .margin({ top: 10, bottom: 2 })
+  }
+
+  /** 开关行(带说明文字) */
+  @Builder
+  private rowSwitch(title: ResourceStr, desc: ResourceStr, isOn: boolean, onChange: (v: boolean) => void) {
+    Row({ space: 10 }) {
+      Column({ space: 2 }) {
+        Text(title).fontSize(ROW_TITLE_SIZE).fontColor($r('app.color.text_1'))
+        Text(desc).fontSize(ROW_DESC_SIZE).fontColor($r('app.color.text_2'))
+      }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+      Toggle({ type: ToggleType.Switch, isOn: isOn })
+        .onChange(onChange)
+    }.width('100%').height(ROW_HEIGHT).alignItems(VerticalAlign.Center)
+  }
+
+  /** 开关行(无说明文字) */
+  @Builder
+  private rowSwitchPlain(title: ResourceStr, isOn: boolean, onChange: (v: boolean) => void) {
+    Row({ space: 10 }) {
+      Text(title).fontSize(ROW_TITLE_SIZE).fontColor($r('app.color.text_1')).layoutWeight(1)
+      Toggle({ type: ToggleType.Switch, isOn: isOn })
+        .onChange(onChange)
+    }.width('100%').height(ROW_HEIGHT).alignItems(VerticalAlign.Center)
+  }
+
+  /** 下拉行:标题在左,Select 在右(占一行) */
+  @Builder
+  private rowSelect(title: ResourceStr, options: Array<SelectOption>, selected: number, onSelect: (index: number) => void) {
+    Row({ space: 10 }) {
+      Text(title).fontSize(ROW_TITLE_SIZE).fontColor($r('app.color.text_1')).layoutWeight(1)
+      Select(options)
+        .selected(selected < 0 ? 0 : selected)
+        /* SETTINGS_TYPO_V5:只设 selected 不设 value ⇒ 文本框显示为空(真机反馈),
+           必须回填当前选中项标签才能显示默认值 */
+        .value(selected < 0 || selected >= options.length ? '' : options[selected].value)
+        .width(SELECT_WIDTH)
+        .height(CONTROL_HEIGHT)
+        .onSelect(onSelect)
+    }.width('100%').height(ROW_HEIGHT).alignItems(VerticalAlign.Center)
+  }
+
+  /** 输入行:标题在左,TextInput 在右(占一行) */
+  @Builder
+  private rowInput(title: ResourceStr, value: string, placeholder: ResourceStr, inputType: InputType,
+    onChange: (v: string) => void) {
+    Row({ space: 10 }) {
+      Text(title).fontSize(ROW_TITLE_SIZE).fontColor($r('app.color.text_1')).layoutWeight(1)
+      TextInput({ text: value, placeholder: placeholder })
+        .type(inputType)
+        .width(SELECT_WIDTH)
+        .height(CONTROL_HEIGHT)
+        .fontSize(ROW_DESC_SIZE)
+        .onChange(onChange)
+    }.width('100%').height(ROW_HEIGHT).alignItems(VerticalAlign.Center)
+  }
+
+  /** 分段按钮组(深浅色 / 节点排序 / 嗅探模式) */
+  @Builder
+  private chipRow(values: Array<string>, labels: Array<ResourceStr>, current: string, keyPrefix: string,
+    onPick: (v: string) => void) {
+    Row({ space: 8 }) {
+      ForEach(values, (v: string, idx: number) => {
+        Button(labels[idx])
+          .layoutWeight(1)
+          .height(CONTROL_HEIGHT)
+          .fontSize(ROW_DESC_SIZE)
+          .backgroundColor(current === v ? $r('app.color.primary') : $r('app.color.surface'))
+          .fontColor(current === v ? $r('app.color.surface') : $r('app.color.text_1'))
+          .visualEffect(pressLightEffect(this.litKey === `${keyPrefix}:${v}`, true))
+          .onTouch((event: TouchEvent) => {
+            if (event.type === TouchType.Down) {
+              this.litKey = `${keyPrefix}:${v}`;
+            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+              this.litKey = '';
+            }
+          })
+          .onClick(() => onPick(v))
+      }, (v: string) => v)
+    }.width('100%').height(ROW_HEIGHT).alignItems(VerticalAlign.Center)
+  }
+
+  /** Geo 小按钮(下载/更新/删除/导入):统一高度与字号 */
+  @Builder
+  private geoButton(text: ResourceStr, litId: string, danger: boolean, enabled: boolean, onTap: () => void) {
+    Button(text)
+      .height(CONTROL_HEIGHT)
+      .fontSize(CONTROL_LABEL_SIZE)
+      .backgroundColor(danger ? $r('app.color.surface') : $r('app.color.primary'))
+      .fontColor(danger ? $r('app.color.error') : $r('app.color.surface'))
+      .enabled(enabled)
+      .visualEffect(pressLightEffect(this.litKey === litId, true))
+      .onTouch((event: TouchEvent) => {
+        if (event.type === TouchType.Down) {
+          this.litKey = litId;
+        } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+          this.litKey = '';
+        }
+      })
+      .onClick(() => onTap())
+  }
+
+  /** IPv6 模式索引(legacy boolean 兼容:无 mode 时按 ipv6 布尔回落) */
+  private ipv6Index(): number {
+    const i = IPV6_MODES.indexOf(this.s.ipv6Mode);
+    return i < 0 ? (this.s.ipv6 ? 1 : 0) : i;
+  }
+
+  private strategyIndex(v: string): number {
+    const i = STRATEGIES.indexOf(v);
+    return i < 0 ? 0 : i;
+  }
+
+  private logLevelIndex(): number {
+    const i = LOG_LEVELS.indexOf(this.s.logLevel);
+    return i < 0 ? 2 : i;
+  }
+
+  private latencyTestIndex(): number {
+    const i = LATENCY_TEST_VALUES.indexOf(this.s.latencyTestMode);
+    return i < 0 ? 0 : i;
   }
 
   build() {
@@ -709,7 +859,7 @@ export struct SettingsPage {
             .color($r('app.color.primary'))
           Text($r('app.string.loading_settings'))
             .fontSize(13)
-            .fontColor($r('app.color.text_secondary'))
+            .fontColor($r('app.color.text_2'))
         }
         .width('100%')
         .padding({ top: 36, bottom: 20 })
@@ -718,13 +868,13 @@ export struct SettingsPage {
           Text($r('app.string.settings_load_failed'))
             .fontSize(16)
             .fontWeight(500)
-            .fontColor($r('app.color.text_primary'))
+            .fontColor($r('app.color.text_1'))
           Text(this.loadError)
             .fontSize(13)
             .fontColor($r('app.color.error'))
           Button($r('app.string.reload'))
             .height(36)
-            .backgroundColor($r('app.color.primary'))
+            .backgroundColor(this.litKey === 'reload' ? $r('app.color.primary') : $r('app.color.surface'))
             .visualEffect(pressLightEffect(this.litKey === 'reload', true))
             .onTouch((event: TouchEvent) => {
               if (event.type === TouchType.Down) {
@@ -741,76 +891,235 @@ export struct SettingsPage {
 
       Scroll() {
         Column({ space: 14 }) {
-          // 常规(对齐 Android General 组)
+          // 通用(只留在手机上手调有意义的项;专家项收进「高级」)
           this.sectionHeader($r('sys.symbol.gearshape'), $r('app.string.settings_general'), this.generalExpanded, () => { this.generalExpanded = !this.generalExpanded; }, '')
           if (this.generalExpanded) {
-          Column({ space: 8 }) {
-            Row() {
-              Column() {
-                Text($r('app.string.settings_auto_connect')).fontSize(14)
-                Text($r('app.string.settings_auto_connect_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
-              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.autoConnect })
-                .onChange((v: boolean) => {
-                  this.s.autoConnect = v;
-                  this.markDirty();
-                })
-            }.width('100%')
+            this.rowSwitchPlain($r('app.string.settings_auto_connect'), this.s.autoConnect,
+              (v: boolean) => {
+                this.s.autoConnect = v;
+                this.markDirty();
+              })
+            this.rowSwitchPlain($r('app.string.settings_auto_start_boot'), this.s.autoStartOnBoot,
+              (v: boolean) => {
+                this.s.autoStartOnBoot = v;
+                this.markDirty();
+              })
+            this.rowSwitchPlain($r('app.string.settings_always_show_address'), this.s.alwaysShowAddress,
+              (v: boolean) => {
+                this.s.alwaysShowAddress = v;
+                this.markDirty();
+              })
+            this.rowSwitchPlain($r('app.string.show_bottom_bar'), this.s.showBottomBar,
+              (v: boolean) => {
+                this.s.showBottomBar = v;
+                this.markDirty();
+              })
+          }
 
-            Column() {
-              Text($r('app.string.settings_log_level')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              Select(LOG_LEVELS.map((t: string) => ({ value: t } as SelectOption)))
-                .selected(LOG_LEVELS.indexOf(this.s.logLevel) < 0 ? 2 : LOG_LEVELS.indexOf(this.s.logLevel))
-                .value(this.s.logLevel)
-                .onSelect((index: number) => {
-                  this.s.logLevel = LOG_LEVELS[index];
+          Blank().height(18)
+
+          // 外观与交互(深浅色与节点排序相邻,中间不再插开关)
+          this.sectionHeader($r('sys.symbol.brightness'), $r('app.string.appearance_and_interaction'), this.appearanceExpanded, () => { this.appearanceExpanded = !this.appearanceExpanded; }, 'appearance')
+          if (this.appearanceExpanded) {
+            this.chipRow(['system', 'light', 'dark'],
+              [$r('app.string.appearance_follow_system'), $r('app.string.appearance_light'), $r('app.string.appearance_dark')],
+              this.s.appearance, 'appearance', (v: string) => {
+                this.s.appearance = v;
+                this.applyAppearance();
+                this.markDirty();
+              })
+            this.chipRow(['manual', 'latency', 'name'],
+              [$r('app.string.sort_manual'), $r('app.string.sort_latency'), $r('app.string.sort_name')],
+              this.s.profileSortMode, 'sort', (v: string) => {
+                this.s.profileSortMode = v;
+                this.markDirty();
+              })
+            this.rowSwitchPlain($r('app.string.liquid_glass'), this.s.liquidGlass,
+              (v: boolean) => {
+                this.s.liquidGlass = v;
+                this.markDirty();
+              })
+            this.rowSwitchPlain($r('app.string.haptic_feedback'), this.s.hapticFeedback,
+              (v: boolean) => {
+                this.s.hapticFeedback = v;
+                this.markDirty();
+              })
+            this.rowSwitchPlain($r('app.string.network_change_reset_connections'), this.s.networkChangeResetConnections,
+              (v: boolean) => {
+                this.s.networkChangeResetConnections = v;
+                this.markDirty();
+              })
+            this.rowSwitchPlain($r('app.string.wake_reset_connections'), this.s.wakeResetConnections,
+              (v: boolean) => {
+                this.s.wakeResetConnections = v;
+                this.markDirty();
+              })
+            Text($r('app.string.settings_theme_note'))
+              .fontSize(ROW_DESC_SIZE).fontColor($r('app.color.text_2')).width('100%')
+          }
+
+          Blank().height(18)
+
+          // 网络(含 DNS:两块本来就是一个问题的两面)
+          this.sectionHeader($r('sys.symbol.arrow_up_left_and_arrow_down_right'), $r('app.string.settings_route'), this.networkExpanded, () => { this.networkExpanded = !this.networkExpanded; }, 'mode')
+          if (this.networkExpanded) {
+            if (this.s.mode === 'rule') {
+              Column({ space: 4 }) {
+                Row({ space: 8 }) {
+                  Text(this.geoOk ? $r('app.string.settings_geo_ready')
+                    : $r('app.string.settings_geo_missing'))
+                    .fontSize(ROW_TITLE_SIZE)
+                    .fontColor(this.geoOk ? $r('app.color.success') : $r('app.color.text_2'))
+                    .layoutWeight(1)
+                    .maxLines(2)
+                  this.geoButton(this.geoLoading ? $r('app.string.settings_geo_downloading')
+                    : (this.geoOk ? $r('app.string.settings_geo_redownload') : $r('app.string.settings_geo_download')),
+                    'geo:download', false, !this.geoLoading, () => this.downloadGeo())
+                }.width('100%').height(ROW_HEIGHT).alignItems(VerticalAlign.Center)
+                Row({ space: 8 }) {
+                  Text($r('app.string.settings_geo_import_hint'))
+                    .fontSize(ROW_DESC_SIZE).fontColor($r('app.color.text_2')).layoutWeight(1)
+                  this.geoButton($r('app.string.settings_geo_import'), 'geo:import', false, !this.geoLoading,
+                    () => { void this.importGeo(); })
+                }.width('100%').height(ROW_HEIGHT).alignItems(VerticalAlign.Center)
+
+                // 资产列表(对齐安卓 AssetsActivity:每库名称/大小/版本 + 单库更新/删除)
+                ForEach(this.geoInfos, (info: GeoAssetInfo) => {
+                  Row({ space: 8 }) {
+                    Column({ space: 2 }) {
+                      Text(info.kind === 'site' ? $r('app.string.settings_geo_site') : $r('app.string.settings_geo_ip'))
+                        .fontSize(ROW_TITLE_SIZE).fontColor($r('app.color.text_1'))
+                      Text(info.size > 0
+                        ? $r('app.string.geo_asset_status', formatBytes(info.size), info.version)
+                        : $r('app.string.geo_asset_absent'))
+                        .fontSize(ROW_DESC_SIZE).fontColor($r('app.color.text_2'))
+                    }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+                    this.geoButton(this.geoLoading ? $r('app.string.settings_geo_downloading') : $r('app.string.settings_geo_update_one'),
+                      `geo:update:${info.kind}`, false, !this.geoLoading, () => { void this.downloadSingleGeo(info.kind); })
+                    if (info.size > 0) {
+                      this.geoButton($r('app.string.settings_geo_delete'), `geo:delete:${info.kind}`, true, !this.geoLoading,
+                        () => this.confirmDeleteGeo(info))
+                    }
+                  }.width('100%').height(ROW_HEIGHT).alignItems(VerticalAlign.Center)
+                }, (info: GeoAssetInfo) => `${info.kind}_${info.size}_${info.version}`)
+              }.alignItems(HorizontalAlign.Start).width('100%')
+            }
+
+            /* 以下全部一行式:标题在左,控件在右,行高统一 */
+            this.rowInput($r('app.string.settings_tun_mtu'), `${this.s.mtu}`, '9000', InputType.Number,
+              (v: string) => {
+                const n = parseInt(v);
+                this.s.mtu = isNaN(n) ? 9000 : n;
+                this.markDirty();
+              })
+            this.rowSelect($r('app.string.settings_enable_ipv6'),
+              IPV6_MODES.map((t: string, i: number) => ({ value: IPV6_MODE_LABELS[i] } as SelectOption)),
+              this.ipv6Index(), (index: number) => {
+                this.s.ipv6Mode = IPV6_MODES[index];
+                this.markDirty();
+              })
+            this.rowSwitchPlain($r('app.string.settings_bypass_lan'), this.s.bypassLan,
+              (v: boolean) => {
+                this.s.bypassLan = v;
+                this.markDirty();
+              })
+            this.subLabel($r('app.string.settings_sniff'))
+            this.chipRow(SNIFF_MODES, SNIFF_LABELS, this.s.sniffMode, 'sniff', (v: string) => {
+              this.s.sniffMode = v;
+              this.markDirty();
+            })
+            this.rowSwitch($r('app.string.settings_resolve_destination'), $r('app.string.settings_resolve_destination_desc'), this.s.resolveDestination,
+              (v: boolean) => {
+                this.s.resolveDestination = v;
+                this.markDirty();
+              })
+
+            this.subLabel($r('app.string.settings_section_dns'))
+
+            this.rowSelect($r('app.string.settings_remote_dns_strategy'),
+              STRATEGIES.map((t: string, i: number) => ({ value: STRATEGY_LABELS[i] } as SelectOption)),
+              this.strategyIndex(this.s.remoteDnsStrategy), (index: number) => {
+                this.s.remoteDnsStrategy = STRATEGIES[index];
+                this.markDirty();
+              })
+            this.rowInput($r('app.string.settings_direct_dns'), this.s.directDns, '', InputType.Normal,
+              (v: string) => {
+                this.s.directDns = v;
+                this.markDirty();
+              })
+            this.rowSelect($r('app.string.settings_direct_dns_strategy'),
+              STRATEGIES.map((t: string, i: number) => ({ value: STRATEGY_LABELS[i] } as SelectOption)),
+              this.strategyIndex(this.s.directDnsStrategy), (index: number) => {
+                this.s.directDnsStrategy = STRATEGIES[index];
+                this.markDirty();
+              })
+            Column({ space: 2 }) {
+              this.rowSelect($r('app.string.settings_server_dns_strategy'),
+                STRATEGIES.map((t: string, i: number) => ({ value: STRATEGY_LABELS[i] } as SelectOption)),
+                this.strategyIndex(this.s.serverDnsStrategy), (index: number) => {
+                  this.s.serverDnsStrategy = STRATEGIES[index];
                   this.markDirty();
                 })
+              Text($r('app.string.settings_server_dns_strategy_hint'))
+                .fontSize(ROW_DESC_SIZE).fontColor($r('app.color.text_2')).width('100%')
             }.alignItems(HorizontalAlign.Start).width('100%')
+            this.rowSwitch($r('app.string.settings_dns_routing'), $r('app.string.settings_dns_routing_desc'), this.s.dnsRouting,
+              (v: boolean) => {
+                this.s.dnsRouting = v;
+                this.markDirty();
+              })
+            this.rowSwitch($r('app.string.settings_fakedns'), $r('app.string.settings_fakedns_desc'), this.s.fakeDns,
+              (v: boolean) => {
+                this.s.fakeDns = v;
+                this.markDirty();
+              })
+          }
 
-            Column() {
-              Text($r('app.string.latency_test_mode')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              Select(LATENCY_TEST_LABELS.map((t: Resource, i: number) => ({ value: t } as SelectOption)))
-                .selected(LATENCY_TEST_VALUES.indexOf(this.s.latencyTestMode) < 0 ? 0 : LATENCY_TEST_VALUES.indexOf(this.s.latencyTestMode))
-                .value(LATENCY_TEST_LABELS[LATENCY_TEST_VALUES.indexOf(this.s.latencyTestMode) < 0 ? 0 : LATENCY_TEST_VALUES.indexOf(this.s.latencyTestMode)])
-                .onSelect((index: number) => {
-                  this.s.latencyTestMode = LATENCY_TEST_VALUES[index];
-                  this.markDirty();
-                })
-              Text($r('app.string.latency_test_mode_desc'))
-                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-            }.alignItems(HorizontalAlign.Start).width('100%')
+          Blank().height(18)
 
-            Column() {
-              Text($r('app.string.settings_test_url')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              TextInput({ text: this.s.testUrl })
-                .width('100%').height(40)
-                .onChange((v: string) => {
-                  this.s.testUrl = v;
-                  this.markDirty();
-                })
-              Text($r('app.string.settings_test_url_desc'))
-                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-            }.alignItems(HorizontalAlign.Start).width('100%')
-
-            Column() {
-              Text($r('app.string.settings_test_concurrent')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              TextInput({ text: `${this.s.testConcurrent}` })
-                .type(InputType.Number).width('100%').height(40)
-                .onChange((v: string) => {
-                  const n = parseInt(v);
-                  // 默认 5 对齐 Android DataStore.connectionTestConcurrent(DataStore.kt:159,
-                  // Android 无此设置 UI,这里是鸿蒙超集);钳制 1..32 防呆
-                  this.s.testConcurrent = isNaN(n) ? 5 : Math.max(1, Math.min(32, n));
-                  this.markDirty();
-                })
-            }.alignItems(HorizontalAlign.Start).width('100%')
-
-            Column() {
-              Text($r('app.string.settings_global_custom_config')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+          // 高级(默认展开:折叠只作为"收起长页面"的手段)
+          this.sectionHeader($r('sys.symbol.line_3_horizontal'), $r('app.string.settings_advanced'), this.advancedExpanded, () => { this.advancedExpanded = !this.advancedExpanded; }, 'advanced')
+          if (this.advancedExpanded) {
+            this.rowSelect($r('app.string.settings_log_level'),
+              LOG_LEVELS.map((t: string) => ({ value: t } as SelectOption)),
+              this.logLevelIndex(), (index: number) => {
+                this.s.logLevel = LOG_LEVELS[index];
+                this.markDirty();
+              })
+            this.rowSelect($r('app.string.latency_test_mode'),
+              LATENCY_TEST_VALUES.map((t: string, i: number) => ({ value: LATENCY_TEST_LABELS[i] } as SelectOption)),
+              this.latencyTestIndex(), (index: number) => {
+                this.s.latencyTestMode = LATENCY_TEST_VALUES[index];
+                this.markDirty();
+              })
+            Text($r('app.string.latency_test_mode_desc'))
+              .fontSize(ROW_DESC_SIZE).fontColor($r('app.color.text_2')).width('100%')
+            this.rowInput($r('app.string.settings_test_url'), this.s.testUrl, '', InputType.Normal,
+              (v: string) => {
+                this.s.testUrl = v;
+                this.markDirty();
+              })
+            Text($r('app.string.settings_test_url_desc'))
+              .fontSize(ROW_DESC_SIZE).fontColor($r('app.color.text_2')).width('100%')
+            this.rowInput($r('app.string.settings_test_concurrent'), `${this.s.testConcurrent}`, '', InputType.Number,
+              (v: string) => {
+                const n = parseInt(v);
+                // 默认 5 对齐 Android DataStore.connectionTestConcurrent;钳制 1..32 防呆
+                this.s.testConcurrent = isNaN(n) ? 5 : Math.max(1, Math.min(32, n));
+                this.markDirty();
+              })
+            this.rowInput($r('app.string.settings_speed_interval'), `${this.s.speedIntervalMs}`, '1000', InputType.Number,
+              (v: string) => {
+                const n = parseInt(v, 10);
+                this.s.speedIntervalMs = isNaN(n) ? 1000 : n;
+                this.markDirty();
+              })
+            Column({ space: 4 }) {
+              Text($r('app.string.settings_global_custom_config'))
+                .fontSize(ROW_TITLE_SIZE).fontColor($r('app.color.text_1')).width('100%')
               TextArea({ text: this.s.globalCustomConfig, placeholder: '{"log":{"level":"info"}}' })
                 .height(90)
-                .fontSize(12)
+                .fontSize(ROW_DESC_SIZE)
                 .fontFamily('monospace')
                 .width('100%')
                 .onChange((v: string) => {
@@ -818,540 +1127,72 @@ export struct SettingsPage {
                   this.markDirty();
                 })
               Text($r('app.string.settings_global_custom_config_desc'))
-                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+                .fontSize(ROW_DESC_SIZE).fontColor($r('app.color.text_2')).width('100%')
             }.alignItems(HorizontalAlign.Start).width('100%')
+            this.rowSwitch($r('app.string.settings_insecure_tls'), $r('app.string.settings_insecure_tls_desc'), this.s.allowInsecureAll,
+              (v: boolean) => {
+                this.s.allowInsecureAll = v;
+                this.markDirty();
+              })
+            this.rowSwitch($r('app.string.settings_sub_allow_insecure'), $r('app.string.settings_sub_allow_insecure_desc'), this.s.subAllowInsecure,
+              (v: boolean) => {
+                this.s.subAllowInsecure = v;
+                this.markDirty();
+              })
 
-            Row() {
-              Text($r('app.string.settings_always_show_address')).fontSize(14).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.alwaysShowAddress })
-                .onChange((v: boolean) => {
-                  this.s.alwaysShowAddress = v;
-                  this.markDirty();
-                })
-            }.width('100%')
+            this.subLabel($r('app.string.settings_section_inbound'))
 
-            Row() {
-              Text($r('app.string.show_bottom_bar')).fontSize(14).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.showBottomBar })
-                .onChange((v: boolean) => {
-                  this.s.showBottomBar = v;
-                  this.markDirty();
-                })
-            }.width('100%')
-
-            /* 「通知显示分组名」开关已移除(2026-10-23 用户要求通知栏只显示速率+运行时长,
-               不再出现节点/分组名)—— AppSettings.notificationGroup 字段保留仅为旧备份兼容 */
-            Row() {
-              Column({ space: 2 }) {
-                Text($r('app.string.settings_speed_interval')).fontSize(14).width('100%')
-                Text($r('app.string.settings_speed_interval_sum'))
-                  .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-              TextInput({ text: `${this.s.speedIntervalMs}`, placeholder: '1000' })
-                .type(InputType.Number).width(110).height(36)
-                .onChange((v: string) => {
-                  const n = parseInt(v, 10);
-                  this.s.speedIntervalMs = isNaN(n) ? 1000 : n;
-                  this.markDirty();
-                })
-            }.width('100%')
-
-            Row() {
-              Column() {
-                Text($r('app.string.settings_insecure_tls')).fontSize(14)
-                Text($r('app.string.settings_insecure_tls_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
-              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.allowInsecureAll })
-                .onChange((v: boolean) => {
-                  this.s.allowInsecureAll = v;
-                  this.markDirty();
-                })
-            }.width('100%')
-
-            Row() {
-              Column() {
-                Text($r('app.string.settings_sub_allow_insecure')).fontSize(14)
-                Text($r('app.string.settings_sub_allow_insecure_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
-              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.subAllowInsecure })
-                .onChange((v: boolean) => {
-                  this.s.subAllowInsecure = v;
-                  this.markDirty();
-                })
-            }.width('100%')
-          }.alignItems(HorizontalAlign.Start).width('100%')
-
-          Blank().height(2)
-
-          }
-
-          // 路由
-          this.sectionHeader($r('sys.symbol.arrow_up_left_and_arrow_down_right'), $r('app.string.settings_route'), this.networkExpanded, () => { this.networkExpanded = !this.networkExpanded; }, 'mode')
-          if (this.networkExpanded) {
-          if (this.s.mode === 'rule') {
-            Column() {
-              Text($r('app.string.settings_direct_domain_suffix')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              TextInput({ text: this.s.directDomains, placeholder: 'baidu.com,qq.com,163.com' })
-                .width('100%').height(40)
-                .onChange((v: string) => {
-                  this.s.directDomains = v;
-                  this.markDirty();
-                })
-              Text($r('app.string.settings_direct_cidr')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-                .margin({ top: 6 })
-              TextInput({ text: this.s.directIpCidrs, placeholder: '114.114.114.114/32' })
-                .width('100%').height(40)
-                .onChange((v: string) => {
-                  this.s.directIpCidrs = v;
-                  this.markDirty();
-                })
-              Row({ space: 8 }) {
-                Text(this.geoOk ? $r('app.string.settings_geo_ready')
-                  : $r('app.string.settings_geo_missing'))
-                  .fontSize(12).fontColor(this.geoOk ? $r('app.color.success') : $r('app.color.text_secondary')).layoutWeight(1)
-                Button(this.geoLoading ? $r('app.string.settings_geo_downloading') : (this.geoOk ? $r('app.string.settings_geo_redownload') : $r('app.string.settings_geo_download')))
-                  .height(30)
-                  .backgroundColor(this.geoLoading ? $r('app.color.control_disabled') : $r('app.color.primary'))
-                  .visualEffect(pressLightEffect(this.litKey === 'geo:download', true))
-                  .onTouch((event: TouchEvent) => {
-                    if (event.type === TouchType.Down) {
-        this.litKey = 'geo:download';
-      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.litKey = '';
-      }
-                  })
-                  .onClick(() => this.downloadGeo())
-              }.width('100%').margin({ top: 6 })
-              Row({ space: 8 }) {
-                Text($r('app.string.settings_geo_import_hint'))
-                  .fontSize(11).fontColor($r('app.color.text_secondary')).layoutWeight(1)
-                Button($r('app.string.settings_geo_import'))
-                  .height(30)
-                  .backgroundColor($r('app.color.surface'))
-                  .fontColor($r('app.color.text_primary'))
-                  .enabled(!this.geoLoading)
-                  .visualEffect(pressLightEffect(this.litKey === 'geo:import', true))
-                  .onTouch((event: TouchEvent) => {
-                    if (event.type === TouchType.Down) {
-        this.litKey = 'geo:import';
-      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.litKey = '';
-      }
-                  })
-                  .onClick(() => { void this.importGeo(); })
-              }.width('100%').margin({ top: 4 })
-
-              // 资产列表(对齐安卓 AssetsActivity:每库名称/大小/版本 + 单库更新/删除)
-              ForEach(this.geoInfos, (info: GeoAssetInfo) => {
-                Row({ space: 8 }) {
-                  Text(info.kind === 'site' ? $r('app.string.settings_geo_site') : $r('app.string.settings_geo_ip'))
-                    .fontSize(12).fontColor($r('app.color.text_primary'))
-                  Text(info.size > 0
-                    ? $r('app.string.geo_asset_status', formatBytes(info.size), info.version)
-                    : $r('app.string.geo_asset_absent'))
-                    .fontSize(11).fontColor($r('app.color.text_secondary')).layoutWeight(1)
-                  Button(this.geoLoading ? $r('app.string.settings_geo_downloading') : $r('app.string.settings_geo_update_one'))
-                    .height(28)
-                    .fontSize(12)
-                    .backgroundColor(this.geoLoading ? $r('app.color.control_disabled') : $r('app.color.primary'))
-                    .enabled(!this.geoLoading)
-                    .visualEffect(pressLightEffect(this.litKey === `geo:update:${info.kind}`, true))
-                    .onTouch((event: TouchEvent) => {
-                      if (event.type === TouchType.Down) {
-                        this.litKey = `geo:update:${info.kind}`;
-                      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-                        this.litKey = '';
-                      }
-                    })
-                    .onClick(() => { void this.downloadSingleGeo(info.kind); })
-                  if (info.size > 0) {
-                    Button($r('app.string.settings_geo_delete'))
-                      .height(28)
-                      .fontSize(12)
-                      .backgroundColor($r('app.color.surface'))
-                      .fontColor($r('app.color.error'))
-                      .enabled(!this.geoLoading)
-                      .visualEffect(pressLightEffect(this.litKey === `geo:delete:${info.kind}`, true))
-                      .onTouch((event: TouchEvent) => {
-                        if (event.type === TouchType.Down) {
-                          this.litKey = `geo:delete:${info.kind}`;
-                        } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-                          this.litKey = '';
-                        }
-                      })
-                      .onClick(() => this.confirmDeleteGeo(info))
-                  }
-                }.width('100%').margin({ top: 4 })
-              }, (info: GeoAssetInfo) => `${info.kind}_${info.size}_${info.version}`)
-            }.alignItems(HorizontalAlign.Start).width('100%')
-          }
-
-          Blank().height(2)
-
-          Column() {
-            Text($r('app.string.settings_tun_mtu')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            TextInput({ text: `${this.s.mtu}`, placeholder: '9000' })
-              .type(InputType.Number).width('100%').height(40)
-              .onChange((v: string) => {
+            this.rowInput($r('app.string.settings_mixed_port'), `${this.s.mixedPort > 0 ? this.s.mixedPort : ''}`, $r('app.string.settings_mixed_port_hint'), InputType.Number,
+              (v: string) => {
                 const n = parseInt(v);
-                this.s.mtu = isNaN(n) ? 9000 : n;
+                this.s.mixedPort = isNaN(n) ? 0 : Math.max(0, Math.min(65535, n));
                 this.markDirty();
               })
-          }.alignItems(HorizontalAlign.Start).width('100%')
-
-          Column() {
-            Text($r('app.string.settings_tun_stack')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            Select(STACKS.map((t: string) => ({ value: t } as SelectOption)))
-              .selected(STACKS.indexOf(this.s.stack) < 0 ? 0 : STACKS.indexOf(this.s.stack))
-              .value(this.s.stack)
-              .onSelect((index: number) => {
-                this.s.stack = STACKS[index];
+            this.rowSwitchPlain($r('app.string.settings_allow_access'), this.s.allowAccess,
+              (v: boolean) => {
+                this.s.allowAccess = v;
                 this.markDirty();
               })
-          }.alignItems(HorizontalAlign.Start).width('100%')
-
-          Column() {
-            Text($r('app.string.settings_enable_ipv6')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            Select(IPV6_MODES.map((t: string, i: number) => ({ value: IPV6_MODE_LABELS[i] } as SelectOption)))
-              .selected(IPV6_MODES.indexOf(this.s.ipv6Mode) < 0 ? (this.s.ipv6 ? 1 : 0) : IPV6_MODES.indexOf(this.s.ipv6Mode))
-              .value(IPV6_MODE_LABELS[(IPV6_MODES.indexOf(this.s.ipv6Mode) < 0 ? (this.s.ipv6 ? 1 : 0) : IPV6_MODES.indexOf(this.s.ipv6Mode))])
-              .onSelect((index: number) => {
-                this.s.ipv6Mode = IPV6_MODES[index];
+            this.rowInput($r('app.string.lan_auth_user'), this.s.lanAuthUser, 'user', InputType.Normal,
+              (v: string) => {
+                this.s.lanAuthUser = v;
                 this.markDirty();
               })
-          }.alignItems(HorizontalAlign.Start).width('100%')
-
-          Row() {
-            Column() {
-              Text($r('app.string.settings_bypass_lan')).fontSize(14)
-              Text($r('app.string.settings_bypass_lan_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
-            }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-            Toggle({ type: ToggleType.Switch, isOn: this.s.bypassLan })
-              .onChange((v: boolean) => {
-                this.s.bypassLan = v;
+            this.rowInput($r('app.string.lan_auth_pass'), this.s.lanAuthPass, 'password', InputType.Password,
+              (v: string) => {
+                this.s.lanAuthPass = v;
                 this.markDirty();
               })
-          }.width('100%')
-
-          Column() {
-            Text($r('app.string.settings_sniff')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            Row({ space: 8 }) {
-              ForEach(SNIFF_MODES, (m: string, idx: number) => {
-                Button(SNIFF_LABELS[idx])
-                  .layoutWeight(1)
-                  .height(34)
-                  .backgroundColor(this.s.sniffMode === m ? $r('app.color.primary') : $r('app.color.surface'))
-                  .fontColor(this.s.sniffMode === m ? $r('app.color.surface') : $r('app.color.text_primary'))
-                  .visualEffect(pressLightEffect(this.litKey === `sniff:${m}`, true))
-                  .onTouch((event: TouchEvent) => {
-                    if (event.type === TouchType.Down) {
-                      this.litKey = `sniff:${m}`;
-                    } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-                      this.litKey = '';
-                    }
-                  })
-                  .onClick(() => {
-                    this.s.sniffMode = m;
-                    this.markDirty();
-                  })
-              }, (m: string) => m)
-            }.width('100%')
-          }.alignItems(HorizontalAlign.Start).width('100%')
-
-          Row() {
-            Column() {
-              Text($r('app.string.settings_resolve_destination')).fontSize(14)
-              Text($r('app.string.settings_resolve_destination_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
-            }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-            Toggle({ type: ToggleType.Switch, isOn: this.s.resolveDestination })
-              .onChange((v: boolean) => {
-                this.s.resolveDestination = v;
-                this.markDirty();
-              })
-          }.width('100%')
-
-          Blank().height(2)
-
-          }
-
-          // DNS(对齐 Android DNS 组)
-          this.sectionHeader($r('sys.symbol.cloud'), $r('app.string.settings_dns'), this.dnsExpanded, () => { this.dnsExpanded = !this.dnsExpanded; }, 'dns')
-          if (this.dnsExpanded) {
-          Column({ space: 8 }) {
-            Column() {
-              Text($r('app.string.settings_remote_dns')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              TextInput({ text: this.s.remoteDns })
-                .width('100%').height(40)
-                .onChange((v: string) => {
-                  this.s.remoteDns = v;
-                  this.markDirty();
-                })
-              Text($r('app.string.settings_remote_dns_hint'))
-                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-            }.alignItems(HorizontalAlign.Start).width('100%')
-
-            Column() {
-              Text($r('app.string.settings_remote_dns_strategy')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              Select(STRATEGIES.map((t: string, i: number) => ({ value: STRATEGY_LABELS[i] } as SelectOption)))
-                .selected(STRATEGIES.indexOf(this.s.remoteDnsStrategy) < 0 ? 0 : STRATEGIES.indexOf(this.s.remoteDnsStrategy))
-                .value(STRATEGY_LABELS[STRATEGIES.indexOf(this.s.remoteDnsStrategy) < 0 ? 0 : STRATEGIES.indexOf(this.s.remoteDnsStrategy)])
-                .onSelect((index: number) => {
-                  this.s.remoteDnsStrategy = STRATEGIES[index];
-                  this.markDirty();
-                })
-            }.alignItems(HorizontalAlign.Start).width('100%')
-
-            Column() {
-              Text($r('app.string.settings_direct_dns')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              TextInput({ text: this.s.directDns })
-                .width('100%').height(40)
-                .onChange((v: string) => {
-                  this.s.directDns = v;
-                  this.markDirty();
-                })
-            }.alignItems(HorizontalAlign.Start).width('100%')
-
-            Column() {
-              Text($r('app.string.settings_direct_dns_strategy')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              Select(STRATEGIES.map((t: string, i: number) => ({ value: STRATEGY_LABELS[i] } as SelectOption)))
-                .selected(STRATEGIES.indexOf(this.s.directDnsStrategy) < 0 ? 0 : STRATEGIES.indexOf(this.s.directDnsStrategy))
-                .value(STRATEGY_LABELS[STRATEGIES.indexOf(this.s.directDnsStrategy) < 0 ? 0 : STRATEGIES.indexOf(this.s.directDnsStrategy)])
-                .onSelect((index: number) => {
-                  this.s.directDnsStrategy = STRATEGIES[index];
-                  this.markDirty();
-                })
-            }.alignItems(HorizontalAlign.Start).width('100%')
-
-            Column() {
-              Text($r('app.string.settings_server_dns_strategy')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              Select(STRATEGIES.map((t: string, i: number) => ({ value: STRATEGY_LABELS[i] } as SelectOption)))
-                .selected(STRATEGIES.indexOf(this.s.serverDnsStrategy) < 0 ? 0 : STRATEGIES.indexOf(this.s.serverDnsStrategy))
-                .value(STRATEGY_LABELS[STRATEGIES.indexOf(this.s.serverDnsStrategy) < 0 ? 0 : STRATEGIES.indexOf(this.s.serverDnsStrategy)])
-                .onSelect((index: number) => {
-                  this.s.serverDnsStrategy = STRATEGIES[index];
-                  this.markDirty();
-                })
-              Text($r('app.string.settings_server_dns_strategy_hint'))
-                .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-            }.alignItems(HorizontalAlign.Start).width('100%')
-
-            Row() {
-              Column() {
-                Text($r('app.string.settings_dns_routing')).fontSize(14)
-                Text($r('app.string.settings_dns_routing_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
-              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.dnsRouting })
-                .onChange((v: boolean) => {
-                  this.s.dnsRouting = v;
-                  this.markDirty();
-                })
-            }.width('100%')
-
-            Row() {
-              Column() {
-                Text($r('app.string.settings_fakedns')).fontSize(14)
-                Text($r('app.string.settings_fakedns_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
-              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.fakeDns })
-                .onChange((v: boolean) => {
-                  this.s.fakeDns = v;
-                  this.markDirty();
-                })
-            }.width('100%')
-          }.alignItems(HorizontalAlign.Start).width('100%')
-
-          Blank().height(2)
-
-          }
-
-          // 入站(对齐 Android Inbound 组)
-          this.sectionHeader($r('sys.symbol.square_and_arrow_down'), $r('app.string.settings_inbound'), this.inboundExpanded, () => { this.inboundExpanded = !this.inboundExpanded; }, 'inbound')
-          if (this.inboundExpanded) {
-          Column({ space: 8 }) {
-            Column() {
-              Text($r('app.string.settings_mixed_port')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              TextInput({ text: `${this.s.mixedPort > 0 ? this.s.mixedPort : ''}`, placeholder: $r('app.string.settings_mixed_port_hint') })
-                .type(InputType.Number).width('100%').height(40)
-                .onChange((v: string) => {
-                  const n = parseInt(v);
-                  this.s.mixedPort = isNaN(n) ? 0 : Math.max(0, Math.min(65535, n));
-                  this.markDirty();
-                })
-            }.alignItems(HorizontalAlign.Start).width('100%')
-
-            Row() {
-              Column() {
-                Text($r('app.string.settings_allow_access')).fontSize(14)
-                Text($r('app.string.settings_allow_access_desc')).fontSize(11).fontColor($r('app.color.text_secondary'))
-              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.allowAccess })
-                .onChange((v: boolean) => {
-                  this.s.allowAccess = v;
-                  this.markDirty();
-                })
-            }.width('100%')
             Text($r('app.string.settings_reconnect_note'))
-              .fontSize(12).fontColor($r('app.color.error')).width('100%')
-          }.alignItems(HorizontalAlign.Start).width('100%')
+              .fontSize(ROW_DESC_SIZE).fontColor($r('app.color.error')).width('100%')
 
-          Blank().height(2)
+            this.subLabel($r('app.string.settings_clash_api'))
 
-          }
-
-          // 外观与交互
-          this.sectionHeader($r('sys.symbol.brightness'), $r('app.string.appearance_and_interaction'), this.appearanceExpanded, () => { this.appearanceExpanded = !this.appearanceExpanded; }, 'appearance')
-          if (this.appearanceExpanded) {
-          Column({ space: 8 }) {
-            Row({ space: 8 }) {
-              ForEach(['system', 'light', 'dark'], (mode: string) => {
-                Button(mode === 'system' ? $r('app.string.appearance_follow_system') : (mode === 'light' ? $r('app.string.appearance_light') : $r('app.string.appearance_dark')))
-                  .layoutWeight(1)
-                  .backgroundColor(this.s.appearance === mode ? $r('app.color.primary') : $r('app.color.surface'))
-                  .fontColor(this.s.appearance === mode ? $r('app.color.surface') : $r('app.color.text_primary'))
-                  .visualEffect(pressLightEffect(this.litKey === `appearance:${mode}`, true))
-                  .onTouch((event: TouchEvent) => {
-                    if (event.type === TouchType.Down) {
-                      this.litKey = `appearance:${mode}`;
-                    } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-                      this.litKey = '';
-                    }
-                  })
-                  .onClick(() => {
-                    this.s.appearance = mode;
-                    this.applyAppearance();
-                    this.markDirty();
-                  })
-              }, (mode: string) => mode)
-            }.width('100%')
-            Text($r('app.string.profile_sort_mode')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-            Row({ space: 8 }) {
-              ForEach(['manual', 'latency', 'name'], (mode: string) => {
-                Button(mode === 'manual' ? $r('app.string.sort_manual') : (mode === 'latency' ? $r('app.string.sort_latency') : $r('app.string.sort_name')))
-                  .layoutWeight(1)
-                  .backgroundColor(this.s.profileSortMode === mode ? $r('app.color.primary') : $r('app.color.surface'))
-                  .fontColor(this.s.profileSortMode === mode ? $r('app.color.surface') : $r('app.color.text_primary'))
-                  .visualEffect(pressLightEffect(this.litKey === `sort:${mode}`, true))
-                  .onTouch((event: TouchEvent) => {
-                    if (event.type === TouchType.Down) {
-                      this.litKey = `sort:${mode}`;
-                    } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-                      this.litKey = '';
-                    }
-                  })
-                  .onClick(() => {
-                    this.s.profileSortMode = mode;
-                    this.markDirty();
-                  })
-              }, (mode: string) => mode)
-            }.width('100%')
-            Row() {
-              Text($r('app.string.haptic_feedback')).fontSize(14).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.hapticFeedback })
-                .onChange((v: boolean) => {
-                  this.s.hapticFeedback = v;
+            this.rowSwitchPlain($r('app.string.clash_api_enabled'), this.s.clashApiEnabled,
+              (v: boolean) => {
+                this.s.clashApiEnabled = v;
+                this.markDirty();
+              })
+            this.rowInput($r('app.string.clash_api_port'), `${this.s.clashApiPort}`, '', InputType.Number,
+              (v: string) => {
+                const port = parseInt(v);
+                if (!isNaN(port)) {
+                  this.s.clashApiPort = Math.max(1024, Math.min(65535, port));
                   this.markDirty();
-                })
-            }.width('100%')
-            Row() {
-              Text($r('app.string.liquid_glass')).fontSize(14).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.liquidGlass })
-                .onChange((v: boolean) => {
-                  this.s.liquidGlass = v;
-                  this.markDirty();
-                })
-            }.width('100%')
-            Row() {
-              Column({ space: 2 }) {
-                Text($r('app.string.network_change_reset_connections')).fontSize(14).width('100%')
-                Text($r('app.string.network_change_reset_connections_sum'))
-                  .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.networkChangeResetConnections })
-                .onChange((v: boolean) => {
-                  this.s.networkChangeResetConnections = v;
-                  this.markDirty();
-                })
-            }.width('100%')
-            Row() {
-              Column({ space: 2 }) {
-                Text($r('app.string.wake_reset_connections')).fontSize(14).width('100%')
-                Text($r('app.string.wake_reset_connections_sum'))
-                  .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.wakeResetConnections })
-                .onChange((v: boolean) => {
-                  this.s.wakeResetConnections = v;
-                  this.markDirty();
-                })
-            }.width('100%')
-            Row() {
-              Column({ space: 2 }) {
-                Text($r('app.string.profile_traffic_statistics')).fontSize(14).width('100%')
-                Text($r('app.string.profile_traffic_statistics_sum'))
-                  .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-              }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.profileTrafficStatistics })
-                .onChange((v: boolean) => {
-                  this.s.profileTrafficStatistics = v;
-                  this.markDirty();
-                })
-            }.width('100%')
-            Text($r('app.string.settings_theme_note'))
-              .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-          }.alignItems(HorizontalAlign.Start).width('100%')
-
-          Blank().height(2)
-
-          }
-
-          // Clash API 连接统计
-          this.sectionHeader($r('sys.symbol.arrow_2_circlepath'), $r('app.string.clash_api_settings'), this.apiExpanded, () => { this.apiExpanded = !this.apiExpanded; }, 'advanced')
-          if (this.apiExpanded) {
-          Column({ space: 8 }) {
-            Row() {
-              Text($r('app.string.clash_api_enabled')).fontSize(14).layoutWeight(1)
-              Toggle({ type: ToggleType.Switch, isOn: this.s.clashApiEnabled })
-                .onChange((value: boolean) => {
-                  this.s.clashApiEnabled = value;
-                  this.markDirty();
-                })
-            }.width('100%')
-            Column() {
-              Text($r('app.string.clash_api_port')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              TextInput({ text: `${this.s.clashApiPort}` })
-                .width('100%')
-                .height(40)
-                .type(InputType.Number)
-                .onChange((value: string) => {
-                  const port = parseInt(value);
-                  if (!isNaN(port)) {
-                    this.s.clashApiPort = Math.max(1024, Math.min(65535, port));
-                    this.markDirty();
-                  }
-                })
-            }.alignItems(HorizontalAlign.Start).width('100%')
-            Column() {
-              Text($r('app.string.clash_api_secret')).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
-              TextInput({ text: this.s.clashApiSecret })
-                .width('100%')
-                .height(40)
-                .type(InputType.Password)
-                .onChange((value: string) => {
-                  this.s.clashApiSecret = value;
-                  this.markDirty();
-                })
-            }.alignItems(HorizontalAlign.Start).width('100%')
+                }
+              })
+            this.rowInput($r('app.string.clash_api_secret'), this.s.clashApiSecret, '', InputType.Password,
+              (v: string) => {
+                this.s.clashApiSecret = v;
+                this.markDirty();
+              })
             Text($r('app.string.clash_api_reconnect_hint'))
-              .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
-          }.alignItems(HorizontalAlign.Start).width('100%')
-
-          Blank().height(2)
-
+              .fontSize(ROW_DESC_SIZE).fontColor($r('app.color.text_2')).width('100%')
           }
 
+          Blank().height(18)
 
         }
-        .width('100%')
         .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 12, bottom: 12 })
       }
         .edgeEffect(EdgeEffect.Spring)

@@ -42,10 +42,10 @@ func (c *httpConn) setup(reader io.Reader, err error) {
 }
 
 func (c *httpConn) Read(b []byte) (n int, err error) {
-	if c.reader == nil {
+	if c.create != nil {
 		<-c.create
 		if c.err != nil {
-			return 0, c.err
+			return 0, baderror.WrapH2(c.err)
 		}
 	}
 	n, err = c.reader.Read(b)
@@ -61,7 +61,17 @@ func (c *httpConn) Close() error {
 	if c.cancel != nil {
 		c.cancel()
 	}
-	return common.Close(c.reader, c.writer)
+	var reader io.Reader
+	if c.create != nil {
+		select {
+		case <-c.create:
+			reader = c.reader
+		default:
+		}
+	} else {
+		reader = c.reader
+	}
+	return common.Close(reader, c.writer)
 }
 
 func (c *httpConn) CloseWrite() error {

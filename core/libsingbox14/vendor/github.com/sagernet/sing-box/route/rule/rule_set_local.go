@@ -60,6 +60,11 @@ func NewLocalRuleSet(ctx context.Context, logger logger.Logger, tag string, opti
 		if err != nil {
 			return nil, err
 		}
+		// OHOS: 沙箱内 fswatch(inotify) 对被监控目录无权限,Start() 会持续打 ERROR;
+		// 本地规则集已在建对象时同步加载完成,热更新不是必需能力。
+		if isOpenHarmonyRuntime {
+			return ruleSet, nil
+		}
 		watcher, err := fswatch.NewWatcher(fswatch.Options{
 			Path: []string{filePath},
 			Callback: func(path string) {
@@ -107,7 +112,6 @@ func (s *LocalRuleSet) reloadFile(path string) error {
 		if err != nil {
 			return err
 		}
-
 	case C.RuleSetFormatBinary:
 		setFile, err := filemanager.Open(s.ctx, path)
 		if err != nil {
@@ -121,7 +125,7 @@ func (s *LocalRuleSet) reloadFile(path string) error {
 	default:
 		return E.New("unknown rule-set format: ", s.fileFormat)
 	}
-	plainRuleSet, err := ruleSet.Upgrade()
+	plainRuleSet, err := mmapRuleSet(s.ctx, s.logger, s.tag, ruleSet).Upgrade()
 	if err != nil {
 		return err
 	}

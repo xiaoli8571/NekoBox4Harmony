@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # ============================================================================
-# NekoBox4Harmony sing-box v1.14.0 → HarmonyOS libsingbox.so 构建流水线
+# NekoBox4Harmony sing-box v1.15.0-alpha.13 → HarmonyOS libsingbox.so 构建流水线
+#
+# 回滚:保留 core/sing-box-1.14 源码,用环境变量跑回旧版:
+#   SINGBOX_TAG=v1.14.0 SINGBOX_SRC=$PWD/core/sing-box-1.14 bash core/scripts/build-libsingbox-ohos.sh
+# (记得同步改回 libsingbox14/main.go 的 CGoSingBoxVersion 版本串)
 #
 # 背景:sing-box 1.14.0 依赖图要求 go >= 1.25.5,并实际使用 go1.25 的
 # sync.WaitGroup.Go;而 OHOS Go fork 的 openharmony 移植目前只到 go1.24.5
@@ -33,8 +37,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"        # NekoBox4Harmony/core
 PROJECT="$(cd "$ROOT/.." && pwd)"               # NekoBox4Harmony/
 
-SB="${SINGBOX_SRC:-$ROOT/sing-box-1.14}"
-SINGBOX_TAG="${SINGBOX_TAG:-v1.14.0}"
+SB="${SINGBOX_SRC:-$ROOT/sing-box-1.15}"
+SINGBOX_TAG="${SINGBOX_TAG:-v1.15.0-alpha.13}"
+# 版本串统一由 tag 推导,避免 tag / ldflags / 发布标记三处各写一份而漂移
+SB_VERSION="${SINGBOX_TAG#v}"
 WRAPPER="$ROOT/libsingbox14"
 WORK_DIR="$ROOT/build/libsingbox-ohos"
 OUT_DIR="$PROJECT/entry/libs/arm64-v8a"
@@ -89,9 +95,8 @@ grep -q "ohosForceBindFunc" common/dialer/default.go || { echo "ERROR: dialer pa
 
 # 补丁 5:direct outbound fetchMyAddresses 判空(1.14 新增;补丁 2 早退后 InterfaceMonitor 为 nil,
 # 1.14 的 direct.Start(PostStart) 无条件调用 → nil 接口调方法 SIGSEGV;上游 dhcp.go 同样判空)
-if ! grep -q "InterfaceMonitor() == nil" protocol/direct/outbound.go; then
-  perl -0pi -e 's/func \(h \*Outbound\) fetchMyAddresses\(\) \{\n/\1\t\/\/ OHOS: auto_detect_interface=false 时 InterfaceMonitor 为 nil(route\/network.go 补丁 2 早退),\n\t\/\/ nil 接口调方法直接 SIGSEGV;上游 dhcp.go 也做了同样的判空。\n\tif h.network.InterfaceMonitor() == nil {\n\t\treturn\n\t}\n/' protocol/direct/outbound.go
-fi
+# 幂等 python 补丁(原 perl 的 \1 无捕获组,会把函数签名当 \1 吃掉 → 语法错误)
+python "$ROOT/scripts/patch-singbox-direct-nilguard.py" "$SB" || { echo "ERROR: direct nil-guard patch failed"; exit 1; }
 grep -q "InterfaceMonitor() == nil" protocol/direct/outbound.go || { echo "ERROR: direct fetchMyAddresses nil-guard patch failed"; exit 1; }
 
 # 补丁 6:restore explicit sniff override (Android route vs override modes).
@@ -134,6 +139,9 @@ awk '/if options\.AllowGetFallback/ { fb = NR } /if options\.Expect2xx/ { ex = N
 for f in common/dialer/zz_ohos_forcebind.go common/dialer/zz_ohos_forcebind_other.go route/zz_ohos_openharmony.go route/zz_ohos_other.go; do
   [ -f "$f" ] || cp "$ROOT/patches/zz-ohos/$f" "$f"
 done
+# 补丁 8:适配上游 API 漂移(1.15 把 urltest 改 5 参、listener.Control 换成
+# listenConfig.Control);不修就在 vendor 阶段编译失败。幂等 + fail-closed。
+python "$ROOT/scripts/fix-singbox-patch-compat.py" "$SB" || { echo "ERROR: sing-box OHOS patch compat failed"; exit 1; }
 echo "==> sing-box OHOS patches verified"
 
 # ---- A1. 依赖解析与 vendor(需要 >=1.25.5 工具链) ----
@@ -150,22 +158,13 @@ STDIR="$("$GO126" env GOMODCACHE)/github.com/sagernet/sing-tun@$SINGTUN_VER"
 STPDIR="$WORK_DIR/sing-tun-patched"
 rm -rf "$STPDIR"; mkdir -p "$STPDIR"
 cp -R "$STDIR/." "$STPDIR/"; chmod -R u+w "$STPDIR"
-# sing-tun netlink 订阅改 best-effort(OHOS 沙箱禁止 netlink,订阅失败不可致命)
-perl -0pi -e 's/func \(m \*networkUpdateMonitor\) Start\(\) error \{\n\terr := netlink\.RouteSubscribe\(m\.routeUpdate, m\.close\)\n\tif err != nil \{\n\t\treturn E\.Cause\(err, "subscribe route updates"\)\n\t\}\n\terr = netlink\.LinkSubscribe\(m\.linkUpdate, m\.close\)\n\tif err != nil \{\n\t\treturn E\.Cause\(err, "subscribe link updates"\)\n\t\}\n\terr = netlink\.AddrSubscribe\(m\.addressUpdate, m\.close\)\n\tif err != nil \{\n\t\treturn E\.Cause\(err, "subscribe address updates"\)\n\t\}\n\tgo m\.loopUpdate\(time\.Second\)\n\treturn nil\n\}/func (m *networkUpdateMonitor) Start() error {\n\tif err := netlink.RouteSubscribe(m.routeUpdate, m.close); err != nil {\n\t\tm.logger.Debug("route subscribe: ", err)\n\t}\n\tif err := netlink.LinkSubscribe(m.linkUpdate, m.close); err != nil {\n\t\tm.logger.Debug("link subscribe: ", err)\n\t}\n\tif err := netlink.AddrSubscribe(m.addressUpdate, m.close); err != nil {\n\t\tm.logger.Debug("address subscribe: ", err)\n\t}\n\tgo m.loopUpdate(time.Second)\n\treturn nil\n}/' "$STPDIR/monitor_linux.go"
-grep -q "route subscribe" "$STPDIR/monitor_linux.go" || { echo "ERROR: sing-tun monitor patch regex did not match"; exit 1; }
-if grep -q 'netlink.RouteListFiltered' "$STPDIR/monitor_linux_default.go" 2>/dev/null; then
-  cat > "$STPDIR/monitor_linux_default_openharmony.go" <<'EOF'
-//go:build openharmony
+# sing-tun netlink / 默认接口探测的 HarmonyOS 补丁(幂等,见 scripts/patch-singtun-ohos.py)。
+# 0.9.7 起上游把 netlink 订阅改成 unix.Socket 直连,旧的 perl 正则匹配不到,
+# 因此改为独立补丁器:按内容断言 + fail-closed。
+python "$ROOT/scripts/patch-singtun-ohos.py" "$STPDIR" || { echo "ERROR: sing-tun OHOS patch failed"; exit 1; }
+grep -q 'netlink monitor disabled on OpenHarmony' "$STPDIR/monitor_linux.go" || { echo "ERROR: sing-tun netlink early-return missing"; exit 1; }
+grep -q 'isOpenHarmonyRuntime' "$STPDIR/zz_ohos_monitor_openharmony.go" || { echo "ERROR: sing-tun platform const missing"; exit 1; }
 
-package tun
-
-func (m *defaultInterfaceMonitor) checkUpdate() error {
-	return ErrNoRoute
-}
-EOF
-  perl -0pi -e 's#//go:build linux && !android#//go:build linux \&\& !android \&\& !openharmony#' "$STPDIR/monitor_linux_default.go"
-  echo "==> sing-tun OpenHarmony default-interface check disabled"
-fi
 "$GO126" mod edit -replace "github.com/sagernet/sing-tun=$STPDIR"
 "$GO126" mod tidy
 "$GO126" mod vendor
@@ -285,7 +284,7 @@ CGO_CFLAGS="${CGO_CFLAGS:--ftls-model=global-dynamic}" \
 "$GO124" build -mod=vendor \
     -tags "$BUILD_TAGS" \
     -trimpath \
-    -ldflags "-s -w -buildid= -X github.com/sagernet/sing-box/constant.Version=v1.14.0 -checklinkname=0 -linkmode external -extldflags '-Wl,--version-script=$EXPORTS_FILE_WIN -Wl,--gc-sections -Wl,-z,lazy'" \
+    -ldflags "-s -w -buildid= -X github.com/sagernet/sing-box/constant.Version=$SB_VERSION -checklinkname=0 -linkmode external -extldflags '-Wl,--version-script=$EXPORTS_FILE_WIN -Wl,--gc-sections -Wl,-z,lazy'" \
     -buildmode=c-shared \
     -o "$OUT_DIR/libsingbox.so" .
 
@@ -306,12 +305,12 @@ fi
 
 # ---- 构建后校验(全部 fail-closed;二进制用固定串匹配) ----
 grep -aqF 'json:"override_destination,omitempty"' "$SO" || { echo "ERROR: .so lacks sniff override schema marker"; exit 1; }
-grep -aqF "route subscribe" "$SO"     || { echo "ERROR: .so lacks sing-tun netlink patch marker"; exit 1; }
+grep -aqF "netlink monitor disabled on OpenHarmony" "$SO" || { echo "ERROR: .so lacks sing-tun netlink patch marker"; exit 1; }
 grep -aqF "SING_BOX_BIND_IFNAME" "$SO" || { echo "ERROR: .so lacks forcebind marker"; exit 1; }
 grep -aqF "SING_BOX_TUN_FD" "$SO"     || { echo "ERROR: .so lacks tun-fd marker"; exit 1; }
 # 补丁 7:URL Test 状态码校验 + HEAD→GET 回退(防"假绿")
 grep -aqF "unexpected HTTP status" "$SO" || { echo "ERROR: .so lacks urltest status-acceptance marker"; exit 1; }
-grep -aqF "1.14.0-ohos-inproc" "$SO"  || { echo "ERROR: .so lacks 1.14.0 version marker"; exit 1; }
+grep -aqF "${SB_VERSION}-ohos-inproc" "$SO"  || { echo "ERROR: .so lacks ${SB_VERSION} version marker"; exit 1; }
 grep -aqF "1.11.9" "$SO"              && { echo "ERROR: .so still contains 1.11.9 string"; exit 1; }
 # 动态符号表须含 URL 测速导出(dlsym 依赖 .dynsym)
 # 注意:不要把 readelf 直接管进 `grep -q`。grep -q 命中后立刻退出会关掉管道,

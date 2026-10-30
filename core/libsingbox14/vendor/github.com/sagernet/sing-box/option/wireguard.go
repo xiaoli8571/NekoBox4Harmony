@@ -19,15 +19,16 @@ type WireGuardEndpointOptions struct {
 	UDPFiltering UDPNATBehavior                   `json:"udp_filtering,omitempty"`
 	UDPNATMax    uint32                           `json:"udp_nat_max,omitempty"`
 	Workers      int                              `json:"workers,omitempty"`
+	OnDemand     bool                             `json:"on_demand,omitempty"`
 	DialerOptions
 }
 
 type WireGuardPeer struct {
-	Address                     string                           `json:"address,omitempty"`
-	Port                        uint16                           `json:"port,omitempty"`
-	PublicKey                   string                           `json:"public_key,omitempty"`
-	PreSharedKey                string                           `json:"pre_shared_key,omitempty"`
-	AllowedIPs                  badoption.Listable[netip.Prefix] `json:"allowed_ips,omitempty"`
-	PersistentKeepaliveInterval uint16                           `json:"persistent_keepalive_interval,omitempty"`
-	Reserved                    []uint8                          `json:"reserved,omitempty"`
+	Address                     string                       `json:"address,omitempty"`
+	Port                        uint16                       `json:"port,omitempty"`
+	PublicKey                   string                       `json:"public_key,omitempty"`
+	PreSharedKey                string                       `json:"pre_shared_key,omitempty"`
+	AllowedIPs                  LegacyListable[netip.Prefix] `json:"allowed_ips,omitempty"`
+	PersistentKeepaliveInterval uint16                       `json:"persistent_keepalive_interval,omitempty"`
+	Reserved                    []uint8                      `json:"reserved,omitempty"`
 }

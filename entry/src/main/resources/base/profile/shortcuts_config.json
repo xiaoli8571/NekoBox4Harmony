@@ -1,0 +1,64 @@
+{
+  "shortcuts": [
+    {
+      "shortcutId": "nodes",
+      "label": "$string:shortcut_nodes",
+      "icon": "$media:icon",
+      "wants": [
+        {
+          "bundleName": "com.nekobox.app.jynxen",
+          "moduleName": "entry",
+          "abilityName": "EntryAbility",
+          "parameters": {
+            "shortcut": "nodes"
+          }
+        }
+      ]
+    },
+    {
+      "shortcutId": "traffic",
+      "label": "$string:shortcut_traffic",
+      "icon": "$media:icon",
+      "wants": [
+        {
+          "bundleName": "com.nekobox.app.jynxen",
+          "moduleName": "entry",
+          "abilityName": "EntryAbility",
+          "parameters": {
+            "shortcut": "traffic"
+          }
+        }
+      ]
+    },
+    {
+      "shortcutId": "diagnostics",
+      "label": "$string:shortcut_diagnostics",
+      "icon": "$media:icon",
+      "wants": [
+        {
+          "bundleName": "com.nekobox.app.jynxen",
+          "moduleName": "entry",
+          "abilityName": "EntryAbility",
+          "parameters": {
+            "shortcut": "diagnostics"
+          }
+        }
+      ]
+    },
+    {
+      "shortcutId": "logs",
+      "label": "$string:shortcut_logs",
+      "icon": "$media:icon",
+      "wants": [
+        {
+          "bundleName": "com.nekobox.app.jynxen",
+          "moduleName": "entry",
+          "abilityName": "EntryAbility",
+          "parameters": {
+            "shortcut": "logs"
+          }
+        }
+      ]
+    }
+  ]
+}

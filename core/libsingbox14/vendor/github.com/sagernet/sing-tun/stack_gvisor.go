@@ -81,12 +81,11 @@ func NewGVisor(
 		inet6LoopbackAddress: options.TunOptions.Inet6LoopbackAddress,
 		icmpTimeout:          options.ICMPTimeout,
 		udpNATOptions: UDPNatOptions{
-			Timeout:          options.UDPTimeout,
-			Mapping:          options.UDPMapping,
-			Filtering:        options.UDPFiltering,
-			MaxSize:          options.UDPNATMax,
-			InterfaceFinder:  options.InterfaceFinder,
-			ExcludeInterface: []string{options.TunOptions.Name},
+			Timeout:         options.UDPTimeout,
+			Mapping:         options.UDPMapping,
+			Filtering:       options.UDPFiltering,
+			MaxSize:         options.UDPNATMax,
+			InterfaceFinder: options.InterfaceFinder,
 		},
 		broadcastAddr: BroadcastAddr(options.TunOptions.Inet4Address),
 		handler:       options.Handler,
@@ -101,7 +100,7 @@ func (t *GVisor) Start() error {
 		return err
 	}
 	if t.handler != nil {
-		t.dispatcher = NewForwardDispatcher(t.handler, &gvisorWriteback{tun: t.tun}, t.logger, t.udpNATOptions.Timeout, t.icmpTimeout)
+		t.dispatcher = NewForwardDispatcher(t.handler, &gvisorWriteback{tun: t.tun}, t.logger, t.udpNATOptions, t.icmpTimeout)
 	}
 	linkEndpoint = &LinkEndpointFilter{
 		LinkEndpoint:         linkEndpoint,
@@ -117,15 +116,15 @@ func (t *GVisor) Start() error {
 	if err != nil {
 		return err
 	}
-	ipStack.SetTransportProtocolHandler(tcp.ProtocolNumber, NewTCPForwarderWithLoopback(t.ctx, ipStack, t.handler, t.inet4LoopbackAddress, t.inet6LoopbackAddress, t.tun).HandlePacket)
-	udpForwarder := NewUDPForwarder(t.ctx, ipStack, t.handler, t.udpNATOptions)
+	ipStack.SetTransportProtocolHandler(tcp.ProtocolNumber, NewTCPForwarderWithLoopback(t.ctx, ipStack, t.handler, t.dispatcher, t.inet4LoopbackAddress, t.inet6LoopbackAddress, t.tun).HandlePacket)
+	udpForwarder := NewUDPForwarder(t.ctx, ipStack, t.handler, t.dispatcher, t.udpNATOptions)
 	err = udpForwarder.Start()
 	if err != nil {
 		return err
 	}
 	ipStack.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
 	t.udpForwarder = udpForwarder
-	icmpForwarder := NewICMPForwarder(ipStack, t.handler, t.logger)
+	icmpForwarder := NewICMPForwarder(ipStack, t.handler, t.dispatcher, t.logger)
 	ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber4, icmpForwarder.HandlePacket)
 	ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber6, icmpForwarder.HandlePacket)
 	t.icmpForwarder = icmpForwarder

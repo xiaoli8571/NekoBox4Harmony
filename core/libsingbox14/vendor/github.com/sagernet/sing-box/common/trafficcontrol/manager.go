@@ -35,8 +35,6 @@ var (
 )
 
 type Manager struct {
-	outbound adapter.OutboundManager
-
 	connections             compatible.Map[uuid.UUID, Tracker]
 	closedConnectionsAccess sync.Mutex
 	closedConnections       list.List[TrackerMetadata]
@@ -45,12 +43,10 @@ type Manager struct {
 
 	eventSubscriber *observable.Subscriber[ConnectionEvent]
 	eventObserver   *observable.Observer[ConnectionEvent]
-	cleaner         *cleanup.Cleaner
 }
 
-func NewManager(outbound adapter.OutboundManager) *Manager {
+func NewManager() *Manager {
 	return &Manager{
-		outbound:        outbound,
 		eventSubscriber: observable.NewSubscriber[ConnectionEvent](256),
 	}
 }
@@ -59,20 +55,15 @@ func (m *Manager) Name() string {
 	return "traffic manager"
 }
 
-func (m *Manager) Start(stage adapter.StartStage) error {
+func (m *Manager) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage == adapter.StartStateInitialize {
 		m.eventObserver = observable.NewObserver(m.eventSubscriber, 64)
-		m.cleaner = cleanup.Add(m.Clear)
-	}
-	return nil
-}
-
-func (m *Manager) Close() error {
-	if m.cleaner != nil {
-		m.cleaner.Close()
-	}
-	if m.eventObserver != nil {
-		return m.eventObserver.Close()
+		scope.Add(m.eventObserver.Close)
+		cleaner := cleanup.Add(m.Clear)
+		scope.Add(func() error {
+			cleaner.Close()
+			return nil
+		})
 	}
 	return nil
 }

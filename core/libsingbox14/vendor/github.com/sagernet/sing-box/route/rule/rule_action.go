@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/sniff"
 	"github.com/sagernet/sing-box/common/tlsspoof"
 	C "github.com/sagernet/sing-box/constant"
@@ -19,7 +18,6 @@ import (
 	F "github.com/sagernet/sing/common/format"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
 
 	"github.com/miekg/dns"
 )
@@ -45,7 +43,7 @@ func newRuleActionRouteOptions(options option.RawRouteOptionsActionOptions) (Rul
 	}, nil
 }
 
-func NewRuleAction(ctx context.Context, logger logger.ContextLogger, action option.RuleAction) (adapter.RuleAction, error) {
+func NewRuleAction(logger logger.ContextLogger, action option.RuleAction) (adapter.RuleAction, error) {
 	switch action.Action {
 	case "":
 		return nil, nil
@@ -73,28 +71,6 @@ func NewRuleAction(ctx context.Context, logger logger.ContextLogger, action opti
 			Outbound:               action.BypassOptions.Outbound,
 			RuleActionRouteOptions: routeOptions,
 		}, nil
-	case C.RuleActionTypeDirect:
-		directDialer, err := dialer.New(ctx, option.DialerOptions{
-			AbstractDialerOptions: action.DirectOptions.AbstractDialerOptions,
-		}, false)
-		if err != nil {
-			return nil, err
-		}
-		var description string
-		descriptions := action.DirectOptions.Descriptions()
-		switch len(descriptions) {
-		case 0:
-		case 1:
-			description = F.ToString("(", descriptions[0], ")")
-		case 2:
-			description = F.ToString("(", descriptions[0], ",", descriptions[1], ")")
-		default:
-			description = F.ToString("(", descriptions[0], ",", descriptions[1], ",...)")
-		}
-		return &RuleActionDirect{
-			Dialer:      directDialer,
-			description: description,
-		}, nil
 	case C.RuleActionTypeReject:
 		return &RuleActionReject{
 			Method: action.RejectOptions.Method,
@@ -105,10 +81,9 @@ func NewRuleAction(ctx context.Context, logger logger.ContextLogger, action opti
 		return &RuleActionHijackDNS{}, nil
 	case C.RuleActionTypeSniff:
 		sniffAction := &RuleActionSniff{
+			OverrideDestination: action.SniffOptions.OverrideDestination,
 			SnifferNames: action.SniffOptions.Sniffer,
 			Timeout:      time.Duration(action.SniffOptions.Timeout),
-			// OHOS patch (CORE-04): wire the restored JSON knob through.
-			OverrideDestination: action.SniffOptions.OverrideDestination,
 		}
 		return sniffAction, sniffAction.build()
 	case C.RuleActionTypeResolve:
@@ -395,19 +370,6 @@ func (r *RuleActionDNSRouteOptions) String() string {
 		descriptions = append(descriptions, "remove-client-subnet")
 	}
 	return F.ToString("route-options(", strings.Join(descriptions, ","), ")")
-}
-
-type RuleActionDirect struct {
-	Dialer      N.Dialer
-	description string
-}
-
-func (r *RuleActionDirect) Type() string {
-	return C.RuleActionTypeDirect
-}
-
-func (r *RuleActionDirect) String() string {
-	return "direct" + r.description
 }
 
 var (

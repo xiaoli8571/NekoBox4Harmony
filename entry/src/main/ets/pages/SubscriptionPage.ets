@@ -33,6 +33,7 @@ import {
 
 @Component
 export struct SubscriptionPage {
+  @State litKey: string = '';
   /** 订阅列表(Index.subscriptions 深拷贝传入,页面只读;§11.1 SubInfo) */
   @Prop subscriptions: Array<SubInfo> = [];
   /** 每个订阅的节点数(Index 用 SubscriptionList.nodeCountsFromSubUrls(profiles.map(subUrl)) 生成) */
@@ -93,6 +94,10 @@ export struct SubscriptionPage {
   onSelect: (url: string) => void = (url: string) => {};
   /** 当前选中的订阅(高亮;空串 = 未选中) */
   @Prop selectedUrl: string = '';
+  /** 首页要显示哪些订阅(复选框选中项);空数组 = 全部订阅都显示 */
+  @Prop homeUrls: Array<string> = [];
+  /** 勾选/取消某个订阅 */
+  onToggleHome: (url: string) => void = (url: string) => {};
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   private rows(): Array<SubscriptionRowView> {
@@ -383,9 +388,16 @@ export struct SubscriptionPage {
         } else {
           Button($r('app.string.subscription_update_all'))
             .height(UiSpec.BTN_HEIGHT)
-            .backgroundColor($r('app.color.primary'))
-            .fontColor($r('app.color.surface'))
+            .backgroundColor(this.litKey === 'pb:SubscriptionPage:1' ? $r('app.color.primary') : $r('app.color.surface'))
+            .fontColor(this.litKey === 'pb:SubscriptionPage:1' ? $r('app.color.surface') : $r('app.color.text_1'))
             .enabled(this.subscriptions.length > 0 && this.networkAvailable && !this.updatingAll)
+            .onTouch((event: TouchEvent) => {
+              if (event.type === TouchType.Down) {
+                this.litKey = 'pb:SubscriptionPage:1';
+              } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                this.litKey = '';
+              }
+            })
             .onClick(() => this.onUpdateAll())
         }
       }
@@ -482,6 +494,20 @@ export struct SubscriptionPage {
               /* 2026-10-24 真机用户反馈:订阅行距过大 ⇒ 行内 space 与上下 padding 收紧 */
               Column({ space: 4 }) {
                 Row({ space: 8 }) {
+                  /* 首页显示开关:勾上就在首页显示这个订阅的分组与节点(全不勾 = 全部显示) */
+                  Checkbox({ name: row.url, group: 'home_subs' })
+                    .select(this.homeUrls.indexOf(row.url) >= 0)
+                    .selectedColor($r('app.color.primary'))
+                    .width(20).height(20)
+                    .accessibilityText(this.homeUrls.indexOf(row.url) >= 0
+                      ? $r('app.string.sub_home_check_on')
+                      : $r('app.string.sub_home_check_off'))
+                    .onChange((checked: boolean) => {
+                      const shown: boolean = this.homeUrls.indexOf(row.url) >= 0;
+                      if (checked !== shown) {
+                        this.onToggleHome(row.url);
+                      }
+                    })
                   Column({ space: 1 }) {
                     /* ⚠️ 名字 Text 不能带 layoutWeight —— 它在内层 Column 里会被解释成
                        纵向权重,把整行撑到上千像素高(真机 P5 遗留 bug,2026-10-24 修复);
@@ -571,28 +597,30 @@ export struct SubscriptionPage {
                 }
 
                 if (this.isMoreOpen(row.url)) {
-                  Row({ space: 8 }) {
-                    Button($r('app.string.subscription_row_detail'))
-                      .height(24).layoutWeight(1)
-                      .backgroundColor($r('app.color.surface'))
-                      .fontColor($r('app.color.text_primary'))
-                      .accessibilityText($r('app.string.subscription_row_detail'))
-                      .onClick(() => {
-                        this.toggleMore(row.url);
-                        this.openDetail(row.url);
-                      })
-                    Button($r('app.string.subscription_row_clear_nodes'))
-                      .height(24).layoutWeight(1)
-                      .backgroundColor($r('app.color.surface'))
-                      .fontColor($r('app.color.error'))
-                      .accessibilityText($r('app.string.subscription_row_clear_nodes'))
-                      .onClick(() => this.confirmClearNodes(row))
-                    Button($r('app.string.subscription_row_delete'))
-                      .height(24).layoutWeight(1)
-                      .backgroundColor($r('app.color.surface'))
-                      .fontColor($r('app.color.error'))
-                      .accessibilityText($r('app.string.subscription_row_delete'))
-                      .onClick(() => this.confirmDelete(row))
+                  Column({ space: 8 }) {
+                    Row({ space: 8 }) {
+                      Button($r('app.string.subscription_row_detail'))
+                        .height(24).layoutWeight(1)
+                        .backgroundColor($r('app.color.surface'))
+                        .fontColor($r('app.color.text_primary'))
+                        .accessibilityText($r('app.string.subscription_row_detail'))
+                        .onClick(() => {
+                          this.toggleMore(row.url);
+                          this.openDetail(row.url);
+                        })
+                      Button($r('app.string.subscription_row_clear_nodes'))
+                        .height(24).layoutWeight(1)
+                        .backgroundColor($r('app.color.surface'))
+                        .fontColor($r('app.color.error'))
+                        .accessibilityText($r('app.string.subscription_row_clear_nodes'))
+                        .onClick(() => this.confirmClearNodes(row))
+                      Button($r('app.string.subscription_row_delete'))
+                        .height(24).layoutWeight(1)
+                        .backgroundColor($r('app.color.surface'))
+                        .fontColor($r('app.color.error'))
+                        .accessibilityText($r('app.string.subscription_row_delete'))
+                        .onClick(() => this.confirmDelete(row))
+                    }.width('100%')
                   }.width('100%')
                 }
               }

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"time"
 	"unsafe"
@@ -134,8 +135,9 @@ type DB struct {
 	rwtx     *Tx
 	stats    *Stats
 
-	freelist     fl.Interface
-	freelistLoad sync.Once
+	freelist        fl.Interface
+	freelistLoad    sync.Once
+	freelistLoadErr error
 
 	pagePool sync.Pool
 
@@ -301,7 +303,11 @@ func Open(path string, mode os.FileMode, options *Options) (db *DB, err error) {
 	}
 
 	if db.PreLoadFreelist {
-		db.loadFreelist()
+		if err = db.loadFreelist(); err != nil {
+			_ = db.close()
+			lg.Errorf("failed to load freelist of db file (%s): %v", path, err)
+			return nil, err
+		}
 	}
 
 	if db.readOnly {
@@ -419,12 +425,27 @@ func (db *DB) getPageSizeFromSecondMeta() (int, bool, error) {
 // loadFreelist reads the freelist if it is synced, or reconstructs it
 // by scanning the DB if it is not synced. It assumes there are no
 // concurrent accesses being made to the freelist.
-func (db *DB) loadFreelist() {
+//
+// The freelist is decoded straight from the memory map, so a corrupted file
+// makes the decoding panic, or fault on a page id beyond the mapping, rather
+// than fail. Both are reported as ErrInvalid.
+func (db *DB) loadFreelist() error {
 	db.freelistLoad.Do(func() {
+		defer debug.SetPanicOnFault(debug.SetPanicOnFault(true))
+		defer func() {
+			if p := recover(); p != nil {
+				db.freelistLoadErr = fmt.Errorf("%w: load freelist: %v", berrors.ErrInvalid, p)
+			}
+		}()
 		db.freelist = newFreelist(db.FreelistType)
 		if !db.hasSyncedFreelist() {
 			// Reconstruct free list by scanning the DB.
-			db.freelist.Init(db.freepages())
+			fids, err := db.freepages()
+			if err != nil {
+				db.freelistLoadErr = fmt.Errorf("%w: load freelist: %w", berrors.ErrInvalid, err)
+				return
+			}
+			db.freelist.Init(fids)
 		} else {
 			// Read free list from freelist page.
 			db.freelist.Read(db.page(db.meta().Freelist()))
@@ -433,6 +454,7 @@ func (db *DB) loadFreelist() {
 			db.stats.FreePageN = db.freelist.FreeCount()
 		}
 	})
+	return db.freelistLoadErr
 }
 
 func (db *DB) hasSyncedFreelist() bool {
@@ -1290,7 +1312,9 @@ func (db *DB) IsReadOnly() bool {
 	return db.readOnly
 }
 
-func (db *DB) freepages() []common.Pgid {
+// freepages scans the DB for the pages no bucket references. It returns an
+// error instead of a partial result when the scan finds a corruption.
+func (db *DB) freepages() ([]common.Pgid, error) {
 	tx, err := db.beginTx()
 	defer func() {
 		err = tx.Rollback()
@@ -1308,15 +1332,26 @@ func (db *DB) freepages() []common.Pgid {
 
 	go func() {
 		defer close(ech)
+		debug.SetPanicOnFault(true)
+		defer func() {
+			if p := recover(); p != nil {
+				ech <- PanickedError{Reason: p}
+			}
+		}()
 		tx.recursivelyCheckBucket(&tx.root, reachable, nofreed, HexKVStringer(), ech)
 	}()
-	// following for loop will exit once channel is closed in the above goroutine.
-	// we don't need to wait explictly with a waitgroup
+	// Drain the channel until the scan closes it, so that the scan no longer
+	// reads the memory map by the time the caller acts on a corruption, which
+	// typically means closing the DB.
+	var checkErr error
 	for e := range ech {
-		panic(fmt.Sprintf("freepages: failed to get all reachable pages (%v)", e))
+		if checkErr == nil {
+			checkErr = e
+		}
 	}
-
-	// TODO: If check bucket reported any corruptions (ech) we shouldn't proceed to freeing the pages.
+	if checkErr != nil {
+		return nil, fmt.Errorf("freepages: failed to get all reachable pages (%w)", checkErr)
+	}
 
 	var fids []common.Pgid
 	for i := common.Pgid(2); i < db.meta().Pgid(); i++ {
@@ -1324,7 +1359,7 @@ func (db *DB) freepages() []common.Pgid {
 			fids = append(fids, i)
 		}
 	}
-	return fids
+	return fids, nil
 }
 
 func newFreelist(freelistType FreelistType) fl.Interface {

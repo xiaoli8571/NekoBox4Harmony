@@ -64,7 +64,7 @@ func (p *Port) AttachReturn(returnPath tun.Return) error {
 	if slices.Contains(p.returnPaths, returnPath) {
 		return nil
 	}
-	p.returnPaths = append(p.returnPaths[:len(p.returnPaths):len(p.returnPaths)], returnPath)
+	p.returnPaths = append(slices.Clip(p.returnPaths), returnPath)
 	return nil
 }
 
@@ -130,7 +130,12 @@ func (p *Port) writePacket(packet []byte) error {
 	if err != nil {
 		return E.Cause(err, "connect ICMP flow to ", destination)
 	}
-	return flow.WritePacket(buf.As(packet))
+	err = flow.WritePacket(buf.As(packet))
+	if err != nil {
+		flow.Close()
+		return err
+	}
+	return nil
 }
 
 func (p *Port) flowFor(source netip.Addr, destination netip.Addr, identifier uint16) (*Destination, error) {

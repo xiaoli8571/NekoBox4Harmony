@@ -96,6 +96,9 @@ func NewStreamChunkWriter(upstream io.Writer, chunkMasking sha3.ShakeHash, globa
 }
 
 func (w *StreamChunkWriter) Write(p []byte) (n int, err error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
 	dataLen := uint16(len(p))
 	var paddingLen uint16
 	if w.globalPadding != nil || w.chunkMasking != nil {
@@ -114,6 +117,7 @@ func (w *StreamChunkWriter) Write(p []byte) (n int, err error) {
 		w.hashAccess.Unlock()
 	}
 	w.writeAccess.Lock()
+	defer w.writeAccess.Unlock()
 	err = binary.Write(w.upstream, binary.BigEndian, dataLen)
 	if err != nil {
 		return
@@ -128,11 +132,14 @@ func (w *StreamChunkWriter) Write(p []byte) (n int, err error) {
 			return
 		}
 	}
-	w.writeAccess.Unlock()
 	return
 }
 
 func (w *StreamChunkWriter) WriteBuffer(buffer *buf.Buffer) error {
+	if buffer.IsEmpty() {
+		buffer.Release()
+		return nil
+	}
 	dataLen := uint16(buffer.Len())
 	var paddingLen uint16
 	if w.globalPadding != nil || w.chunkMasking != nil {
@@ -180,6 +187,7 @@ func (w *StreamChunkWriter) WriteWithChecksum(checksum uint32, p []byte) (n int,
 		w.hashAccess.Unlock()
 	}
 	w.writeAccess.Lock()
+	defer w.writeAccess.Unlock()
 	err = binary.Write(w.upstream, binary.BigEndian, dataLen)
 	if err != nil {
 		return
@@ -198,7 +206,6 @@ func (w *StreamChunkWriter) WriteWithChecksum(checksum uint32, p []byte) (n int,
 			return
 		}
 	}
-	w.writeAccess.Unlock()
 	return
 }
 

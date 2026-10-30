@@ -100,8 +100,9 @@ test('showBottomBar default and backup validation', () => {
 });
 test('StatsBar and FAB consume the persistent setting', () => {
   const index = fs.readFileSync(path.join(root, 'entry/src/main/ets/pages/Index.ets'), 'utf8');
-  assert.match(index, /if \(this.isRunning && \(this.activeTab === 0 \|\| this.settings.showBottomBar\)\)/);
-  assert.match(index, /if \(this.activeTab === 0 \|\| this.settings.showBottomBar\) \{\s*this.fabLayer\(\)/);
+  /* 底栏(统计条)渲染条件:运行中 + 首页区块未被隐藏 + (节点页或用户开了底部栏) */
+  assert.match(index, /if \(this\.isRunning && this\.sectionVisible\('bottombar'\)[\s\S]{0,80}this\.settings\.showBottomBar\)\)/);
+  assert.match(index, /if \(this\.sectionVisible\('bottombar'\)[\s\S]{0,80}this\.fabLayer\(\)/);
   assert.match(index, /this\.fabButton\(TransitionEdge\.START\)/);
   assert.match(index, /this\.fabButton\(TransitionEdge\.END\)/);
 });

@@ -300,7 +300,9 @@ function latencyBucketOf(ms: number): string {
 export function nodeRowView(profile: Profile, result: ProbeResult | null, ctx: NodeRowContext): NodeRowView {
   const v = new NodeRowView();
   v.profileId = profile.id;
-  v.primary = profile.name.length > 0 ? profile.name : profile.server;
+  /* 别名优先(对齐 OwnBox 自定义节点名):改了名列表/主页/通知都跟着变 */
+  const shownName = profile.alias.length > 0 ? profile.alias : profile.name;
+  v.primary = shownName.length > 0 ? shownName : profile.server;
   v.secondary = `${profile.server}:${profile.serverPort}`;
   v.selected = ctx.selectedProfileId === profile.id;
   v.running = ctx.runningProfileId === profile.id && ctx.runningConfirmed;
@@ -360,8 +362,9 @@ export function filterNodes(nodes: Array<Profile>, query: string, onlyFavorites:
     const p = nodes[i];
     if (q.length > 0) {
       const name = p.name.toLowerCase();
+      const alias = p.alias.toLowerCase();
       const server = p.server.toLowerCase();
-      if (name.indexOf(q) < 0 && server.indexOf(q) < 0) {
+      if (name.indexOf(q) < 0 && alias.indexOf(q) < 0 && server.indexOf(q) < 0) {
         continue;
       }
     }

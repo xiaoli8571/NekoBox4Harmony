@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/wireguard-go/conn"
 )
 
 type WaitPool struct {
@@ -58,7 +59,7 @@ func (device *Device) PopulatePools() {
 		return &QueueInboundElementsContainer{elems: s}
 	}}
 	device.pool.outboundElementsContainer = &sync.Pool{New: func() any {
-		s := make([]*QueueOutboundElement, 0, device.BatchSize())
+		s := make([]*QueueOutboundElement, 0, max(device.BatchSize(), conn.IdealBatchSize))
 		return &QueueOutboundElementsContainer{elems: s}
 	}}
 	device.pool.messageBuffers = NewWaitPool(PreallocatedBuffersPerPool, func() any {
@@ -107,8 +108,8 @@ func (device *Device) PutMessageBuffer(msg *[MaxMessageSize]byte) {
 }
 
 // Outbound buffers come from the sing allocator instead of the bounded
-// messageBuffers pool: the injection paths (InputPacket/InputPackets) run on
-// the caller's shared read loop, which must never block on pool exhaustion,
+// messageBuffers pool: the injection paths (InputPackets/Peer.WritePackets)
+// run on the caller's goroutines, which must never block on pool exhaustion,
 // and their packets are far smaller than MaxMessageSize, so they are allocated
 // by actual size. This also keeps the bounded pool exclusively for the receive
 // path, so outbound backlog can no longer starve it.

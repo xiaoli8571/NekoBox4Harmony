@@ -43,17 +43,6 @@ func (c *appleClientConfig) ClientHandshake(ctx context.Context, conn net.Conn) 
 		return nil, E.Cause(err, "access raw connection")
 	}
 
-	var dupFD int
-	controlErr := syscallConn.Control(func(fd uintptr) {
-		dupFD, err = unix.Dup(int(fd))
-	})
-	if controlErr != nil {
-		return nil, E.Cause(controlErr, "access raw connection")
-	}
-	if err != nil {
-		return nil, E.Cause(err, "duplicate raw connection")
-	}
-
 	serverName := c.serverName
 	serverNamePtr := cStringOrNil(serverName)
 	defer cFree(serverNamePtr)
@@ -68,6 +57,7 @@ func (c *appleClientConfig) ClientHandshake(ctx context.Context, conn net.Conn) 
 	}
 	var anchorsRef unsafe.Pointer
 	if anchors != nil {
+		defer anchors.Release()
 		anchorsRef = anchors.Ref()
 	}
 
@@ -78,6 +68,17 @@ func (c *appleClientConfig) ClientHandshake(ctx context.Context, conn net.Conn) 
 	if c.timeFunc != nil {
 		hasVerifyTime = true
 		verifyTimeUnixMilli = c.timeFunc().UnixMilli()
+	}
+
+	var dupFD int
+	controlErr := syscallConn.Control(func(fd uintptr) {
+		dupFD, err = unix.FcntlInt(fd, unix.F_DUPFD_CLOEXEC, 0)
+	})
+	if controlErr != nil {
+		return nil, E.Cause(controlErr, "access raw connection")
+	}
+	if err != nil {
+		return nil, E.Cause(err, "duplicate raw connection")
 	}
 
 	var errorPtr *C.char
@@ -95,9 +96,6 @@ func (c *appleClientConfig) ClientHandshake(ctx context.Context, conn net.Conn) 
 		C.int64_t(verifyTimeUnixMilli),
 		&errorPtr,
 	)
-	if anchors != nil {
-		anchors.Release()
-	}
 	if client == nil {
 		if errorPtr != nil {
 			defer C.free(unsafe.Pointer(errorPtr))
@@ -130,8 +128,8 @@ func (c *appleClientConfig) ClientHandshake(ctx context.Context, conn net.Conn) 
 		C.box_apple_tls_client_free(client)
 		return nil, err
 	}
-	if len(c.certificatePublicKeySHA256) > 0 {
-		err = VerifyPublicKeySHA256(c.certificatePublicKeySHA256, rawCerts)
+	if len(c.certificateSHA256) > 0 || len(c.certificatePublicKeySHA256) > 0 {
+		err = VerifyPinnedCertificate(c.certificateSHA256, c.certificatePublicKeySHA256, rawCerts)
 		if err != nil {
 			C.box_apple_tls_client_cancel(client)
 			C.box_apple_tls_client_free(client)

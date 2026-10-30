@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"net"
 	"sync"
+	"syscall"
 	"time"
 
 	qtls "github.com/sagernet/sing-quic"
@@ -65,9 +66,20 @@ func NewHopConn(
 		errChan:     make(chan error, 1),
 		doneChan:    make(chan struct{}),
 	}
-	currentConn, err := dialFunc(hopConn.nextAddr())
+	nextAddr := hopConn.nextAddr()
+	currentConn, err := dialFunc(nextAddr)
 	if err != nil {
 		return nil, err
+	}
+	if destination.IsFqdn() {
+		remoteAddr := M.SocksaddrFromNet(currentConn.RemoteAddr()).Unwrap()
+		if remoteAddr.IsIP() {
+			if remoteAddr.Port != nextAddr.Port {
+				currentConn.Close()
+				return nil, E.New("port hopping: remote address ", remoteAddr, " does not match destination ", nextAddr)
+			}
+			hopConn.destination = M.Socksaddr{Addr: remoteAddr.Addr}
+		}
 	}
 	hopConn.currentConn = currentConn
 	qtls.SetDesiredBufferSizes(currentConn)
@@ -91,6 +103,11 @@ func (c *HopConn) recvLoop(conn net.Conn) {
 		n, err := conn.Read(buffer.FreeBytes())
 		if err != nil {
 			buffer.Release()
+			// A connected UDP socket reports an ICMP Fragmentation Needed or Packet Too Big
+			// message for one of its datagrams as EMSGSIZE from the next send or read.
+			if errors.Is(err, syscall.EMSGSIZE) {
+				continue
+			}
 			var netErr net.Error
 			if errors.As(err, &netErr) && netErr.Timeout() {
 				// Only pass through timeout errors here, not permanent errors

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -332,7 +333,11 @@ func (tx *Tx) rollback() {
 			if !tx.db.hasSyncedFreelist() {
 				// Reconstruct free page list by scanning the DB to get the whole free page list.
 				// Note: scanning the whole db is heavy if your db size is large in NoSyncFreeList mode.
-				tx.db.freelist.NoSyncReload(tx.db.freepages())
+				fids, err := tx.db.freepages()
+				if err != nil {
+					panic(err)
+				}
+				tx.db.freelist.NoSyncReload(fids)
 			} else {
 				// Read free page list from freelist page.
 				tx.db.freelist.Reload(tx.db.page(tx.db.meta().Freelist()))
@@ -653,6 +658,13 @@ func (tx *Tx) forEachPageInternal(pgidstack []common.Pgid, fn func(*common.Page,
 
 	// Execute function.
 	fn(p, len(pgidstack)-1, pgidstack)
+
+	// A page that is already on the stack closes a cycle, which only a
+	// corrupted file contains. fn has been given the page again, so stop here
+	// instead of recursing until the stack overflows.
+	if slices.Contains(pgidstack[:len(pgidstack)-1], pgidstack[len(pgidstack)-1]) {
+		return
+	}
 
 	// Recursively loop over children.
 	if p.IsBranchPage() {

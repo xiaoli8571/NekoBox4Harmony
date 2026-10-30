@@ -33,6 +33,7 @@ type framer struct {
 	mutex sync.Mutex
 
 	activeStreams            map[protocol.StreamID]streamFrameGetter
+	blockedStreams           map[protocol.StreamID]struct{}
 	streamQueue              ringbuffer.RingBuffer[protocol.StreamID]
 	streamsWithControlFrames map[protocol.StreamID]streamControlFrameGetter
 
@@ -46,9 +47,16 @@ type framer struct {
 func newFramer(connFlowController *connectionFlowController) *framer {
 	return &framer{
 		activeStreams:            make(map[protocol.StreamID]streamFrameGetter),
+		blockedStreams:           make(map[protocol.StreamID]struct{}),
 		streamsWithControlFrames: make(map[protocol.StreamID]streamControlFrameGetter),
 		connFlowController:       connFlowController,
 	}
+}
+
+func (f *framer) HasUnblockedStreamData() bool {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	return len(f.activeStreams) > len(f.blockedStreams)
 }
 
 func (f *framer) HasData() bool {
@@ -219,6 +227,7 @@ func (f *framer) QueuedTooManyControlFrames() bool {
 
 func (f *framer) AddActiveStream(id protocol.StreamID, str streamFrameGetter) {
 	f.mutex.Lock()
+	delete(f.blockedStreams, id)
 	if _, ok := f.activeStreams[id]; !ok {
 		f.streamQueue.PushBack(id)
 		f.activeStreams[id] = str
@@ -238,6 +247,7 @@ func (f *framer) AddStreamWithControlFrames(id protocol.StreamID, str streamCont
 func (f *framer) RemoveActiveStream(id protocol.StreamID) {
 	f.mutex.Lock()
 	delete(f.activeStreams, id)
+	delete(f.blockedStreams, id)
 	// We don't delete the stream from the streamQueue,
 	// since we'd have to iterate over the ringbuffer.
 	// Instead, we check if the stream is still in activeStreams when appending STREAM frames.
@@ -260,8 +270,14 @@ func (f *framer) getNextStreamFrame(maxLen protocol.ByteCount, v protocol.Versio
 	frame, blocked, hasMoreData := str.popStreamFrame(maxLen, v)
 	if hasMoreData { // put the stream back in the queue (at the end)
 		f.streamQueue.PushBack(id)
+		if frame.Frame == nil {
+			f.blockedStreams[id] = struct{}{}
+		} else {
+			delete(f.blockedStreams, id)
+		}
 	} else { // no more data to send. Stream is not active
 		delete(f.activeStreams, id)
+		delete(f.blockedStreams, id)
 	}
 	// Note that the frame.Frame can be nil:
 	// * if the stream was canceled after it said it had data
@@ -279,6 +295,7 @@ func (f *framer) Handle0RTTRejection() {
 	for id := range f.activeStreams {
 		delete(f.activeStreams, id)
 	}
+	clear(f.blockedStreams)
 	clear(f.streamsWithControlFrames)
 	var j int
 	for i, frame := range f.controlFrames {

@@ -6,6 +6,7 @@ export class UiSpec {
   static readonly GAP_MD: number = 12;
   static readonly GAP_LG: number = 16;
   static readonly BTN_HEIGHT: number = 40;
+  static readonly BTN_RADIUS: number = 12;
   static readonly BREAKPOINT_MEDIUM: number = 600;
   static readonly BREAKPOINT_LARGE: number = 840;
   static readonly POWER_BUTTON_SIZE_COMPACT: number = 150;

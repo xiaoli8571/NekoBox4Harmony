@@ -19,19 +19,26 @@ import {
   hdsMaterial
 } from '@kit.UIDesignKit';
 import { UiSpec } from '../common/UiSpec';
+import { notifyProbeDone } from '../utils/ProbeNotify';
+import { addMessage } from '../model/MessageStore';
 import { statusBarTopVp } from '../common/PageTopInset';
 import { illuminatedEffect, pressLightEffect } from '../common/Effects';
 import { GlowIconButton } from '../common/components/GlowIconButton';
 import { HdsMenu, MenuItemData } from '../common/components/FlowMenu';
 import { HAND_SIDE_KEY, handedness } from '../common/Handedness';
 import { SettingsPage } from './SettingsPage';
-import { SystemPage } from './SystemPage';
+import { ToolsPage } from './ToolsPage';
+import { AboutPage } from './AboutPage';
 import { RouteRulesPanel } from './RouteRulesPage';
 import { LogPanel } from './LogPage';
 
 import { Profile, ProfileGroup, AppSettings, profileTypeLabel } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, mutateProfiles, loadGroups, loadSettings, saveSettings, readPrefString, writePrefString, ensureGroupByName, LogStore } from '../model/Store';
 import { VpnService } from '../core/VpnService';
+import {
+  ACTIVE_SUB_PREF, ACTIVE_SUBS_PREF, belongsToGroup, groupIdsForSubscriptions, inActiveSubs,
+  normalizeActiveSubs, parseActiveSubs, serializeActiveSubs, toggleActiveSub
+} from '../core/SubGroups';
 /* P3①:配置校验闸(K1 纯解析导出,不调 box.New)。配置生成复用既有 buildCoreConfig,
    与扩展进程(VpnExtAbility.ets:650)同一套参数;扩展进程独有的 log/geo 由这里按 UI 侧可得的路径补齐 */
 import { CoreManager } from '../core/CoreManager';
@@ -58,8 +65,7 @@ import { TrafficBaseline, parseBaseline, baselineToJson, buildBaseline,
 import { SubInfo, listSubs, upsertSub, needAutoUpdate, updateSubscription, setAppContext, subNameOf, markSubSuccess, markSubFailure,
   removeSub,
   SubUpdateResult, subUpdateHasChanges, needDirectUpdateConfirm } from '../core/Subscriptions';
-import { SubDiffDialog } from './SubUpdateFeedback';
-import { fetchTrafficTotals, formatSpeed, formatBytes } from '../utils/TrafficStats';
+import { fetchTrafficTotals, formatSpeed } from '../utils/TrafficStats';
 import { fetchCurrentProxyDelay } from '../utils/ClashApi';
 import { exportProfileLink } from '../utils/LinkExporter';
 import { buildOutboundJson } from '../core/ConfigBuilder';
@@ -110,7 +116,9 @@ const DRAWER_ITEM_SYMBOLS: Array<Resource> = [
   $r('sys.symbol.gearshape'),
   $r('sys.symbol.doc_text'),
   /* 系统(工具+关于合并,2026-10-24 用户指示;沿用原工具图标) */
-  $r('sys.symbol.wand_and_stars')
+  $r('sys.symbol.wand_and_stars'),
+  /* 2026-10-30 用户要求拆出独立「关于」页 */
+  $r('sys.symbol.info_circle')
 ];
 /** 顶栏 ⋮ 的菜单锚点 id(沉浸光感菜单靠它定位,必须在某个真实组件上用 .id() 挂上) */
 const OVERFLOW_MENU_ANCHOR: string = 'nbOverflowAnchor';
@@ -131,7 +139,19 @@ struct Index {
   @State settings: AppSettings = new AppSettings();
   @State subscriptions: Array<SubInfo> = [];
   @State activeConfigUrl: string = '';
+  /** 「首页只看一个订阅」:订阅页选中后写入(空 = 全部订阅混看)。只影响展示,不影响内核配置。 */
+  /** 首页显示哪些订阅(订阅页复选框);空数组 = 全部订阅都显示 */
+  @State activeSubUrls: Array<string> = [];
   @State activeTab: number = 0;          // 0 配置 / 1 分组 / 2 路由 / 3 设置 / 4 日志 / 5 工具 / 6 关于
+  /**
+   * 节点列表首屏渲染条目上限(大列表性能)。
+   *
+   * 这个 List 用的是 ForEach(非 LazyForEach),条目会**全部实例化**,上千节点时会明显拖慢
+   * 首帧与滚动。拿不到可靠测量前不做虚拟化改造(那要同时替换 15+ 处列表刷新点),
+   * 改用「先渲染 120 条 + 底部显示更多」:数据不变、探测/订阅仍按全量跑,
+   * 只是渲染量分页,点击后再追加。
+   */
+  @State nodeRenderLimit: number = 120;
   @State uiUptime: number = 0;
   @State nodeSearch: string = '';
   @State searchVisible: boolean = false;
@@ -144,6 +164,8 @@ struct Index {
   /** 智感握姿:当前交互手所在的一侧('right' | 'left',由 EntryAbility 里的 handedness 追踪器写入)。
    *  拿不到识别结果时恒为 'right' ⇒ 布局与改造前逐字一致。 */
   @StorageLink(HAND_SIDE_KEY) @Watch('onHandSideChanged') handSide: string = 'right';
+  /** 长按图标快捷方式 / 桌面卡片 router 动作的目标(EntryAbility.handleAction 写入) */
+  @StorageLink('pendingShortcut') @Watch('onShortcutChanged') pendingShortcut: string = '';
   /** 当前被按下的元素 key(抽屉项 / 节点卡 / 模式按钮 / FAB):"按下才亮"靠它逐颗判断 */
   @State litKey: string = '';
   /** 配置页列表的滚动器(列表滚动位置复位 / 分组切换后回到顶部都靠它) */
@@ -222,11 +244,15 @@ struct Index {
   private applyGeneration: number = 0;
   private applySessionId: string = '';
   private applyWatchdogTimer: number = -1;
+  /** 本次 apply 发起时刻(用于「applying 自愈」:回执丢失时不能永远挂横条) */
+  private applyStartedAtMs: number = 0;
   private modeApplyTimer: number = -1;
   /** 扩展回执(AppStorage 键由 EntryAbility.subscribeApplyResults 写入;@Watch 驱动,不轮询) */
   @StorageLink('vpnApplyOperationId') @Watch('onApplyResultWatch') applyResultOperationId: string = '';
   @State appVersion: string = '';
   @StorageLink('uiBreakpoint') uiBreakpoint: string = 'compact';
+  /* 主题强调色(Theme.publishAccent 写入):鸿蒙资源色不能运行时替换,只覆盖「强调件」 */
+  @StorageProp('themeAccentHex') accentHex: string = '';
   @StorageLink('vpnRunning') @Watch('onRunningChange') isRunning: boolean = false;
   @StorageLink('vpnStatus') @Watch('onVpnStatusWatch') statusText: string = 'disconnected';
   @StorageLink('vpnUpSpeed') upSpeed: number = 0;
@@ -271,6 +297,37 @@ struct Index {
     if (this.isRunning) {
       this.startSpeedPoller();
       this.startUptimeTimer();
+    }
+    /* 冷启动路径:@Watch 只在**变化**时触发,而快捷方式的 want 在 Index 挂载前就
+       写进 AppStorage 了,这里主动消费一次(热启动靠 @Watch)。 */
+    this.onShortcutChanged();
+  }
+
+  /**
+   * 快捷方式/卡片入口消费(shortcuts_config.json → EntryAbility → AppStorage)。
+   * 目标页只做跳转,不改任何业务状态;消费后立刻清空,避免重进首页时重复跳。
+   */
+  private onShortcutChanged(): void {
+    const target: string = this.pendingShortcut;
+    if (target.length === 0) {
+      return;
+    }
+    this.pendingShortcut = '';
+    AppStorage.setOrCreate<string>('pendingShortcut', '');
+    if (target === 'nodes') {
+      this.switchTab(0);
+      return;
+    }
+    if (target === 'logs') {
+      this.switchTab(4);
+      return;
+    }
+    const url: string = target === 'traffic' ? 'pages/TrafficPage'
+      : (target === 'diagnostics' ? 'pages/DiagnosticsPage' : '');
+    if (url.length > 0) {
+      router.pushUrl({ url: url }).catch((e: Error) => {
+        LogStore.addLog(`[app] 快捷方式跳转失败: ${e.message}`);
+      });
     }
   }
 
@@ -331,6 +388,12 @@ struct Index {
     }
     this.context.moveAbilityToBackground();
     return true;
+  }
+
+  /** 列表渲染用的分页切片(只影响绘制;测速/操作仍用 visibleNodeList 全量) */
+  private pagedNodeList(): Array<Profile> {
+    const all = this.visibleNodeList();
+    return all.length > this.nodeRenderLimit ? all.slice(0, this.nodeRenderLimit) : all;
   }
 
   /** 当前页面 id(§3.2:内部仍是旧 activeTab 0..6 数值,id 由契约映射,显示名/动作按 id 取) */
@@ -531,6 +594,17 @@ struct Index {
       if (this.activeConfigUrl.length > 0 && !this.subscriptions.some((sub: SubInfo) => sub.url === this.activeConfigUrl)) {
         this.activeConfigUrl = '';
         await writePrefString('active_config_url', '');
+      }
+      /* 多选键优先;只有"从没设置过"(空串)才回落旧的单选键,迁移后立刻落到新键 */
+      const multiRaw: string = await readPrefString(ACTIVE_SUBS_PREF, '');
+      let selected: Array<string> = parseActiveSubs(multiRaw.length > 0
+        ? multiRaw
+        : await readPrefString(ACTIVE_SUB_PREF, ''));
+      selected = normalizeActiveSubs(selected, this.subscriptions);
+      this.activeSubUrls = selected;
+      const encoded: string = serializeActiveSubs(selected);
+      if (multiRaw !== encoded) {
+        await writePrefString(ACTIVE_SUBS_PREF, encoded);
       }
       const savedNodeId = await readPrefString('selected_profile_id', '');
       if (savedNodeId.length > 0 && this.profiles.some((profile: Profile) => profile.id === savedNodeId)) {
@@ -935,6 +1009,17 @@ struct Index {
       if (!this.testCancelled && !reportedFallback) {
         promptAction.showToast({ message: $r('app.string.speed_test_complete') });
       }
+      /* 后台完成才发通知(前台已有 toast;ForegroundFlag 由 EntryAbility 维护),
+         对齐 OwnBox ConnectionTestNotification:用户切走后仍能知道测速跑完了 */
+      let okCount = 0;
+      completed.forEach((r: TestResult) => {
+        if (r.status === 1) {
+          okCount++;
+        }
+      });
+      void notifyProbeDone(this.context, okCount, snapshot.length, this.testCancelled);
+      /* 消息中心(对齐 OwnBox MessageStore):前台 toast 一闪而过,切走/回看时还能翻到结果 */
+      this.messageSinkProbe(okCount, snapshot.length, this.testCancelled);
     } catch (e) {
       const message = e instanceof Error ? e.message : `${e}`;
       LogStore.addLog(`[test] 测速失败: ${message}`);
@@ -1081,9 +1166,6 @@ struct Index {
     this.profiles = this.profiles.slice();
   }
 
-  /** Diff 对话框控制器(每次按当次结果新建,见 showSubUpdateFeedback) */
-  private subDiffDialog: CustomDialogController | undefined = undefined;
-
   /** 订阅更新结果反馈(对齐 Android GroupInterfaceAdapter.kt:29-82):
    *  - 无变化 → toast「%s:没有变化」(group_no_difference);
    *  - 有变化 → toast「%s:已更新 %d 个代理」(group_updated)+ 1 秒后弹「差异(%s)」对话框
@@ -1095,14 +1177,7 @@ struct Index {
       return;
     }
     promptAction.showToast({ message: $r('app.string.group_updated', name, res.changed) });
-    // Android :70-78 先 snackbar、delay(1000) 再弹 Diff 对话框,这里同序。
-    setTimeout(() => {
-      this.subDiffDialog = new CustomDialogController({
-        builder: SubDiffDialog({ groupName: name, res: res }),
-        autoCancel: true
-      });
-      this.subDiffDialog.open();
-    }, 1000);
+    /* 2026-10-26 明细对话框已下线:变化数量用这一条 toast 概述,逐项明细看消息中心。 */
   }
 
   /** 更新当前选中节点所属的订阅(对齐安卓 action_update_subscription) */
@@ -1236,6 +1311,10 @@ struct Index {
       this.batchOutcomes = outcomes;
       this.batchFailedMessages = summary.failedMessages;
       this.batchVisible = true;
+      /* 批量更新结果落一条消息(对齐 OwnBox 订阅更新通知) */
+      void addMessage('subscription', this.locText($r('app.string.messages_sub_updated')),
+        `${this.locText($r('app.string.messages_added'))} ${summary.added} / `
+          + `${this.locText($r('app.string.messages_failed'))} ${summary.failed}`);
       if (summary.failed > 0) {
         LogStore.addLog(`[app] 更新全部订阅(顶栏):${summary.failed} 个失败`);
       }
@@ -1336,10 +1415,16 @@ struct Index {
   }
 
   profilesInGroup(groupId: string): Array<Profile> {
-    return this.sortedProfiles().filter((p: Profile) => p.groupId === groupId);
+    return this.sortedProfiles().filter((p: Profile) =>
+      belongsToGroup(p, groupId) && inActiveSubs(p.subUrl, this.activeSubUrls));
   }
 
   sortedGroupIds(): Array<string> {
+    /* 「只看一个订阅」:分组条只留这个订阅自带的策略组(含未分组),
+       分组归属按 ProfileGroup.subUrl → 成员节点 subUrl 反推(见 core/SubGroups) */
+    if (this.activeSubUrls.length > 0) {
+      return groupIdsForSubscriptions(this.groups, this.profiles, this.activeSubUrls);
+    }
     const ids: Array<string> = [];
     const sortedGroups = this.groups.slice().sort((a: ProfileGroup, b: ProfileGroup) => a.sortOrder - b.sortOrder);
     for (const group of sortedGroups) {
@@ -1347,7 +1432,8 @@ struct Index {
         ids.push(group.id);
       }
     }
-    if (this.profiles.some((profile: Profile) => profile.groupId.length === 0)) {
+    if (this.profiles.some((profile: Profile) => profile.groupId.length === 0
+      && (profile.subGroupIds ?? []).length === 0)) {
       ids.push('');
     }
     return ids;
@@ -1360,7 +1446,7 @@ struct Index {
       return profiles;
     }
     return profiles.filter((profile: Profile) =>
-      profile.name.toLowerCase().includes(query)
+      (profile.name.toLowerCase().includes(query) || profile.alias.toLowerCase().includes(query))
       || profile.server.toLowerCase().includes(query));
   }
 
@@ -1833,7 +1919,7 @@ struct Index {
          预校验只消费已缓存规则集,不会为了校验去下载;内核日志路径(logPath)由扩展进程生成,传 '' */
       const prepared = ResourceResolver.snapshot(remoteRuleSets, this.settings.mode === 'rule', this.context);
       json = buildCoreConfig(node, this.settings, '', '', prepared.geositePath, prepared.geoIpPath,
-        customRules, prepared.ruleSets, '', this.profiles, this.groups);
+        customRules, prepared.ruleSets, '', this.profiles, this.groups, '');
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${e}`;
       this.lastConfigCheckErr = msg;
@@ -2092,8 +2178,10 @@ struct Index {
     cmd.revision = rev;
     cmd.sessionId = this.applySessionId;
     publishVpnCommand(cmd);
-    this.applyBannerRev = this.applyBannerRev + 1;
+    /* 先武装看门狗再触发重渲染:横幅判断里要看 applyWatchdogTimer,顺序反了会把刚发起的 apply 当陈旧态 */
+    this.applyStartedAtMs = Date.now();
     this.startApplyWatchdog(opId);
+    this.applyBannerRev = this.applyBannerRev + 1;
     LogStore.addLog(`[apply] ${source}: 已请求应用 r${rev}(op=${opId},gen=${this.applyGeneration})`);
   }
 
@@ -2172,7 +2260,22 @@ struct Index {
     if (this.applyBannerRev < 0) {
       return new ApplyState();
     }
-    return this.applyCoordinator.getSnapshot();
+    const st = this.applyCoordinator.getSnapshot();
+    /* 显示层自愈(2026-10-30 真机:分应用页顶部横条一直挂「正在应用配置修改…」):
+       applying 只有在「VPN 运行中 + 本会话看门狗在计时 + 未超 75s」时才成立。
+       扩展重启/命令丢失/回执被丢都会让 phase 永远停在 applying,
+       这里把它降为 failed(只改展示副本,不动协调器),用户能看到可操作的失败态。 */
+    if (st.phase === 'applying') {
+      const stale: boolean = !this.isRunning
+        || this.applyWatchdogTimer < 0
+        || this.applyStartedAtMs <= 0
+        || Date.now() - this.applyStartedAtMs > 75000;
+      if (stale) {
+        st.phase = 'failed';
+        st.lastError = st.lastError.length > 0 ? st.lastError : '应用回执丢失(请重新连接或再次点应用)';
+      }
+    }
+    return st;
   }
 
   /** §7.1 分流页首次默认「域名·IP 规则」:NavMemory 的旧默认值是 perApp,这里折算一次 */
@@ -2197,11 +2300,15 @@ struct Index {
     }
     const st = this.applyStateSnapshot();
     /* VPN 未运行时不挂横幅:应用/稍后都是死按钮(下次连接本来就会用最新设置),
-       2026-10-24 真机用户反馈「点应用没反应、提示一直在」 */
+       2026-10-24 真机用户反馈「点应用没反应、提示一直在」
+       2026-10-30 追加:applying 分支也必须要求运行中,否则回执丢失就一直挂着。 */
+    if (!this.isRunning) {
+      return false;
+    }
     if (st.phase === 'applying') {
       return true;
     }
-    return st.pendingChanges > 0 && this.isRunning;
+    return st.pendingChanges > 0;
   }
 
   private applyBannerTitle(): string {
@@ -2248,14 +2355,14 @@ struct Index {
         .fill(this.applyBannerAccent())
       Column({ space: 2 }) {
         Text(this.applyBannerTitle())
-          .fontSize(13)
+          .fontSize(14)
           .fontWeight(700)
           .fontColor($r('app.color.text_1'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
         Text(this.applyBannerSubtitle())
           .fontSize(11)
-          .fontColor($r('app.color.text_3'))
+          .fontColor($r('app.color.text_2'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
@@ -2268,16 +2375,23 @@ struct Index {
           .color($r('app.color.primary'))
       } else {
         Button('应用')
-          .height(30)
+          .height(34)
           .fontSize(12)
           .padding({ left: 12, right: 12 })
-          .backgroundColor($r('app.color.primary'))
-          .fontColor($r('app.color.surface'))
+          .backgroundColor(this.litKey === 'pb:Index:1' ? $r('app.color.primary') : $r('app.color.surface'))
+          .fontColor(this.litKey === 'pb:Index:1' ? $r('app.color.surface') : $r('app.color.text_1'))
+          .onTouch((event: TouchEvent) => {
+            if (event.type === TouchType.Down) {
+              this.litKey = 'pb:Index:1';
+            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+              this.litKey = '';
+            }
+          })
           .onClick(() => {
             void this.applyLatestSavedRevision('banner');
           })
         Button('稍后')
-          .height(30)
+          .height(34)
           .fontSize(12)
           .padding({ left: 10, right: 10 })
           .backgroundColor(Color.Transparent)
@@ -2326,11 +2440,7 @@ struct Index {
     void this.refreshProbeResults();
   }
 
-  private openConnectionDetails(): void {
-    router.pushUrl({ url: 'pages/ConnectionsPage' });
-  }
-
-  /** 失败节点的内核原文(§6.6:可查看原文,不出现 [object Object]) */
+// 连接列表页已下线  /** 失败节点的内核原文(§6.6:可查看原文,不出现 [object Object]) */
   private showProbeError(r: ProbeResult): void {
     const detail = r.errorDetail.trim();
     if (detail.length === 0) {
@@ -2695,10 +2805,36 @@ struct Index {
         return;
       }
       const uri = uris[0];
-      const fileName = decodeURIComponent(uri.split('/').pop() ?? '');
+      let fileName = '';
+      try {
+        fileName = decodeURIComponent((uri.split('/').pop() ?? '').split('?')[0]);
+      } catch (e) {
+        fileName = '';
+      }
+      if (fileName.length === 0) {
+        fileName = 'import.json';
+      }
       // 复制到缓存后用路径读取(picker URI 与 readTextSync 路径语义更稳)
       const cachePath = `${this.context.cacheDir}/import_${Date.now()}_${fileName}`;
-      fs.copyFileSync(uri, cachePath);
+      /* 2026-10-30 用户反馈「文件导入失败: No such file or directory」:
+         DocumentViewPicker 返回的是 file://docs/... 这类 URI,部分机型上
+         fs.copyFileSync(uri, path) 直接按路径解析会 ENOENT。改用 fd 复制
+         (openSync 走 URI 解析),失败再回退到原来的直接 copy。 */
+      let copied = false;
+      try {
+        fs.copyFileSync(uri, cachePath);
+        copied = true;
+      } catch (e) {
+        copied = false;
+      }
+      if (!copied) {
+        const srcFile = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+        try {
+          fs.copyFileSync(srcFile.fd, cachePath);
+        } finally {
+          fs.closeSync(srcFile);
+        }
+      }
       if (fileName.toLowerCase().endsWith('.zip')) {
         await this.importWireGuardZip(cachePath);
         try {
@@ -2905,7 +3041,21 @@ struct Index {
         }
       } else {
         // 分享链接:解析后弹确认(对齐安卓 profile_import_message)
-        parsed = parseShareText(text);
+        /* 2026-10-30 用户反馈「导入报错 / 不认 json 文件」:
+           本地文件/粘贴的 sing-box 完整配置含有大量 https://(rule_set/DoH/http 出站),
+           旧路径只会走 parseShareText 的链接分支 → 0 节点。这里先按结构化 JSON 认。 */
+        if (looksLikeSingBoxJson(text)) {
+          const r: ClashParseResult = parseSingBoxConfig(text);
+          parsed = r.profiles;
+          if (parsed.length === 0) {
+            promptAction.showToast({
+              message: $r('app.string.clash_skipped_count', r.skipped)
+            });
+            return;
+          }
+        } else {
+          parsed = parseShareText(text);
+        }
         if (parsed.length > 0) {
           const previewName = parsed.length === 1 ? parsed[0].name : '';
           const confirmed = await this.confirmImport(false, previewName);
@@ -3293,13 +3443,6 @@ struct Index {
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
         }
-        if (this.settings.profileTrafficStatistics && (p.rx > 0 || p.tx > 0)) {
-          // 历史累计流量(对齐安卓节点卡流量显示):↓接收 ↑发送
-          Text(`↓${formatBytes(p.rx)} ↑${formatBytes(p.tx)}`)
-            .fontSize(10)
-            .fontColor($r('app.color.text_3'))
-            .maxLines(1)
-        }
       }
       .width('100%')
 
@@ -3449,132 +3592,6 @@ struct Index {
     promptAction.showToast({ message: '该引导动作将在后续版本接入' });
   }
 
-  /** 连接状态卡(§4.1/§4.2):会话区与连通性区解耦;主按钮按 primaryAction 分派,副动作固定两项 */
-  @Builder
-  private statusCardBuilder() {
-    Column({ space: 8 }) {
-      Row({ space: 8 }) {
-        Circle()
-          .width(8)
-          .height(8)
-          .fill(this.sessionDotColor())
-        Text(this.sessionTitleText())
-          .fontSize(15).fontWeight(700).fontColor($r('app.color.text_1'))
-          .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
-        if (this.runningProfileName().length > 0) {
-          Text(this.runningProfileName())
-            .fontSize(12).fontColor($r('app.color.text_3'))
-            .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-        }
-      }
-      .width('100%')
-      .alignItems(VerticalAlign.Center)
-
-      Row({ space: 6 }) {
-        Text(this.connectivityText())
-          .fontSize(12).fontColor(this.connectivityColor())
-          .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
-        if (this.statusCard().connectivity.ageText.length > 0
-          && this.statusCard().connectivity.titleToken === 'stale') {
-          Text(this.statusCard().connectivity.ageText)
-            .fontSize(11).fontColor($r('app.color.text_3'))
-        }
-      }
-      .width('100%')
-      .alignItems(VerticalAlign.Center)
-
-      if (this.statusCard().session.detail.length > 0) {
-        /* 连接失败的内核原文(§4.3:如实展示,可行动) */
-        Text(this.statusCard().session.detail)
-          .fontSize(11).fontColor($r('app.color.error'))
-          .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
-          .width('100%')
-      }
-
-      /* 2026-10-24 真机用户反馈:状态卡不再放「连接/重试」主按钮 —— 启动/断开统一走大电源键;
-         失败重试与错误原因入口保留(检查连接/详情) */
-      Row({ space: 8 }) {
-        Button('检查连接')
-          .height(34)
-          .fontSize(12)
-          .layoutWeight(1)
-          .fontColor($r('app.color.text_2'))
-          .backgroundColor(Color.Transparent)
-          .border({ width: 1, color: $r('app.color.hairline') })
-          .onClick(() => {
-            void this.checkConnectivity();
-          })
-        Button('详情')
-          .height(34)
-          .fontSize(12)
-          .layoutWeight(1)
-          .fontColor($r('app.color.text_2'))
-          .backgroundColor(Color.Transparent)
-          .border({ width: 1, color: $r('app.color.hairline') })
-          .onClick(() => {
-            this.openConnectionDetails();
-          })
-      }
-      .width('100%')
-    }
-    .alignItems(HorizontalAlign.Start)
-    .width('100%')
-    .padding({ left: 14, right: 14, top: 12, bottom: 12 })
-    .backgroundColor($r('app.color.surface'))
-    .borderRadius(14)
-    .border({ width: 1, color: $r('app.color.hairline') })
-  }
-
-  /** 节点工具条(§4.1):收藏 / 仅看可用 / 排序;排序口径在 model/HomeView.sortNodes,页面不再自算 */
-  @Builder
-  private nodeToolbar() {
-    Row({ space: 8 }) {
-      Row({ space: 4 }) {
-        SymbolGlyph($r('sys.symbol.star_fill'))
-          .fontSize(12)
-          .fontColor([this.navMemory.isOnlyFavorites() ? $r('app.color.warning') : $r('app.color.text_3')])
-        Text('收藏')
-          .fontSize(12)
-          .fontColor(this.navMemory.isOnlyFavorites() ? $r('app.color.primary') : $r('app.color.text_2'))
-      }
-      .height(30)
-      .padding({ left: 10, right: 10 })
-      .borderRadius(15)
-      .backgroundColor(this.navMemory.isOnlyFavorites()
-        ? $r('app.color.surface_selected') : $r('app.color.surface'))
-      .onClick(() => {
-        this.toggleOnlyFavorites();
-      })
-      Row({ space: 4 }) {
-        Text('仅看可用')
-          .fontSize(12)
-          .fontColor(this.navMemory.isOnlyUsable() ? $r('app.color.primary') : $r('app.color.text_2'))
-      }
-      .height(30)
-      .padding({ left: 10, right: 10 })
-      .borderRadius(15)
-      .backgroundColor(this.navMemory.isOnlyUsable()
-        ? $r('app.color.surface_selected') : $r('app.color.surface'))
-      .onClick(() => {
-        this.toggleOnlyUsable();
-      })
-      Text(this.sortModeLabel())
-        .fontSize(12)
-        .fontColor($r('app.color.text_2'))
-        .height(30)
-        .padding({ left: 10, right: 10 })
-        .borderRadius(15)
-        .backgroundColor($r('app.color.surface'))
-        .textAlign(TextAlign.Center)
-        .onClick(() => {
-          this.cycleSortMode();
-        })
-    }
-    .width('100%')
-    .height(30)
-    .alignItems(VerticalAlign.Center)
-  }
-
   @Builder
   private configFragment() {
     Column() {
@@ -3593,8 +3610,15 @@ struct Index {
             .textAlign(TextAlign.Center)
           Button(this.emptyPrimaryText())
             .height(38)
-            .backgroundColor($r('app.color.primary'))
-            .fontColor($r('app.color.surface'))
+            .backgroundColor(this.litKey === 'pb:Index:2' ? $r('app.color.primary') : $r('app.color.surface'))
+            .fontColor(this.litKey === 'pb:Index:2' ? $r('app.color.surface') : $r('app.color.text_1'))
+            .onTouch((event: TouchEvent) => {
+              if (event.type === TouchType.Down) {
+                this.litKey = 'pb:Index:2';
+              } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                this.litKey = '';
+              }
+            })
             .onClick(() => this.onEmptyPrimary())
           Row({ space: 10 }) {
             if (this.emptyView().secondaryActions.includes('import_file')) {
@@ -3623,7 +3647,9 @@ struct Index {
       } else {
         /* 2026-10-24 真机用户反馈:不要侧边节点详情栏(≥840 双栏已撤);
            列表+详情双栏与单列详情视图一并移除,节点信息回归列表行 + 编辑二级页 */
-        this.nodeListPane()
+        if (this.sectionVisible('nodes')) {
+          this.nodeListPane()
+        }
       }
     }
     .width('100%')
@@ -3646,19 +3672,25 @@ struct Index {
               .height(Math.max(0, this.contentTopInset - 8))
           }
           .selectable(false)
-          ListItem() {
-            this.statusCardBuilder()
-          }
-          .selectable(false)
-          ListItem() {
-            this.nodeToolbar()
-          }
-          .selectable(false)
-          ForEach(this.visibleNodeList(), (profile: Profile) => {
+          ForEach(this.pagedNodeList(), (profile: Profile) => {
             ListItem() {
               this.nodeCard(profile)
             }
           }, (profile: Profile) => profile.id)
+          if (this.visibleNodeList().length > this.pagedNodeList().length) {
+            ListItem() {
+              Row() {
+                Text($r('app.string.nodes_show_more', this.pagedNodeList().length,
+                  this.visibleNodeList().length))
+                  .fontSize(12).fontColor($r('app.color.primary'))
+              }
+              .width('100%').height(40)
+              .justifyContent(FlexAlign.Center)
+              .backgroundColor($r('app.color.surface'))
+              .borderRadius(12)
+              .onClick(() => { this.nodeRenderLimit += 120; })
+            }
+          }
         }
         .edgeEffect(EdgeEffect.Spring)
         .layoutWeight(1)
@@ -3671,6 +3703,27 @@ struct Index {
         .id('nbListProbe')
   }
 
+
+
+  /**
+   * 「首页只看这个订阅」开关(订阅页按钮)。
+   * 只改展示偏好:写 Preferences → 重算分组条/节点列表,不触发内核重建。
+   */
+  /** 订阅页复选框:切换某个订阅是否显示在首页(空集合 = 全部显示) */
+  private async toggleSubScope(url: string): Promise<void> {
+    const next: Array<string> = toggleActiveSub(this.activeSubUrls, url);
+    this.activeSubUrls = next;
+    this.selectedGroupId = '';
+    this.ensureSelectedGroup();
+    this.bumpFilters();
+    await writePrefString(ACTIVE_SUBS_PREF, serializeActiveSubs(next));
+    promptAction.showToast({
+      message: next.length === 0
+        ? $r('app.string.home_scope_all')
+        : $r('app.string.home_scope_count', next.length),
+      duration: 1500
+    });
+  }
 
 
   /** 分组分类条的显示顺序(订阅分组在前、未分组殿后),与原列表口径一致 */
@@ -3832,7 +3885,9 @@ struct Index {
     }
     .width(64)
     .height(64)
-    .backgroundColor(this.isRunning ? $r('app.color.fab_running') : $r('app.color.fab_bg'))
+    .backgroundColor(this.isRunning
+      ? $r('app.color.fab_running')
+      : (this.accentHex.length > 0 ? this.accentHex : $r('app.color.fab_bg')))
     .shadow({ radius: 14, color: 'rgba(0,0,0,0.25)', offsetY: 4 })
     .visualEffect(pressLightEffect(this.litKey === 'fab', true))
     .scale({ x: this.litKey === 'fab' ? 0.93 : 1.0, y: this.litKey === 'fab' ? 0.93 : 1.0 })
@@ -3874,6 +3929,30 @@ struct Index {
 
   /** 顶栏主标题:跟随当前页面(§3.2 只改显示名:配置→节点、分组→订阅、路由→分流;内部标识不动)。
    *  文案取 pageDef.titleFallback(资源键 app_page_* 由 lead 统一补,缺键时不会白屏)。 */
+  /** 首页区块是否可见(设置页「首页区块编排」写入 homeHiddenSections) */
+  /** 资源键 → 本地化字符串(消息中心存纯文本,不能存 Resource) */
+  private messageSinkProbe(okCount: number, total: number, cancelled: boolean): void {
+    const title = this.locText($r('app.string.probe_notify_title'));
+    const body = cancelled
+      ? this.locText($r('app.string.probe_notify_cancelled'))
+      : this.locText($r('app.string.probe_notify_body'));
+    void addMessage('probe', title, body);
+  }
+
+  private locText(res: Resource): string {
+    try {
+      return this.context.resourceManager.getStringSync(res.id);
+    } catch (e) {
+      return '';
+    }
+  }
+
+  private sectionVisible(id: string): boolean {
+    /* 2026-10-26 首页区块编排已下线:区块恒定全显示(设置项不再暴露)。
+       旧设置里的 homeHiddenSections 从此不生效,但仍随备份往返以兼容。 */
+    return true;
+  }
+
   private sectionTitle(): ResourceStr {
     return pageByLegacyTab(this.activeTab).titleFallback;
   }
@@ -4159,10 +4238,9 @@ struct Index {
 
   /** 添加/导入:节点页=新建/导入入口,订阅页=导入订阅 */
   private onAddAction(): void {
-    if (this.currentPageId() === PAGE_SUBSCRIPTIONS) {
-      this.openImportDialog();
-      return;
-    }
+    /* 2026-10-30 用户两次反馈「订阅页添加订阅只有 URL 一种方式」:
+       旧实现在订阅页直接走 openImportDialog(只收 URL),与首页的多方式入口不一致。
+       统一打开 AddEntryDialog(导入订阅/扫码/剪贴板/从文件/新建节点)。 */
     this.addEntryDialog.open();
   }
 
@@ -4263,7 +4341,6 @@ struct Index {
     };
     /* §3.3:节点页顶栏只留 搜索/检测/⋮ ⇒ 原来顶栏的「+」和「连接」图标收进这里 */
     add($r('app.string.add_entry'), 'add', false);
-    add($r('app.string.topbar_connections'), 'connections', false);
     add($r('app.string.update_current_subscription'), 'update_sub', false);
     add($r('app.string.clear_traffic_statistics'), 'clear_traffic', false);
     add($r('app.string.dedup_action'), 'dedup', false);
@@ -4361,8 +4438,6 @@ struct Index {
       const value: string = items[index].value;
       if (value === 'add') {
         this.addEntryDialog.open();
-      } else if (value === 'connections') {
-        router.pushUrl({ url: 'pages/ConnectionsPage' });
       } else if (value === 'sub_update_all') {
         void this.updateAllSubscriptions();
       } else if (value === 'sub_add') {
@@ -4436,6 +4511,10 @@ struct Index {
         /* P4/W16-C:排序/选中由壳层记忆(⋮ 菜单驱动;行内点击仍由页面自己回调上抛) */
         sortMode: this.subscriptionSortMode,
         selectedUrl: this.selectedSubUrl,
+        homeUrls: this.activeSubUrls,
+        onToggleHome: (url: string) => {
+          void this.toggleSubScope(url);
+        },
         onSort: (mode: string) => {
           this.subscriptionSortMode = mode;
         },
@@ -4444,7 +4523,9 @@ struct Index {
           this.navMemory.setSelectedSubscriptionId(url);
         },
         onAdd: () => {
-          this.openImportDialog();
+          /* 2026-10-30 用户反馈:订阅页「添加」只给 URL 一种方式,主页却有五种。
+             统一改走 AddEntryDialog(导入订阅/扫码/剪贴板/从文件/新建节点)。 */
+          this.addEntryDialog.open();
         },
         onImport: () => {
           this.importFromFile();
@@ -4516,9 +4597,15 @@ struct Index {
           this.openDrawer();
         }
       })
+    } else if (this.activeTab === 5) {
+      /* 2026-10-30 用户要求:工具与关于拆回两个独立页面 */
+      ToolsPage({
+        onOpenDrawer: () => {
+          this.openDrawer();
+        }
+      })
     } else {
-      /* 2026-10-24 用户指示:工具+关于合并为「系统」页(legacy tab 5/6 都到这) */
-      SystemPage({
+      AboutPage({
         onOpenDrawer: () => {
           this.openDrawer();
         }
@@ -4541,7 +4628,7 @@ struct Index {
           this.searchInputRow()
         }
         this.modeSwitchRow()
-        if (!this.searchVisible) {
+        if (!this.searchVisible && this.sectionVisible('groups')) {
           this.groupTabBar()
         }
       }
@@ -4665,7 +4752,8 @@ struct Index {
              其它分区页用 titleOnlyInset(仅标题栏高)让位——tab0 的底栏(模式/分组条)
              只在节点页渲染,拿整栏 contentTopInset 垫会多出一条空带 */
           .padding({ top: this.activeTab === 0 ? 0 : this.titleOnlyInset })
-          if (this.isRunning && (this.activeTab === 0 || this.settings.showBottomBar)) {
+          if (this.isRunning && this.sectionVisible('bottombar')
+            && (this.activeTab === 0 || this.settings.showBottomBar)) {
             this.statsBar()
           }
         }
@@ -4691,7 +4779,8 @@ struct Index {
 
       /* §4.5:无节点绝不显示必然失败的连接按钮(空态里有「导入订阅」等可执行引导);
          隐藏逻辑放在 fabLayer() 内部,保持 StatsBar/FAB 的既有条件不变 */
-      if (this.activeTab === 0 || this.settings.showBottomBar) {
+      if (this.sectionVisible('bottombar')
+        && (this.activeTab === 0 || this.settings.showBottomBar)) {
         this.fabLayer()
       }
 
@@ -4709,6 +4798,7 @@ struct Index {
 /** 分享弹窗:展示二维码(对齐安卓分享界面)+ URI 文本与复制降级入口。 */
 @CustomDialog
 struct ShareTextDialog {
+  @State litKey: string = '';
   controller?: CustomDialogController;
   @Link text: string;
   @Link qrPixelMap: image.PixelMap | null;
@@ -4746,7 +4836,14 @@ struct ShareTextDialog {
           })
         Button($r('app.string.copy_share_link'))
           .layoutWeight(1)
-          .backgroundColor($r('app.color.primary'))
+          .backgroundColor(this.litKey === 'pb:Index:3' ? $r('app.color.primary') : $r('app.color.surface'))
+          .onTouch((event: TouchEvent) => {
+            if (event.type === TouchType.Down) {
+              this.litKey = 'pb:Index:3';
+            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+              this.litKey = '';
+            }
+          })
           .onClick(() => this.onCopy(this.text))
       }
       .width('100%')
@@ -4759,6 +4856,7 @@ struct ShareTextDialog {
 /** 导入弹窗:手动粘贴订阅链接 / 节点链接 / base64 订阅内容 */
 @CustomDialog
 struct ImportDialog {
+  @State litKey: string = '';
   controller?: CustomDialogController;
   @Link text: string;
   @Link name: string;
@@ -4803,7 +4901,14 @@ struct ImportDialog {
           .fontColor($r('app.color.text_primary'))
           .onClick(() => this.onPickClipboard())
         Button($r('app.string.import_action'))
-          .backgroundColor($r('app.color.primary'))
+          .backgroundColor(this.litKey === 'pb:Index:4' ? $r('app.color.primary') : $r('app.color.surface'))
+          .onTouch((event: TouchEvent) => {
+            if (event.type === TouchType.Down) {
+              this.litKey = 'pb:Index:4';
+            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+              this.litKey = '';
+            }
+          })
           .onClick(() => {
             const t = this.text;
             if (this.controller !== undefined) {
@@ -4822,6 +4927,7 @@ struct ImportDialog {
 /** 统一添加入口弹窗:导入订阅 / 扫码添加 / 剪贴板导入 / 从文件导入 / 新建节点(顺序对齐安卓 add_profile_menu) */
 @CustomDialog
 struct AddEntryDialog {
+  @State litKey: string = '';
   controller?: CustomDialogController;
   onNewProfile: () => void = () => {
   };
@@ -4839,8 +4945,15 @@ struct AddEntryDialog {
       Button($r('app.string.import_link_subscription'))
         .width('100%')
         .height(UiSpec.BTN_HEIGHT)
-        .backgroundColor($r('app.color.primary'))
-        .fontColor($r('app.color.surface'))
+        .backgroundColor(this.litKey === 'pb:Index:5' ? $r('app.color.primary') : $r('app.color.surface'))
+        .fontColor(this.litKey === 'pb:Index:5' ? $r('app.color.surface') : $r('app.color.text_1'))
+        .onTouch((event: TouchEvent) => {
+          if (event.type === TouchType.Down) {
+            this.litKey = 'pb:Index:5';
+          } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+            this.litKey = '';
+          }
+        })
         .onClick(() => {
           if (this.controller !== undefined) {
             this.controller.close();

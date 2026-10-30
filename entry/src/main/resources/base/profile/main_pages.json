@@ -2,8 +2,13 @@
   "src": [
     "pages/Index",
     "pages/ProfileEdit",
-    "pages/ConnectionsPage",
     "pages/SubDetailPage",
-    "pages/RuleEditPage"
+    "pages/RuleEditPage",
+    "pages/DiagnosticsPage",
+    "pages/TrafficPage",
+    "pages/WebUiPage",
+    "pages/LanSharingPage",
+    "pages/ConfigEditPage",
+    "pages/MessagesPage"
   ]
 }

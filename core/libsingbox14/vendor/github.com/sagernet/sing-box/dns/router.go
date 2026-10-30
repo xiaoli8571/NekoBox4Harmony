@@ -129,10 +129,19 @@ func (r *Router) Initialize(rules []option.DNSRule) error {
 	return nil
 }
 
-func (r *Router) Start(stage adapter.StartStage) error {
+func (r *Router) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	monitor := taskmonitor.New(r.logger, C.StartTimeout)
 	switch stage {
 	case adapter.StartStateStart:
+		scope.Add(func() error {
+			r.rulesAccess.Lock()
+			r.closing = true
+			runtimeRules := r.rules
+			r.rules = nil
+			r.rulesAccess.Unlock()
+			closeRules(runtimeRules)
+			return nil
+		})
 		monitor.Start("initialize DNS client")
 		r.client.Start()
 		monitor.Finish()
@@ -160,20 +169,6 @@ func (r *Router) Start(stage adapter.StartStage) error {
 			deprecated.Report(r.ctx, deprecated.OptionLegacyDNSRuleStrategy)
 		}
 	}
-	return nil
-}
-
-func (r *Router) Close() error {
-	r.rulesAccess.Lock()
-	if r.closing {
-		r.rulesAccess.Unlock()
-		return nil
-	}
-	r.closing = true
-	runtimeRules := r.rules
-	r.rules = nil
-	r.rulesAccess.Unlock()
-	closeRules(runtimeRules)
 	return nil
 }
 
@@ -1059,7 +1054,11 @@ func (r *Router) prepareExchange(ctx context.Context, message *mDNS.Msg) (*dnsEx
 	if r.powerManager != nil {
 		recorder := r.powerManager.Recorder()
 		if recorder != nil {
-			recorder.CountDNSQuery()
+			var domain string
+			if len(message.Question) == 1 {
+				domain = message.Question[0].Name
+			}
+			recorder.CountDNSQuery(domain)
 		}
 	}
 	if len(message.Question) != 1 {
@@ -1069,6 +1068,19 @@ func (r *Router) prepareExchange(ctx context.Context, message *mDNS.Msg) (*dnsEx
 				Id:       message.Id,
 				Response: true,
 				Rcode:    mDNS.RcodeFormatError,
+			},
+			Question: message.Question,
+		}, nil
+	}
+	if isResolverDiscoveryQuery(message.Question[0]) {
+		r.logger.DebugContext(ctx, "rejected resolver discovery query ", FormatQuestion(message.Question[0].String()))
+		return nil, &mDNS.Msg{
+			MsgHdr: mDNS.MsgHdr{
+				Id:                 message.Id,
+				Response:           true,
+				RecursionDesired:   message.RecursionDesired,
+				RecursionAvailable: true,
+				Rcode:              mDNS.RcodeSuccess,
 			},
 			Question: message.Question,
 		}, nil
@@ -1335,6 +1347,10 @@ response:
 	return responseAddrs, err
 }
 
+func isResolverDiscoveryQuery(question mDNS.Question) bool {
+	return question.Qtype == mDNS.TypeSVCB && len(question.Name) > 5 && strings.EqualFold(question.Name[:5], "_dns.")
+}
+
 func isAddressQuery(message *mDNS.Msg) bool {
 	for _, question := range message.Question {
 		if question.Qtype == mDNS.TypeA || question.Qtype == mDNS.TypeAAAA || question.Qtype == mDNS.TypeHTTPS {
@@ -1360,6 +1376,7 @@ func (r *Router) ClearCache() {
 	if r.platformInterface != nil {
 		r.platformInterface.ClearDNSCache()
 	}
+	service.FromContext[adapter.NetworkManager](r.ctx).FlushSystemDNSCache()
 	if r.dnsReverseMapping != nil {
 		r.dnsReverseMapping.Purge()
 	}

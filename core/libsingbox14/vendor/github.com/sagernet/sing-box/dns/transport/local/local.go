@@ -2,6 +2,7 @@ package local
 
 import (
 	"context"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
+	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
 	mDNS "github.com/miekg/dns"
@@ -27,6 +29,7 @@ func RegisterTransport(registry *dns.TransportRegistry) {
 var (
 	_ adapter.DNSTransport                    = (*Transport)(nil)
 	_ adapter.DNSTransportWithPreferredDomain = (*Transport)(nil)
+	_ adapter.DNSTransportWithConfiguration   = (*Transport)(nil)
 	_ adapter.DNSTransportWithEnvironment     = (*Transport)(nil)
 )
 
@@ -39,6 +42,7 @@ type Transport struct {
 	preferGo          bool
 	resolved          ResolvedResolver
 	mdnsTransport     adapter.DNSTransport
+	mdnsScope         *adapter.Scope
 	configSource      *systemconfig.Source
 	system            systemResolver
 	serverSet         atomic.Pointer[localServerSet]
@@ -65,13 +69,15 @@ func NewTransport(ctx context.Context, logger log.ContextLogger, tag string, opt
 	}, nil
 }
 
-func (t *Transport) Start(stage adapter.StartStage) error {
+func (t *Transport) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	t.preferredResolver.Start(stage)
 	switch stage {
 	case adapter.StartStateInitialize:
-		if !t.preferGo && isSystemdResolvedManaged() {
+		scope.Add(t.configSource.Close)
+		if !t.preferGo {
 			resolvedResolver, err := NewResolvedResolver(t.ctx, t.logger)
 			if err == nil {
+				scope.Add(resolvedResolver.Close)
 				err = resolvedResolver.Start()
 				if err == nil {
 					t.resolved = resolvedResolver
@@ -81,28 +87,32 @@ func (t *Transport) Start(stage adapter.StartStage) error {
 			}
 		}
 	case adapter.StartStateStart:
+		scope.Add(func() error {
+			t.system.close()
+			return nil
+		})
+		scope.Add(func() error {
+			serverSet := t.serverSet.Swap(nil)
+			if serverSet != nil {
+				return serverSet.serverScope.Close()
+			}
+			return nil
+		})
 		if !C.IsDarwin {
 			t.mdnsTransport = mdns.NewRawTransport(t.TransportAdapter, t.ctx, t.logger)
+			t.mdnsScope = adapter.NewScope(t.ctx, t.logger)
+			scope.Add(t.mdnsScope.Close)
 		}
 		fallthrough
 	default:
 		if t.mdnsTransport != nil {
-			err := t.mdnsTransport.Start(stage)
+			err := t.mdnsTransport.Start(stage, t.mdnsScope)
 			if err != nil {
 				return err
 			}
 		}
 	}
 	return nil
-}
-
-func (t *Transport) Close() error {
-	serverSet := t.serverSet.Swap(nil)
-	if serverSet != nil {
-		serverSet.Close()
-	}
-	t.system.close()
-	return common.Close(t.resolved, t.mdnsTransport, t.configSource)
 }
 
 func (t *Transport) Reset() {
@@ -126,11 +136,26 @@ func (t *Transport) PreferredDomain(domain string) bool {
 	return t.preferredResolver.PreferredDomain(domain)
 }
 
+func (t *Transport) ServerAddresses() []netip.Addr {
+	systemConfig := t.configSource.Configuration()
+	if t.resolved != nil && systemConfig.SystemdResolved {
+		return t.resolved.ServerAddresses()
+	}
+	return common.Map(systemConfig.Servers, func(it M.Socksaddr) netip.Addr {
+		return it.Addr
+	})
+}
+
+func (t *Transport) SearchDomains() []string {
+	return t.configSource.Configuration().Search
+}
+
 func (t *Transport) Environment() []string {
-	if t.resolved != nil {
+	systemConfig := t.configSource.Configuration()
+	if t.resolved != nil && systemConfig.SystemdResolved {
 		return t.resolved.Environment()
 	}
-	return t.configSource.Configuration().Signature()
+	return systemConfig.Signature()
 }
 
 func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
@@ -163,9 +188,10 @@ func (t *Transport) ExchangeAsync(ctx context.Context, message *mDNS.Msg, callba
 		t.mdnsTransport.ExchangeAsync(ctx, message, callback)
 		return
 	}
-	if t.resolved != nil {
+	systemConfig := t.configSource.Configuration()
+	if t.resolved != nil && systemConfig.SystemdResolved {
 		t.resolved.ExchangeAsync(ctx, message, callback)
 		return
 	}
-	t.exchangeAsync(ctx, message, question.Name, callback)
+	t.exchangeAsync(ctx, message, systemConfig, callback)
 }

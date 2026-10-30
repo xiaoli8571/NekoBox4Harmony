@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/badhttp"
 	"github.com/sagernet/sing-box/common/tls"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/buf"
@@ -16,7 +17,6 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	sHTTP "github.com/sagernet/sing/protocol/http"
 )
 
 var _ adapter.V2RayClientTransport = (*Client)(nil)
@@ -40,7 +40,12 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 	if options.Host != "" {
 		host = options.Host
 	} else if tlsConfig != nil && tlsConfig.ServerName() != "" {
-		host = tlsConfig.ServerName()
+		serverName := M.ParseSocksaddrHostPort(tlsConfig.ServerName(), 0)
+		if serverName.IsIPv6() {
+			host = "[" + serverName.AddrString() + "]"
+		} else {
+			host = serverName.AddrString()
+		}
 	} else {
 		host = serverAddr.String()
 	}
@@ -52,7 +57,7 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 	}
 	requestURL.Host = serverAddr.String()
 	requestURL.Path = options.Path
-	err := sHTTP.URLSetPath(&requestURL, options.Path)
+	err := badhttp.URLSetPath(&requestURL, options.Path)
 	if err != nil {
 		return nil, E.Cause(err, "parse path")
 	}
@@ -105,8 +110,9 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 	}
 	if bufReader.Buffered() > 0 {
 		buffer := buf.NewSize(bufReader.Buffered())
-		_, err = buffer.ReadFullFrom(bufReader, buffer.Len())
+		_, err = buffer.ReadFullFrom(bufReader, buffer.FreeLen())
 		if err != nil {
+			buffer.Release()
 			conn.Close()
 			return nil, err
 		}

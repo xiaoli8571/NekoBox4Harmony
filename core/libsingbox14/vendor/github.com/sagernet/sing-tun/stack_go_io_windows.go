@@ -1,0 +1,506 @@
+package tun
+
+import (
+	"os"
+	"sync"
+	"sync/atomic"
+	"time"
+	"unsafe"
+
+	"github.com/sagernet/sing-tun/internal/afd"
+	E "github.com/sagernet/sing/common/exceptions"
+	N "github.com/sagernet/sing/common/network"
+
+	"golang.org/x/sys/windows"
+)
+
+const goEngineTransmits = false
+
+const (
+	goCompletionKeyTun uintptr = iota + 1
+	goCompletionKeyWake
+	goCompletionKeySocket
+)
+
+const goAFDReadEvents = afd.POLL_RECEIVE | afd.POLL_DISCONNECT | afd.POLL_ABORT | afd.POLL_LOCAL_CLOSE | afd.POLL_CONNECT_FAIL
+
+type goWindowsIO struct {
+	stack        *Go
+	tun          *NativeTun
+	iocp         windows.Handle
+	afd          *afd.Device
+	waitPacket   *afd.WaitCompletionPacket
+	waitArmed    bool
+	bridgeArm    windows.Handle
+	bridgeClose  windows.Handle
+	bridgeDone   chan struct{}
+	entries      map[*goAFDEntry]struct{}
+	completions  [goSocketEventBatch + 2]afd.OverlappedEntry
+	receiveSlots goReadSlots
+	// wintun's read-wait event is auto-reset and only set by the driver when it appends to
+	// the ring; WintunReceivePacket neither re-signals nor resets it (wintun api/session.c:
+	// CreateEventW(&SecurityAttributes, FALSE, FALSE, NULL)).
+	ringDrained         bool
+	droppedEngineFrames goDropCounter
+	wakeAccess          sync.RWMutex
+	closing             atomic.Bool
+	droppedDataFrames   goDropCounter
+}
+
+func newGoPlatformQueues(stack *Go) ([]goPlatformIO, error) {
+	return []goPlatformIO{&goWindowsIO{stack: stack}}, nil
+}
+
+func (o *goWindowsIO) start() error {
+	nativeTun, isNative := o.stack.tun.(*NativeTun)
+	if !isNative {
+		return E.New("go: unsupported TUN implementation")
+	}
+	o.tun = nativeTun
+	iocp, err := windows.CreateIoCompletionPort(windows.InvalidHandle, 0, 0, 1)
+	if err != nil {
+		return E.Cause(err, "go: create completion port")
+	}
+	o.iocp = iocp
+	device, err := afd.Open(iocp, "sing-tun")
+	if err != nil {
+		windows.CloseHandle(iocp)
+		return E.Cause(err, "go: open afd device")
+	}
+	o.afd = device
+	if afd.WaitCompletionPacketSupported() {
+		waitPacket, packetErr := afd.NewWaitCompletionPacket()
+		if packetErr != nil {
+			device.Close()
+			windows.CloseHandle(iocp)
+			return E.Cause(packetErr, "go: create wait completion packet")
+		}
+		o.waitPacket = waitPacket
+	} else {
+		armEvent, eventErr := windows.CreateEvent(nil, 0, 0, nil)
+		if eventErr != nil {
+			device.Close()
+			windows.CloseHandle(iocp)
+			return E.Cause(eventErr, "go: create read wait event")
+		}
+		closeEvent, eventErr := windows.CreateEvent(nil, 1, 0, nil)
+		if eventErr != nil {
+			windows.CloseHandle(armEvent)
+			device.Close()
+			windows.CloseHandle(iocp)
+			return E.Cause(eventErr, "go: create read wait close event")
+		}
+		o.bridgeArm = armEvent
+		o.bridgeClose = closeEvent
+		o.bridgeDone = make(chan struct{})
+		go o.bridgeReadWait()
+	}
+	o.entries = make(map[*goAFDEntry]struct{})
+	o.ringDrained = true
+	return nil
+}
+
+func (o *goWindowsIO) bridgeReadWait() {
+	defer close(o.bridgeDone)
+	armHandles := []windows.Handle{o.bridgeArm, o.bridgeClose}
+	readHandles := []windows.Handle{o.tun.readWaitHandle(), o.bridgeClose}
+	for {
+		signaled, err := windows.WaitForMultipleObjects(armHandles, false, windows.INFINITE)
+		if err != nil || signaled != windows.WAIT_OBJECT_0 {
+			return
+		}
+		signaled, err = windows.WaitForMultipleObjects(readHandles, false, windows.INFINITE)
+		if err != nil || signaled != windows.WAIT_OBJECT_0 {
+			return
+		}
+		windows.PostQueuedCompletionStatus(o.iocp, 0, goCompletionKeyTun, nil)
+	}
+}
+
+func (o *goWindowsIO) armReadWait() (bool, error) {
+	if o.waitArmed {
+		return false, nil
+	}
+	o.waitArmed = true
+	if o.waitPacket == nil {
+		windows.SetEvent(o.bridgeArm)
+		return false, nil
+	}
+	alreadySignaled, err := o.waitPacket.Associate(o.iocp, o.tun.readWaitHandle(), goCompletionKeyTun)
+	if err != nil {
+		o.waitArmed = false
+		return false, E.Cause(err, "go: associate wintun read event")
+	}
+	if alreadySignaled {
+		o.waitArmed = false
+		return true, nil
+	}
+	return false, nil
+}
+
+func (o *goWindowsIO) wait(timeout time.Duration, events []goSocketEvent) (bool, int, error) {
+	tunReadable := !o.ringDrained
+	if o.ringDrained {
+		signaled, err := o.armReadWait()
+		if err != nil {
+			return false, 0, err
+		}
+		if signaled {
+			tunReadable = true
+			o.waitPacket.Cancel()
+		}
+	}
+	var waitMillis uint32
+	if tunReadable || timeout == 0 {
+		waitMillis = 0
+	} else if timeout < 0 {
+		waitMillis = windows.INFINITE
+	} else {
+		waitMillis = uint32((timeout + time.Millisecond - 1) / time.Millisecond)
+	}
+	var removed uint32
+	errno := afd.GetQueuedCompletionStatusEx(o.iocp, &o.completions[0], uint32(len(o.completions)), &removed, waitMillis, false)
+	if errno != 0 {
+		if errno == windows.WAIT_TIMEOUT {
+			return tunReadable, 0, nil
+		}
+		return false, 0, E.Cause(errno, "go: wait for completion")
+	}
+	socketCount := 0
+	for index := range removed {
+		completion := &o.completions[index]
+		switch completion.CompletionKey {
+		case goCompletionKeyTun:
+			o.waitArmed = false
+			tunReadable = true
+		case goCompletionKeyWake:
+		default:
+			entry := (*goAFDEntry)(unsafe.Pointer(completion.Overlapped))
+			entry.armed = false
+			if entry.cancelled {
+				o.releaseEntry(entry)
+				continue
+			}
+			var pollEvents uint32
+			if entry.pollInfo.NumberOfHandles > 0 {
+				pollEvents = entry.pollInfo.Handles[0].Events
+			}
+			if uint32(entry.ioStatusBlock.Status) != afd.STATUS_CANCELLED && socketCount < len(events) {
+				readable := pollEvents&goAFDReadEvents != 0 || entry.ioStatusBlock.Status != 0
+				writable := pollEvents&afd.POLL_SEND != 0
+				if readable || writable {
+					events[socketCount] = goSocketEvent{token: entry.token, readable: readable, writable: writable}
+					socketCount++
+				}
+			}
+			if entry.interest != 0 {
+				armErr := o.armEntry(entry)
+				if armErr != nil && socketCount < len(events) {
+					events[socketCount] = goSocketEvent{token: entry.token, readable: true}
+					socketCount++
+				}
+			}
+		}
+	}
+	return tunReadable, socketCount, nil
+}
+
+func (o *goWindowsIO) armEntry(entry *goAFDEntry) error {
+	var pollEvents uint32
+	if entry.interest&goInterestRead != 0 {
+		pollEvents |= goAFDReadEvents
+	}
+	if entry.interest&goInterestWrite != 0 {
+		pollEvents |= afd.POLL_SEND
+	}
+	err := o.afd.Poll(entry.baseHandle, pollEvents, &entry.ioStatusBlock, &entry.pollInfo)
+	if err != nil {
+		return err
+	}
+	entry.armed = true
+	return nil
+}
+
+func (o *goWindowsIO) registerSocket(socket *goSocket, token uint32, interest uint8) error {
+	baseHandle, err := afd.BaseSocket(socket.handle)
+	if err != nil {
+		return E.Cause(err, "go: query base socket")
+	}
+	entry := &goAFDEntry{baseHandle: baseHandle, token: token, interest: interest}
+	entry.pinner.Pin(entry)
+	o.entries[entry] = struct{}{}
+	socket.entry = entry
+	if interest == 0 {
+		return nil
+	}
+	err = o.armEntry(entry)
+	if err != nil {
+		o.releaseEntry(entry)
+		socket.entry = nil
+		return E.Cause(err, "go: poll socket")
+	}
+	return nil
+}
+
+func (o *goWindowsIO) releaseEntry(entry *goAFDEntry) {
+	delete(o.entries, entry)
+	entry.pinner.Unpin()
+}
+
+func (o *goWindowsIO) updateSocket(socket *goSocket, interest uint8) error {
+	entry := socket.entry
+	if entry == nil || entry.interest == interest {
+		return nil
+	}
+	entry.interest = interest
+	if entry.armed {
+		return o.afd.Cancel(&entry.ioStatusBlock)
+	}
+	if interest == 0 {
+		return nil
+	}
+	err := o.armEntry(entry)
+	if err != nil {
+		return E.Cause(err, "go: poll socket")
+	}
+	return nil
+}
+
+func (o *goWindowsIO) unregisterSocket(socket *goSocket) {
+	entry := socket.entry
+	if entry == nil {
+		return
+	}
+	socket.entry = nil
+	entry.interest = 0
+	entry.cancelled = true
+	if !entry.armed {
+		o.releaseEntry(entry)
+		return
+	}
+	o.afd.Cancel(&entry.ioStatusBlock)
+}
+
+func (o *goWindowsIO) readBurst(frames []goFrame, options N.ReadWaitOptions) (int, bool, error) {
+	o.receiveSlots.configure(goReadBatch, o.stack.mtu+options.FrontHeadroom+options.RearHeadroom)
+	limit := min(len(frames), goReadBatch)
+	o.receiveSlots.wake(limit)
+	count := 0
+	for count < limit {
+		buffer := o.receiveSlots.slot(count)
+		buffer.Reset()
+		buffer.Resize(options.FrontHeadroom, 0)
+		buffer.Reserve(options.RearHeadroom)
+		n, err := o.tun.receiveInto(buffer.FreeBytes())
+		if err != nil {
+			return 0, false, err
+		}
+		if n == 0 {
+			o.ringDrained = true
+			return count, true, nil
+		}
+		buffer.Truncate(n)
+		options.PostReturn(buffer)
+		frames[count] = goFrame{buffer: buffer}
+		count++
+	}
+	o.ringDrained = false
+	return count, false, nil
+}
+
+func (o *goWindowsIO) releaseReadBuffers() {
+	o.receiveSlots.sleep()
+}
+
+func (o *goWindowsIO) writePacketBatch(frames []goUDPFrame) error {
+	var writeError error
+	var segments [2][]byte
+	for index := range frames {
+		frame := &frames[index]
+		segments[0] = frame.header[:frame.length]
+		segments[1] = frame.payload
+		err := o.writeFrame(segments[:], frame.meta)
+		if err != nil {
+			writeError = E.Errors(writeError, err)
+		}
+	}
+	return writeError
+}
+
+func (o *goWindowsIO) writeFrame(frame [][]byte, meta ForwardFrameMeta) error {
+	err := o.transmitFrame(frame)
+	if err == windows.ERROR_BUFFER_OVERFLOW {
+		o.droppedEngineFrames.record(o.stack.logger, "engine frames")
+		return errGoFrameDropped
+	}
+	return err
+}
+
+func (o *goWindowsIO) writePacket(packet []byte, meta ForwardFrameMeta) error {
+	frame := [1][]byte{packet}
+	return o.writeFrame(frame[:], meta)
+}
+
+func (o *goWindowsIO) writeData(frame [][]byte, meta ForwardFrameMeta, owner *GoConn, segmentEnd uint64) error {
+	backoff := goTransmitBackoffMin
+	waited := time.Duration(0)
+	for {
+		err := o.transmitFrame(frame)
+		if err != windows.ERROR_BUFFER_OVERFLOW {
+			return err
+		}
+		if o.closing.Load() {
+			return os.ErrClosed
+		}
+		if waited >= goTransmitBackoffBudget {
+			o.droppedDataFrames.record(o.stack.logger, "data frames")
+			return errGoFrameDropped
+		}
+		time.Sleep(backoff)
+		waited += backoff
+		backoff = min(backoff*2, goTransmitBackoffMax)
+	}
+}
+
+func (o *goWindowsIO) transmitFrame(frame [][]byte) error {
+	if o.closing.Load() {
+		return os.ErrClosed
+	}
+	err := o.tun.transmitGather(frame)
+	if err == nil || err == windows.ERROR_BUFFER_OVERFLOW || err == os.ErrClosed {
+		return err
+	}
+	return E.Cause(err, "go: wintun send")
+}
+
+func (o *goWindowsIO) transmitPrefix() int {
+	return 0
+}
+
+func (o *goWindowsIO) transmitChecksumOffload() bool {
+	return false
+}
+
+func (o *goWindowsIO) mtu() int {
+	return o.stack.mtu
+}
+
+func (o *goWindowsIO) supportsSockets() bool {
+	return true
+}
+
+func (o *goWindowsIO) transmitSegmentOffload() bool {
+	return false
+}
+
+func (o *goWindowsIO) armTransmitWritable(conn *GoConn) (*goBlockedWriters, error) {
+	return nil, nil
+}
+
+func (o *goWindowsIO) takeTransmitWritable(writable []*goBlockedWriters) []*goBlockedWriters {
+	return writable
+}
+
+func (o *goWindowsIO) wake() {
+	o.wakeAccess.RLock()
+	defer o.wakeAccess.RUnlock()
+	if o.closing.Load() {
+		return
+	}
+	_ = windows.PostQueuedCompletionStatus(o.iocp, 0, goCompletionKeyWake, nil)
+}
+
+func (o *goWindowsIO) close() error {
+	o.wakeAccess.Lock()
+	closing := o.closing.Swap(true)
+	o.wakeAccess.Unlock()
+	if closing {
+		return nil
+	}
+	o.receiveSlots.release()
+	var err error
+	if o.waitPacket != nil {
+		err = E.Errors(o.waitPacket.Cancel(), o.waitPacket.Close())
+	} else {
+		windows.SetEvent(o.bridgeClose)
+		<-o.bridgeDone
+		err = E.Errors(windows.CloseHandle(o.bridgeArm), windows.CloseHandle(o.bridgeClose))
+	}
+	for entry := range o.entries {
+		entry.interest = 0
+		entry.cancelled = true
+		if entry.armed {
+			err = E.Errors(err, o.afd.Cancel(&entry.ioStatusBlock))
+		} else {
+			o.releaseEntry(entry)
+		}
+	}
+	err = E.Errors(err, o.afd.Close())
+	err = E.Errors(err, o.drainClosingEntries(goShutdownBudget))
+	if len(o.entries) == 0 {
+		return E.Errors(err, windows.CloseHandle(o.iocp))
+	}
+	go o.finishClose()
+	return err
+}
+
+func (o *goWindowsIO) drainClosingEntries(timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for len(o.entries) > 0 {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil
+		}
+		waitMillis := uint32((remaining + time.Millisecond - 1) / time.Millisecond)
+		var removed uint32
+		errno := afd.GetQueuedCompletionStatusEx(o.iocp, &o.completions[0], uint32(len(o.completions)), &removed, waitMillis, false)
+		if errno == windows.WAIT_TIMEOUT {
+			return nil
+		}
+		if errno != 0 {
+			return E.Cause(errno, "go: drain cancelled socket polls")
+		}
+		for index := range removed {
+			completion := &o.completions[index]
+			if completion.CompletionKey != 0 {
+				continue
+			}
+			entry := (*goAFDEntry)(unsafe.Pointer(completion.Overlapped))
+			if _, pending := o.entries[entry]; pending {
+				entry.armed = false
+				o.releaseEntry(entry)
+			}
+		}
+		clear(o.completions[:removed])
+	}
+	return nil
+}
+
+func (o *goWindowsIO) finishClose() {
+	logged := false
+	for len(o.entries) > 0 {
+		err := o.drainClosingEntries(time.Second)
+		if err != nil {
+			if !logged {
+				o.stack.logger.Error(err)
+				logged = true
+			}
+			time.Sleep(time.Second)
+		}
+	}
+	err := windows.CloseHandle(o.iocp)
+	if err != nil {
+		o.stack.logger.Error(E.Cause(err, "go: close completion port"))
+	}
+}
+
+func (o *goWindowsIO) writeDatagram(packet []byte, meta ForwardFrameMeta) error {
+	return o.writePacket(packet, meta)
+}
+
+func (o *goWindowsIO) transmitBacklogBelowBatch(conn *GoConn) bool {
+	return true
+}
+
+func (o *goWindowsIO) flush() {
+}

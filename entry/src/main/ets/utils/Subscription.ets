@@ -34,7 +34,7 @@ export const SUB_UA = 'NekoBox/Android/1.4.2 (Prefer ClashMeta Format)';
  */
 export const SUB_UA_FALLBACKS: Array<string> = [
   'v2rayN/7.0',
-  'sing-box 1.14.0',
+  'sing-box 1.15.0',
   'ClashforWindows/0.20.39',
   'Stash/2.6.0 Clash/1.10.0'
 ];

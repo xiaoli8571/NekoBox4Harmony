@@ -14,8 +14,9 @@ export const PAGE_SUBSCRIPTIONS: string = 'subscriptions';
 export const PAGE_ROUTING: string = 'routing';
 export const PAGE_SETTINGS: string = 'settings';
 export const PAGE_LOGS: string = 'logs';
-/* 2026-10-24 用户指示:工具+关于合并为一个「系统」页(legacy tab 5/6 都映射到这里) */
+/* 2026-10-24 曾合并为「系统」页;2026-10-30 用户要求拆回两个独立页面 */
 export const PAGE_SYSTEM: string = 'system';
+export const PAGE_ABOUT: string = 'about';
 
 /** 返回语义(§3.4) */
 export const BACK_CLOSE_DRAWER: string = 'closeDrawer';
@@ -61,7 +62,8 @@ function buildPageDefs(): Array<PageDef> {
     [ACTION_SEARCH], [ACTION_MORE]));
   list.push(makePage(PAGE_LOGS, 'app_page_logs', '日志', 4,
     [ACTION_SEARCH, ACTION_EXPORT], [ACTION_MORE]));
-  list.push(makePage(PAGE_SYSTEM, 'app_page_system', '系统', 5, [], []));
+  list.push(makePage(PAGE_SYSTEM, 'app_page_system', '工具', 5, [], []));
+  list.push(makePage(PAGE_ABOUT, 'app_page_about', '关于', 6, [], []));
   return list;
 }
 
@@ -112,8 +114,11 @@ export function pageByLegacyTab(tab: number): PageDef {
   if (tab === 4) {
     return PAGE_DEFS[4];
   }
-  if (tab === 5 || tab === 6) {
-    return pageById(PAGE_SYSTEM) as PageDef;   // 工具+关于已合并为「系统」(tab 6 兼容映射)
+  if (tab === 5) {
+    return pageById(PAGE_SYSTEM) as PageDef;   // 工具页(独立)
+  }
+  if (tab === 6) {
+    return pageById(PAGE_ABOUT) as PageDef;    // 关于页(独立)
   }
   return PAGE_DEFS[0];
 }

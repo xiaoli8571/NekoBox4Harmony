@@ -10,7 +10,6 @@ import { initStore, loadProfiles, saveProfiles, loadGroups, ensureGroupByName, L
 import { ProfileGroup } from '../model/Profile';
 import { SubInfo, listSubs, saveSubs, removeSub, updateSubscription, markSubSuccess, markSubFailure, saveSubSettings,
   SubUpdateResult, subUpdateHasChanges, needDirectUpdateConfirm } from '../core/Subscriptions';
-import { SubDiffDialog } from './SubUpdateFeedback';
 import { SubscriptionRepository } from '../core/SubscriptionRepository';
 import { UserOverride } from '../model/SubscriptionLayers';
 import { subErrorText } from '../utils/Subscription';
@@ -209,9 +208,6 @@ struct SubDetailPage {
     await this.doUpdateNow();
   }
 
-  /** Diff 对话框控制器(每次按当次结果新建) */
-  private subDiffDialog: CustomDialogController | undefined = undefined;
-
   /** 更新结果反馈(对齐 Android GroupInterfaceAdapter.kt:29-82) */
   private showSubUpdateFeedback(name: string, res: SubUpdateResult): void {
     if (!subUpdateHasChanges(res)) {
@@ -219,13 +215,7 @@ struct SubDetailPage {
       return;
     }
     promptAction.showToast({ message: $r('app.string.group_updated', name, res.changed) });
-    setTimeout(() => {
-      this.subDiffDialog = new CustomDialogController({
-        builder: SubDiffDialog({ groupName: name, res: res }),
-        autoCancel: true
-      });
-      this.subDiffDialog.open();
-    }, 1000);
+    /* 2026-10-26 明细对话框已下线:变化数量用这一条 toast 概述,逐项明细看消息中心。 */
   }
 
   private async doUpdateNow(): Promise<void> {
@@ -305,7 +295,7 @@ struct SubDetailPage {
             .fontColor($r('app.color.error'))
           Button($r('app.string.reload'))
             .height(36)
-            .backgroundColor($r('app.color.primary'))
+            .backgroundColor(this.litKey === 'reload' ? $r('app.color.primary') : $r('app.color.surface'))
             .visualEffect(pressLightEffect(this.litKey === 'reload', true))
             .onTouch((event: TouchEvent) => { if (event.type === TouchType.Down) {
         this.litKey = 'reload';
@@ -328,7 +318,7 @@ struct SubDetailPage {
             .fontColor($r('app.color.text_secondary'))
           Button($r('app.string.back'))
             .height(36)
-            .backgroundColor($r('app.color.primary'))
+            .backgroundColor(this.litKey === 'notfound:back' ? $r('app.color.primary') : $r('app.color.surface'))
             .visualEffect(pressLightEffect(this.litKey === 'notfound:back', true))
             .onTouch((event: TouchEvent) => { if (event.type === TouchType.Down) {
         this.litKey = 'notfound:back';
@@ -505,6 +495,17 @@ struct SubDetailPage {
                   Toggle({ type: ToggleType.Switch, isOn: this.sub.forceResolve })
                     .onChange((on: boolean) => this.saveSubSetting('forceResolve', on))
                 }.width('100%')
+
+                Row() {
+                  Column({ space: 2 }) {
+                    Text($r('app.string.sub_retain_valid'))
+                      .fontSize(13.5).fontColor($r('app.color.text_primary')).width('100%')
+                    Text($r('app.string.sub_retain_valid_summary'))
+                      .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+                  }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+                  Toggle({ type: ToggleType.Switch, isOn: this.sub.retainValidNodes })
+                    .onChange((on: boolean) => this.saveSubSetting('retainValidNodes', on))
+                }.width('100%')
               }
 
               Column({ space: 4 }) {
@@ -516,6 +517,34 @@ struct SubDetailPage {
                   .borderRadius(8)
                   .onChange((v: string) => { this.sub.userAgent = v; })
                   .onSubmit(() => { void this.saveSubSetting('userAgent', this.sub.userAgent); })
+              }.alignItems(HorizontalAlign.Start).width('100%')
+
+              Column({ space: 6 }) {
+                Text($r('app.string.sub_filter_title'))
+                  .fontSize(13.5).fontColor($r('app.color.text_primary')).width('100%')
+                Text($r('app.string.sub_filter_summary'))
+                  .fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+                Row({ space: 6 }) {
+                  ForEach(SUB_FILTER_MODES, (m: string, idx: number) => {
+                    Button(SUB_FILTER_LABELS[idx])
+                      .layoutWeight(1)
+                      .height(32)
+                      .fontSize(11.5)
+                      .backgroundColor(this.sub.filterMode === m
+                        ? $r('app.color.primary') : $r('app.color.app_background'))
+                      .fontColor(this.sub.filterMode === m
+                        ? $r('app.color.surface') : $r('app.color.text_primary'))
+                      .onClick(() => { void this.saveSubSetting('filterMode', m); })
+                  }, (m: string) => `filtermode_${m}_${this.sub.filterMode}`)
+                }.width('100%')
+                if (this.sub.filterMode !== 'off') {
+                  TextInput({ text: this.sub.filterRegex, placeholder: $r('app.string.sub_filter_placeholder') })
+                    .width('100%').height(UiSpec.ROW_HEIGHT)
+                    .backgroundColor($r('app.color.app_background'))
+                    .borderRadius(8)
+                    .onChange((v: string) => { this.sub.filterRegex = v; })
+                    .onSubmit(() => { void this.saveSubSetting('filterRegex', this.sub.filterRegex); })
+                }
               }.alignItems(HorizontalAlign.Start).width('100%')
             }
             .alignItems(HorizontalAlign.Start)
@@ -603,6 +632,7 @@ struct SubGroupDialog {
 /** 订阅分享弹窗：展示二维码(对齐安卓 GroupFragment.action_universal_qr)+ 链接文本与复制。 */
 @CustomDialog
 struct SubscriptionShareDialog {
+  @State litKey: string = '';
   controller?: CustomDialogController;
   @Link text: string;
   @Link qrPixelMap: image.PixelMap | null;
@@ -640,7 +670,14 @@ struct SubscriptionShareDialog {
           })
         Button($r('app.string.copy_share_link'))
           .layoutWeight(1)
-          .backgroundColor($r('app.color.primary'))
+          .backgroundColor(this.litKey === 'pb:SubDetailPage:3' ? $r('app.color.primary') : $r('app.color.surface'))
+          .onTouch((event: TouchEvent) => {
+            if (event.type === TouchType.Down) {
+              this.litKey = 'pb:SubDetailPage:3';
+            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+              this.litKey = '';
+            }
+          })
           .onClick(() => this.onCopy(this.text))
       }
       .width('100%')
@@ -649,3 +686,11 @@ struct SubscriptionShareDialog {
     .width('100%')
   }
 }
+
+// 订阅过滤器三档(对齐 OwnBox SubscriptionFilterMode):放在文件末尾,避免打断组件定义
+const SUB_FILTER_MODES: Array<string> = ['off', 'include', 'exclude'];
+const SUB_FILTER_LABELS: Array<Resource> = [
+  $r('app.string.sub_filter_mode_off'),
+  $r('app.string.sub_filter_mode_include'),
+  $r('app.string.sub_filter_mode_exclude')
+];

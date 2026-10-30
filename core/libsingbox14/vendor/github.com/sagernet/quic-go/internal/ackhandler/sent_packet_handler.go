@@ -101,7 +101,7 @@ type sentPacketHandler struct {
 	bytesInFlight protocol.ByteCount
 
 	nextCongestionPacketNumber atomic.Int64
-	packerEmptyTime            monotime.Time
+	appLimitedSince            monotime.Time
 
 	congestion      congestionControl
 	congestionMutex sync.RWMutex
@@ -370,11 +370,8 @@ func (h *sentPacketHandler) SentPacket(
 	}
 
 	if cc.injected {
-		if !h.packerEmptyTime.IsZero() {
-			if cc.extended != nil && t.Sub(h.packerEmptyTime) >= appLimitedThreshold && cc.CanSend(priorInFlight) {
-				cc.extended.OnAppLimited(priorInFlight)
-			}
-			h.packerEmptyTime = 0
+		if cc.extended != nil && !h.appLimitedSince.IsZero() && t.Sub(h.appLimitedSince) >= appLimitedThreshold && cc.CanSend(priorInFlight) {
+			cc.extended.OnAppLimited(priorInFlight)
 		}
 		cc.OnPacketSent(t, priorInFlight, p.congestionPacketNumber, size, isAckEliciting)
 	} else {
@@ -1343,14 +1340,18 @@ func (h *sentPacketHandler) SetCongestionControl(cc congestionExt.CongestionCont
 	h.congestionMutex.Unlock()
 }
 
-// Chromium reports application-limited from QuicConnection::CheckIfApplicationLimited while
-// its stream send buffers still hold everything the application queued, so an empty packet
-// creator there means the application is out of data. SendStream.Write hands the packer one
-// call's worth of data at a time, so the packer also runs empty between the Write calls of a
-// sender that keeps up with the pacer. The report is made on the next packet sent, when the
-// packer has stayed empty for longer than the burst the pacer allows.
-func (h *sentPacketHandler) MaybeNotifyAppLimited() {
-	if h.packerEmptyTime.IsZero() {
-		h.packerEmptyTime = monotime.Now()
+// Chromium runs QuicConnection::CheckIfApplicationLimited after every flush, including the
+// flushes that only carry acknowledgements and control frames, and reports application-limited
+// when no packet is buffered in the writer and no stream is willing to write. Streams blocked by
+// flow control are not willing to write, and the stream send buffers there hold everything the
+// application queued. SendStream.Write hands the framer one call's worth of data at a time, so
+// a sender that keeps up with the pacer also runs out of stream data between its Write calls;
+// the report is therefore only made once the connection has stayed application-limited for
+// longer than the burst the pacer allows.
+func (h *sentPacketHandler) UpdateAppLimited(now monotime.Time, hasPendingData bool) {
+	if hasPendingData || h.SendMode(now) != SendAny {
+		h.appLimitedSince = 0
+	} else if h.appLimitedSince.IsZero() {
+		h.appLimitedSince = now
 	}
 }

@@ -47,6 +47,17 @@ export function parseShareText(text: string, report?: ShareSkipReport): Array<Pr
     return result;
   }
   let content = trimmed;
+  /* sing-box JSON / 裸出站对象必须先试:完整配置里大量出现 https://(rule_set、DoH DNS、
+     http 出站),旧判据 `!content.includes('://')` 会把它当成链接列表 → 导入 0 个节点。 */
+  if (content.startsWith('{')) {
+    const jsonFirst = parseSingleOutboundJson(content);
+    if (jsonFirst.profiles.length > 0) {
+      if (report !== undefined) {
+        report.skipped += jsonFirst.skipped;
+      }
+      return jsonFirst.profiles;
+    }
+  }
   if (!content.includes('://')) {
     // 先试 base64:订阅正文常常是「分享链接列表 / sing-box JSON / WireGuard .conf」
     // 整体 base64 后再发过来。判据不能只看解出后有没有 '://' —— 那样会把
@@ -59,14 +70,21 @@ export function parseShareText(text: string, report?: ShareSkipReport): Array<Pr
       content = decoded;
     }
   }
-  if (!content.includes('://')) {
-    // sing-box JSON:完整配置({outbounds/endpoints})或单个出站对象
-    if (content.startsWith('{')) {
-      const jsonProfiles = parseSingleOutboundJson(content).profiles;
-      if (jsonProfiles.length > 0) {
-        return jsonProfiles;
+  if (content.startsWith('{')) {
+    const jsonProfiles = parseSingleOutboundJson(content);
+    if (jsonProfiles.profiles.length > 0) {
+      if (report !== undefined) {
+        report.skipped += jsonProfiles.skipped;
       }
+      return jsonProfiles.profiles;
     }
+    /* 认得出是 JSON 但没有可导入出站(全是 selector/urltest/direct 等):
+       如实记账,让调用方提示「已跳过」而不是笼统的「没有可用节点」。 */
+    if (report !== undefined) {
+      report.skipped += jsonProfiles.skipped;
+    }
+  }
+  if (!content.includes('://')) {
     // WireGuard .conf(含 [Interface]/[Peer] 段)
     if (content.includes('[Interface]')) {
       const wgProfiles = parseWireGuardConf(content);

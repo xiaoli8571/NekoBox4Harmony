@@ -16,6 +16,7 @@ import (
 	"github.com/sagernet/sing/common/logger"
 
 	vnetns "github.com/vishvananda/netns"
+	"golang.org/x/sys/unix"
 )
 
 type Manager struct {
@@ -23,7 +24,6 @@ type Manager struct {
 	namespaces []option.NetworkNamespace
 	holderArgs []string
 	paths      map[string]string
-	holders    []*holder
 }
 
 type holder struct {
@@ -64,7 +64,7 @@ func (m *Manager) Name() string {
 	return "netns"
 }
 
-func (m *Manager) Start(stage adapter.StartStage) error {
+func (m *Manager) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateInitialize {
 		return nil
 	}
@@ -80,7 +80,7 @@ func (m *Manager) Start(stage adapter.StartStage) error {
 				return E.Cause(err, "network namespace[", namespace.Tag, "]")
 			}
 		case C.NetNsTypeUnshare:
-			err := m.startNamespace(namespace)
+			err := m.startNamespace(namespace, scope)
 			if err != nil {
 				return E.Cause(err, "network namespace[", namespace.Tag, "]")
 			}
@@ -89,7 +89,7 @@ func (m *Manager) Start(stage adapter.StartStage) error {
 	return nil
 }
 
-func (m *Manager) startNamespace(namespace option.NetworkNamespace) error {
+func (m *Manager) startNamespace(namespace option.NetworkNamespace, scope *adapter.Scope) error {
 	if len(m.holderArgs) == 0 {
 		return E.New("unshare network namespace is only supported in `sing-box run`")
 	}
@@ -97,7 +97,13 @@ func (m *Manager) startNamespace(namespace option.NetworkNamespace) error {
 	if err != nil {
 		return err
 	}
-	m.holders = append(m.holders, created)
+	scope.Add(func() error {
+		created.pipeWriter.Close()
+		if created.pidFile != "" {
+			os.Remove(created.pidFile)
+		}
+		return nil
+	})
 	pid := created.command.Process.Pid
 	if created.pidFile != "" {
 		err = os.WriteFile(created.pidFile, []byte(strconv.Itoa(pid)+"\n"), 0o644)
@@ -107,23 +113,29 @@ func (m *Manager) startNamespace(namespace option.NetworkNamespace) error {
 	}
 	m.paths[namespace.Tag] = netnsPath(pid)
 	m.logger.Info("created network namespace[", namespace.Tag, "], holder pid: ", pid)
-	if os.Geteuid() == 0 {
-		m.logger.Info("enter network namespace[", namespace.Tag, "] with: nsenter -n -t ", pid)
-	} else {
+	if ownsUserNamespace() {
 		m.logger.Info("enter network namespace[", namespace.Tag, "] with: nsenter -U --preserve-credentials -n -t ", pid)
+	} else {
+		m.logger.Info("enter network namespace[", namespace.Tag, "] with: nsenter -n -t ", pid)
 	}
 	return nil
 }
 
-func (m *Manager) Close() error {
-	for _, created := range m.holders {
-		created.pipeWriter.Close()
-		if created.pidFile != "" {
-			os.Remove(created.pidFile)
-		}
+func ownsUserNamespace() bool {
+	effectiveUID := os.Geteuid()
+	if effectiveUID == 0 {
+		return false
 	}
-	m.holders = nil
-	return nil
+	userNamespace, err := os.Open("/proc/self/ns/user")
+	if err != nil {
+		return false
+	}
+	defer userNamespace.Close()
+	ownerUID, err := unix.IoctlGetUint32(int(userNamespace.Fd()), unix.NS_GET_OWNER_UID)
+	if err != nil {
+		return false
+	}
+	return int(ownerUID) == effectiveUID
 }
 
 func (m *Manager) ResolvePath(nameOrPath string) string {

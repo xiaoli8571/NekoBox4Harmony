@@ -17,6 +17,10 @@ const (
 	chromeMaxIncomingUniStreams = 103
 	// UDP payload size for the packets we send.
 	chromeInitialPacketSize = 1250
+	// Chrome lowers it by the 20 bytes the IPv6 header adds over IPv4 when its
+	// socket is IPv6, that is, when the server is reached over IPv6
+	// (kAdditionalOverheadForIPv6 in net/quic/quic_chromium_client_session.cc).
+	chromeInitialPacketSizeIPv6 = chromeInitialPacketSize - 20
 	// max_udp_payload_size: what we are willing to receive, which differs from
 	// what we send.
 	chromeMaxUDPPayloadSize = 1472

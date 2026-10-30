@@ -48,7 +48,6 @@ function stripCommentsAndLogs(src) {
 {
   const files = [
     'entry/src/main/ets/pages/SubscriptionPage.ets',
-    'entry/src/main/ets/pages/ConnectionsPage.ets',
     'entry/src/main/ets/pages/LogPage.ets',
     'entry/src/main/ets/pages/SubDetailPage.ets',
     'entry/src/main/ets/pages/SettingsPage.ets',
@@ -97,9 +96,6 @@ function stripCommentsAndLogs(src) {
 {
   const idx = read('entry/src/main/ets/pages/Index.ets');
   assert.ok(/latencyToken\)[\s\S]{0,120}fontFamily\('monospace'\)/.test(idx), '节点行延迟需等宽数字');
-  const conn = read('entry/src/main/ets/pages/ConnectionsPage.ets');
-  assert.ok(/formatBytes\(c\.up\)[\s\S]{0,200}monospace/.test(conn), '连接行速率/字节需等宽');
-  assert.ok(/traffic_speed_total[\s\S]{0,300}monospace/.test(conn), '连接页汇总速率需等宽');
   const sub = read('entry/src/main/ets/pages/SubscriptionPage.ets');
   assert.ok(/trafficText\(row\)[\s\S]{0,150}fontFamily\('monospace'\)/.test(sub), '订阅行流量需等宽');
   console.log('PASS 等宽数字:延迟/速率/流量');
@@ -122,11 +118,6 @@ function stripCommentsAndLogs(src) {
   const model = read('entry/src/main/ets/model/ConnectionView.ets');
   assert.ok(/s === 'undefined' \|\| s === 'null' \? '' : s/.test(model),
     'ConnectionView.str 需继续把 "undefined"/"null" 归一为空串');
-  // P6 复审修过的回归点:startTimeText 的返回值进模板串拼接,必须声明 string
-  // (Resource 进模板串会渲染成 [object Object],§24.2-6)
-  const conn = read('entry/src/main/ets/pages/ConnectionsPage.ets');
-  assert.ok(/private startTimeText\(item: ClashConnItem\): string/.test(conn),
-    'ConnectionsPage.startTimeText 必须返回 string(其值进模板串)');
   console.log('PASS undefined 守卫 + 模板串不塞 Resource');
 }
 

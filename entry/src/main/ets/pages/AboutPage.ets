@@ -5,7 +5,7 @@ import http from '@ohos.net.http';
 import { UiSpec } from '../common/UiSpec';
 import { pressLightEffect } from '../common/Effects';
 
-const CORE_VERSION = 'sing-box 1.14.0 (OHOS c-shared)';
+const CORE_VERSION = 'sing-box 1.15.0-alpha.13 (OHOS c-shared)';
 const GITHUB_URL = 'https://github.com/xiaoli8571/NekoBox4Harmony';
 const TELEGRAM_URL = 'https://t.me/+x9D290Stp9NhYWU9';
 const RELEASES_API = 'https://api.github.com/repos/xiaoli8571/NekoBox4Harmony/releases/latest';
@@ -104,8 +104,8 @@ export struct AboutPage {
               Button(this.checking ? $r('app.string.checking_update') : $r('app.string.check_update'))
                 .layoutWeight(1)
                 .height(UiSpec.BTN_HEIGHT)
-                .backgroundColor($r('app.color.primary'))
-                .fontColor($r('app.color.surface'))
+                .backgroundColor(this.litKey === 'about:check' ? $r('app.color.primary') : $r('app.color.surface'))
+                .fontColor(this.litKey === 'about:check' ? $r('app.color.surface') : $r('app.color.text_1'))
                 /* 卡片在 Scroll 里(会跟滚动跑位)⇒ 只"按下才亮",不挂常亮光源、不加 scale */
                 .visualEffect(pressLightEffect(this.litKey === 'about:check', true))
                 .onTouch((event: TouchEvent) => {

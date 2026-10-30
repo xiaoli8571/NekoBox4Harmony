@@ -117,6 +117,9 @@ func (r *msgXReader) ReadBatch(ms []ipv4.Message, _ int) (int, error) {
 	if errno != 0 {
 		return 0, os.NewSyscallError("recvmsg_x", errno)
 	}
+	if n == 0 {
+		return 0, io.EOF
+	}
 	numMsgs := int(n)
 	for i := range numMsgs {
 		ms[i].N = int(r.hdrs[i].DataLen)

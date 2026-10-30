@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/badhttp"
 	"github.com/sagernet/sing-box/common/tls"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -18,7 +19,6 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	sHTTP "github.com/sagernet/sing/protocol/http"
 	"github.com/sagernet/ws"
 )
 
@@ -48,7 +48,7 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 	}
 	requestURL.Host = serverAddr.String()
 	requestURL.Path = options.Path
-	err := sHTTP.URLSetPath(&requestURL, options.Path)
+	err := badhttp.URLSetPath(&requestURL, options.Path)
 	if err != nil {
 		return nil, E.Cause(err, "parse path")
 	}
@@ -97,8 +97,10 @@ func (c *Client) upgrade(conn net.Conn, requestURL *url.URL, headers http.Header
 	}
 	deadlineConn.SetDeadline(time.Now().Add(C.TCPTimeout))
 	var protocols []string
-	if protocolHeader := headers.Get("Sec-WebSocket-Protocol"); protocolHeader != "" {
+	protocolHeader := headers.Get("Sec-WebSocket-Protocol")
+	if protocolHeader != "" {
 		protocols = []string{protocolHeader}
+		headers = headers.Clone()
 		headers.Del("Sec-WebSocket-Protocol")
 	}
 	reader, _, err := ws.Dialer{Header: ws.HandshakeHeaderHTTP(headers), Protocols: protocols}.Upgrade(deadlineConn, requestURL)
@@ -109,7 +111,7 @@ func (c *Client) upgrade(conn net.Conn, requestURL *url.URL, headers http.Header
 	}
 	if reader != nil {
 		buffer := buf.NewSize(reader.Buffered())
-		_, err = buffer.ReadFullFrom(reader, buffer.Len())
+		_, err = buffer.ReadFullFrom(reader, buffer.FreeLen())
 		if err != nil {
 			conn.Close()
 			return nil, err

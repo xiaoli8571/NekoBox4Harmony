@@ -5,7 +5,7 @@ import { clashApiHeaders } from '../utils/ClashAuth';
  * Clash API 客户端 —— P4/W15(方案 §9.2 热切换 / §9.4 组管理)。
  *
  * 纯客户端：HTTP 传输可注入(tests/clash-api.cjs 用桩，不联网)，默认传输用
- * `@ohos.net.http`(与 utils/ClashApi.ets:22-44、pages/ConnectionsPage.ets:28-48 同风格)。
+ * `@ohos.net.http`(与 utils/ClashApi.ets:22-44 同风格)。
  *
  * ---- 路由与鉴权事实(sing-box 1.14 源码，2026-10-24 核对) ----
  * 1) 路由表 `core/sing-box-1.14/experimental/clashapi/proxies.go:30-40`：

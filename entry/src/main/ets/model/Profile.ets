@@ -109,6 +109,8 @@ export class Profile {
   customOutbound: string = '';
 
   // 链式代理(type=chain):前置→落地顺序的节点 id,逗号分隔
+  /** 用户自定义别名(对齐 OwnBox 可重命名节点):非空时列表/通知优先显示它 */
+  alias: string = '';
   chainIds: string = '';
 
   // 前置代理(对齐 Clash dialer-proxy / sing-box detour):本节点的出站
@@ -124,6 +126,13 @@ export class Profile {
 
   // 节点分组与组内顺序。空 groupId 表示未分组。
   groupId: string = '';
+  /**
+   * 订阅策略组的多重归属(Clash proxy-groups 是**多对多**:同一节点可以出现在
+   * 「自动选择」「香港节点」「流媒体」等多个组里)。
+   * groupId 仍是**唯一主分组**,内核配置(selector/urltest 包装)只认它;
+   * 首页分组条按本字段取成员,否则节点会被最后一个组"抢走",其它组全空。
+   */
+  subGroupIds: Array<string> = [];
   sortOrder: number = 0;
 
   // 最近一次测试结果。对齐 Android ProxyEntity 的 status/ping/error 三件套
@@ -166,13 +175,16 @@ export class ProfileGroup {
   // true = 订阅导入创建/占用的分组(一订阅一分组 + Clash 自带 proxy-group 子分组)。
   // 分组管理页只显示手动分组;订阅产生的分组只在首页分组条显示(GroupPage.manualGroups 过滤)。
   fromSubscription: boolean = false;
+  // 该组由哪个订阅的 proxy-groups 解析而来(订阅 URL)。空 = 历史数据/手动分组。
+  // 首页「只看一个订阅」就是按它筛分组:选订阅 A → 只显示 A 自带的策略组。
+  subUrl: string = '';
   createdAt: number = 0;
   updatedAt: number = 0;
 }
 
 export class AppSettings {
   mtu: number = 1400;                  // 鸿蒙 VPN TUN 为框架托管 fd(无 offload,TUNGETIFF 被拒),9000 大包被平台丢;原实现 1400
-  stack: string = 'system';            // 内核 go1.24 构建不含 gvisor,仅 system 栈
+  stack: string = 'gvisor';            // 2026-10-26:构建已含 with_gvisor,固定 gvisor 栈(界面无选项)
   mode: string = 'rule';               // rule(规则)/ global(全局)/ direct(直连)
   directDomains: string = '';          // 规则模式:直连域名后缀,逗号分隔
   directIpCidrs: string = '';          // 规则模式:直连 IP 段,逗号分隔
@@ -220,6 +232,8 @@ export class AppSettings {
   latencyStaleMs: number = 6 * 3600 * 1000;
   alwaysShowAddress: boolean = false;  // 节点卡始终显示服务器地址
   notificationGroup: boolean = false;  // 通知中显示分组名
+  // 通知中显示当前节点名(对齐 OwnBox ServiceNotification;2026-10-23 曾要求隐藏,现按用户指示改为可配置,默认开)
+  notificationShowProfile: boolean = true;
   speedIntervalMs: number = 1000;      // 通知/速率刷新间隔(对齐安卓 speedInterval,默认 1000ms)
   autoUpdateSubs: boolean = true;      // 启动时自动更新到期的订阅
   autoConnect: boolean = false;        // 启动时自动连接已选中的节点(对齐安卓 isAutoConnect)
@@ -259,6 +273,20 @@ export class AppSettings {
   // 2.0.2 共存修复一次性迁移标记:loadSettings 首次读到 false 时执行迁移并置 true
   // 落盘;此后不再重复迁移,用户在设置页重新打开的开关一律保留。
   coexistFix202609Applied: boolean = false;
+  /** 开机自启(对齐 OwnBox BootReceiver):配合 staticSubscriber 扩展,重启后自动建隧道 */
+  autoStartOnBoot: boolean = false;
+  /** 局域网共享鉴权(对齐 OwnBox LAN 共享 user/password):仅 allowAccess 打开时下发 */
+  lanAuthUser: string = '';
+  lanAuthPass: string = '';
+  /** 主题强调色预设:blue/green/purple/orange/red(纯前端,不参与内核配置) */
+  themeAccent: string = 'blue';
+  /** 首页隐藏的区块:逗号分隔,可选 groups(分组条)/nodes(节点列表)/bottombar(底部栏) */
+  homeHiddenSections: string = '';
+}
+
+/** 节点显示名:别名优先(对齐 OwnBox 自定义节点名),空别名回落原始名 */
+export function profileDisplayName(p: Profile): string {
+  return p.alias.length > 0 ? p.alias : p.name;
 }
 
 export function profileTypeLabel(type: string): string {

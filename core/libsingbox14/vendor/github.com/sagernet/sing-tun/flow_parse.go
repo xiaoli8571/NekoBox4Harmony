@@ -20,7 +20,7 @@ func (k flowKey) reversed() flowKey {
 type forwardPacket struct {
 	ipVersion   uint8
 	protocol    uint8
-	network     header.Network
+	network     []byte
 	transport   []byte
 	source      netip.AddrPort
 	destination netip.AddrPort
@@ -28,10 +28,20 @@ type forwardPacket struct {
 	icmpType    uint8
 	fragment    bool
 	hasFlow     bool
+	verdict     FlowVerdict
 }
 
 func (p *forwardPacket) flowKey() flowKey {
 	return flowKey{protocol: p.protocol, source: p.source, destination: p.destination}
+}
+
+func (p *forwardPacket) addressSlices() ([]byte, []byte) {
+	if p.ipVersion == 4 {
+		ipHdr := header.IPv4(p.network)
+		return ipHdr.SourceAddressSlice(), ipHdr.DestinationAddressSlice()
+	}
+	ipHdr := header.IPv6(p.network)
+	return ipHdr.SourceAddressSlice(), ipHdr.DestinationAddressSlice()
 }
 
 func (p *forwardPacket) isTCPSyn() bool {
@@ -48,7 +58,7 @@ func parseForwardPacket(packet []byte) (forwardPacket, bool) {
 		parsed := forwardPacket{
 			ipVersion:   4,
 			protocol:    uint8(ipHdr.TransportProtocol()),
-			network:     ipHdr,
+			network:     packet,
 			source:      netip.AddrPortFrom(ipHdr.SourceAddr(), 0),
 			destination: netip.AddrPortFrom(ipHdr.DestinationAddr(), 0),
 		}
@@ -63,19 +73,22 @@ func parseForwardPacket(packet []byte) (forwardPacket, bool) {
 		if !ipHdr.IsValid(len(packet)) {
 			return forwardPacket{}, false
 		}
-		protocol, payload, fragment, transportPresent := skipIPv6ExtensionHeaders(uint8(ipHdr.TransportProtocol()), ipHdr.Payload())
+		protocol := uint8(ipHdr.TransportProtocol())
 		parsed := forwardPacket{
 			ipVersion:   6,
 			protocol:    protocol,
-			network:     ipHdr,
+			network:     packet,
 			source:      netip.AddrPortFrom(ipHdr.SourceAddr(), 0),
 			destination: netip.AddrPortFrom(ipHdr.DestinationAddr(), 0),
-			fragment:    fragment,
 		}
-		if fragment || !transportPresent {
+		switch header.IPv6ExtensionHeaderIdentifier(protocol) {
+		case header.IPv6HopByHopOptionsExtHdrIdentifier, header.IPv6RoutingExtHdrIdentifier, header.IPv6DestinationOptionsExtHdrIdentifier:
+			return forwardPacket{}, false
+		case header.IPv6FragmentExtHdrIdentifier:
+			parsed.fragment = true
 			return parsed, true
 		}
-		parsed.parseTransport(payload)
+		parsed.parseTransport(ipHdr.Payload())
 		return parsed, true
 	default:
 		return forwardPacket{}, false
@@ -111,6 +124,10 @@ func (p *forwardPacket) parseTransport(payload []byte) {
 			return
 		}
 		tcpHdr := header.TCP(payload)
+		tcpHeaderLength := int(tcpHdr.DataOffset())
+		if tcpHeaderLength < header.TCPMinimumSize || tcpHeaderLength > len(payload) {
+			return
+		}
 		p.source = netip.AddrPortFrom(p.source.Addr(), tcpHdr.SourcePort())
 		p.destination = netip.AddrPortFrom(p.destination.Addr(), tcpHdr.DestinationPort())
 		p.tcpFlags = tcpHdr.Flags()

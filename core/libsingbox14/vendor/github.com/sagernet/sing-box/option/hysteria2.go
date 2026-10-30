@@ -3,6 +3,7 @@ package option
 import (
 	"net/url"
 	"reflect"
+	"slices"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/schema"
@@ -10,6 +11,7 @@ import (
 	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/json/badjson"
 	"github.com/sagernet/sing/common/json/badoption"
+	M "github.com/sagernet/sing/common/metadata"
 )
 
 type Hysteria2InboundOptions struct {
@@ -31,10 +33,16 @@ type Hysteria2Realm struct {
 	ServerURL   string                     `json:"server_url"`
 	Token       string                     `json:"token,omitempty"`
 	RealmID     string                     `json:"realm_id"`
-	STUNServers badoption.Listable[string] `json:"stun_servers"`
+	STUNServers LegacyListable[string]     `json:"stun_servers"`
 	IPVersion   int                        `json:"ip_version,omitempty" enum:"0,4,6"`
 	PortMapping *Hysteria2RealmPortMapping `json:"port_mapping,omitempty"`
 	HTTPClient  *HTTPClientOptions         `json:"http_client,omitempty"`
+}
+
+func (r Hysteria2Realm) STUNServersIsDomain() bool {
+	return slices.ContainsFunc(r.STUNServers, func(server string) bool {
+		return M.ParseSocksaddr(server).IsDomain()
+	})
 }
 
 type Hysteria2RealmPortMapping struct {
@@ -69,9 +77,6 @@ func (o Hysteria2Obfs) MarshalJSON() ([]byte, error) {
 		v = o.GeckoOptions
 	default:
 		return nil, E.New("unknown obfs type: ", o.Type)
-	}
-	if v == nil {
-		return json.Marshal(_Hysteria2Obfs(o))
 	}
 	return badjson.MarshallObjects(_Hysteria2Obfs(o), v)
 }
@@ -202,14 +207,14 @@ type Hysteria2MasqueradeString struct {
 type Hysteria2OutboundOptions struct {
 	DialerOptions
 	ServerOptions
-	ServerPorts    badoption.Listable[string] `json:"server_ports,omitempty"`
-	HopInterval    badoption.Duration         `json:"hop_interval,omitempty"`
-	HopIntervalMax badoption.Duration         `json:"hop_interval_max,omitempty"`
-	UpMbps         int                        `json:"up_mbps,omitempty"`
-	DownMbps       int                        `json:"down_mbps,omitempty"`
-	Obfs           *Hysteria2Obfs             `json:"obfs,omitempty"`
-	Password       string                     `json:"password,omitempty"`
-	Network        NetworkList                `json:"network,omitempty"`
+	ServerPorts    LegacyListable[string] `json:"server_ports,omitempty"`
+	HopInterval    badoption.Duration     `json:"hop_interval,omitempty"`
+	HopIntervalMax badoption.Duration     `json:"hop_interval_max,omitempty"`
+	UpMbps         int                    `json:"up_mbps,omitempty"`
+	DownMbps       int                    `json:"down_mbps,omitempty"`
+	Obfs           *Hysteria2Obfs         `json:"obfs,omitempty"`
+	Password       string                 `json:"password,omitempty"`
+	Network        NetworkList            `json:"network,omitempty"`
 	OutboundTLSOptionsContainer
 	QUICOptions
 	BBRProfile          string          `json:"bbr_profile,omitempty" enum:"standard,conservative,aggressive"`

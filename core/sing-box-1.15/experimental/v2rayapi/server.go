@@ -1,0 +1,77 @@
+package v2rayapi
+
+import (
+	"errors"
+	"net"
+	"net/http"
+
+	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/experimental"
+	"github.com/sagernet/sing-box/log"
+	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common"
+	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+)
+
+func init() {
+	experimental.RegisterV2RayServerConstructor(NewServer)
+}
+
+var _ adapter.V2RayServer = (*Server)(nil)
+
+type Server struct {
+	logger       log.Logger
+	listen       string
+	grpcServer   *grpc.Server
+	statsService *StatsService
+}
+
+func NewServer(logger log.Logger, options option.V2RayAPIOptions) (adapter.V2RayServer, error) {
+	grpcServer := grpc.NewServer(grpc.Creds(insecure.NewCredentials()))
+	statsService := NewStatsService(common.PtrValueOrDefault(options.Stats))
+	if statsService != nil {
+		RegisterStatsServiceServer(grpcServer, statsService)
+	}
+	server := &Server{
+		logger:       logger,
+		listen:       options.Listen,
+		grpcServer:   grpcServer,
+		statsService: statsService,
+	}
+	return server, nil
+}
+
+func (s *Server) Name() string {
+	return "v2ray server"
+}
+
+func (s *Server) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	switch stage {
+	case adapter.StartStateInitialize:
+		scope.Add(func() error {
+			s.grpcServer.Stop()
+			return nil
+		})
+	case adapter.StartStatePostStart:
+		listener, err := net.Listen(M.NetworkFromNetAddr(N.NetworkTCP, M.ParseSocksaddr(s.listen).Addr), s.listen)
+		if err != nil {
+			return err
+		}
+		s.logger.Info("grpc server started at ", listener.Addr())
+		go func() {
+			err = s.grpcServer.Serve(listener)
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				s.logger.Error(err)
+			}
+		}()
+	}
+	return nil
+}
+
+func (s *Server) StatsService() adapter.ConnectionTracker {
+	return s.statsService
+}

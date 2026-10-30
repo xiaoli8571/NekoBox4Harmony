@@ -745,6 +745,7 @@ runLoop:
 			c.setCloseError(&closeError{err: err})
 			break runLoop
 		}
+		c.sentPacketHandler.UpdateAppLimited(now, c.sendQueue.WouldBlock() || c.framer.HasUnblockedStreamData() || c.datagramQueue.Peek() != nil)
 		if c.sendQueue.WouldBlock() {
 			// The send queue is still busy sending out packets. Wait until there's space to enqueue new packets.
 			sendQueueAvailable = c.sendQueue.Available()
@@ -2600,7 +2601,6 @@ func (c *Conn) sendPacketsWithoutGSO(now monotime.Time) error {
 		if _, err := c.appendOneShortHeaderPacket(buf, c.maxPacketSize(), ecn, now); err != nil {
 			if err == errNothingToPack {
 				buf.Release()
-				c.sentPacketHandler.MaybeNotifyAppLimited()
 				return nil
 			}
 			return err
@@ -2642,7 +2642,6 @@ func (c *Conn) sendPacketsWithGSO(now monotime.Time) error {
 			if err != errNothingToPack {
 				return err
 			}
-			c.sentPacketHandler.MaybeNotifyAppLimited()
 			if buf.Len() == 0 {
 				buf.Release()
 				return nil

@@ -10,8 +10,8 @@ import BusinessError from '@ohos.base';
 import { Profile, ProfileGroup, AppSettings } from '../model/Profile';
 import { refreshStore, loadProfiles, loadGroups, loadSettings, getPendingProfileId, setPendingProfileId, clearPendingProfileId, setRunningProfileId, mutateProfiles, LogStore } from '../model/Store';
 import { TrafficBaseline, parseBaseline, displayTotals, baselineStale } from '../model/TrafficBaseline';
-import { readPrefString } from '../model/Store';
-import { buildCoreConfig, effectiveIpv6Mode } from '../core/ConfigBuilder';
+import { readPrefString, readRawConfigOverride } from '../model/Store';
+import { buildCoreConfig, effectiveIpv6Mode, TUN_STACK } from '../core/ConfigBuilder';
 import { loadRouteRules, RouteRule, loadRemoteRuleSets, RemoteRuleSet } from '../model/RouteRule';
 import { CoreManager } from '../core/CoreManager';
 import {
@@ -26,7 +26,10 @@ import { publishVpnLog, publishVpnStatusEx, publishVpnTraffic, VPN_EVENT_LATENCY
 import { SnapshotStore } from '../core/SnapshotStore';
 import { parseSnapshot, SnapshotParseResult, ConfigSnapshot } from '../model/ConfigSnapshot';
 import { fetchTrafficTotals } from '../utils/TrafficStats';
+import { ensureYacdExtracted } from '../utils/WebUiAssets';
 import { errText } from '../utils/ErrText';
+import { autoUpdateGeoAssets } from '../utils/GeoAssets';
+import { addMessage } from '../model/MessageStore';
 import { formatUptimeText } from '../utils/NotifyText';
 
 /**
@@ -81,6 +84,10 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   private started: boolean = false;
   private currentRunId: string = '';
   private currentNodeName: string = '';
+  // 通知内容偏好(连接时快照一次,避免通知刷新时 1Hz 读设置):对齐 OwnBox 显示节点名/分组
+  private notifyShowProfile: boolean = true;
+  private notifyShowGroup: boolean = false;
+  private notifyGroupLabel: string = '';
   private latencySubscribed: boolean = false;
   private foregroundSubscribed: boolean = false;
   private teardownPromise: Promise<void> | null = null;
@@ -720,7 +727,19 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     const groups = await loadGroups();
     this.notificationSettings = settings;
     // 通知只显示速率 + 运行时长(用户 2026-10-23 要求去掉节点名/分组名),不再为通知取分组名
-    LogStore.addLog(`[vpn] 准备连接: ${node.name} (${node.server}:${node.serverPort}) [mode=${settings.mode} mtu=${settings.mtu} stack=${settings.stack} mixed=${settings.mixedPort}]`);
+    LogStore.addLog(`[vpn] 准备连接: ${node.name} (${node.server}:${node.serverPort}) [mode=${settings.mode} mtu=${settings.mtu} stack=${TUN_STACK} mixed=${settings.mixedPort}]`);
+
+    /* GeoSite/GeoIP 后台自动更新(2026-10-26):隧道起来后异步刷新,7 天过期 + 1 小时节流。
+       不 await、失败只写日志与消息,绝不影响本次连接。 */
+    autoUpdateGeoAssets(this.context).then((geoResult: string) => {
+      if (geoResult === 'updated') {
+        LogStore.addLog('[vpn] Geo 数据已自动更新(geosite-cn / geoip-cn),下次连接生效');
+        addMessage('geo', 'Geo 数据已自动更新', 'geosite-cn / geoip-cn 已在后台刷新,下次连接生效。')
+          .catch((e: Error) => LogStore.addLog(`[vpn] Geo 更新消息写入失败: ${e.message}`));
+      }
+    }).catch((e: Error) => {
+      LogStore.addLog(`[vpn] Geo 自动更新失败(下次连接重试): ${e.message}`);
+    });
 
     // ---- 1. 防回环策略 ----
     // 不再往 VpnConfig 加"服务器 IP/32 → wlan0"排除路由:实测该路由不带网关,
@@ -876,8 +895,43 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     }
 
     const cachePath = logPath.length > 0 ? logPath.substring(0, logPath.lastIndexOf('/') + 1) + 'cache.db' : '';
-    const configJson = buildCoreConfig(node, settings, ifname, logPath, prepared.geositePath,
-      prepared.geoIpPath, customRules, prepared.ruleSets, cachePath, profiles, groups);
+    /* Web 面板(yacd,对齐 OwnBox DashboardManager/LocalYacdDashboard):把 HAP 内置的
+       rawfile/yacd.zip 解压到沙箱,路径交给内核 clash_api.external_ui 静态托管。
+       解压失败只丢面板,不能影响建隧道 —— 所以整段 best-effort。 */
+    let webUiPath = '';
+    if (settings.clashApiEnabled) {
+      try {
+        webUiPath = await ensureYacdExtracted(this.context);
+        LogStore.addLog(webUiPath.length > 0
+          ? `[vpn] Web 面板目录就绪: ${webUiPath}`
+          : '[vpn] Web 面板资源不可用(不影响代理)');
+      } catch (e) {
+        LogStore.addLog(`[vpn] Web 面板准备失败(不影响代理): ${e instanceof Error ? e.message : `${e}`}`);
+      }
+    }
+    /* 原始配置覆盖(对齐 OwnBox ConfigEditActivity):用户显式编辑过就优先用它。
+       只在「JSON 能解析 + 含 outbounds 数组」时采纳;否则回退生成配置并写日志,
+       避免一个手滑的括号让整个 VPN 起不来。 */
+    let configJson = '';
+    const rawOverride = await readRawConfigOverride(node.id);
+    if (rawOverride.trim().length > 0) {
+      try {
+        const parsedOverride = JSON.parse(rawOverride) as Record<string, Object>;
+        if (parsedOverride !== null && parsedOverride !== undefined
+          && parsedOverride['outbounds'] !== undefined) {
+          configJson = rawOverride;
+          LogStore.addLog('[vpn] 使用原始配置覆盖(raw config override)');
+        } else {
+          LogStore.addLog('[vpn] 原始配置覆盖缺少 outbounds,已回退生成的配置');
+        }
+      } catch (e) {
+        LogStore.addLog(`[vpn] 原始配置覆盖解析失败,已回退生成的配置: ${e instanceof Error ? e.message : `${e}`}`);
+      }
+    }
+    if (configJson.length === 0) {
+      configJson = buildCoreConfig(node, settings, ifname, logPath, prepared.geositePath,
+        prepared.geoIpPath, customRules, prepared.ruleSets, cachePath, profiles, groups, webUiPath);
+    }
     const configPath = CoreManager.writeConfigFile(context, configJson);
     LogStore.addLog(`[vpn] sing-box 配置已写入 ${configPath}`);
     // ---- 3.2 固定本次会话使用的资源文件(方案 §7) ----
@@ -936,6 +990,16 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.started = true;
     this.currentRunId = pendingId;
     this.currentNodeName = node.name;
+    const notifySettings: AppSettings = await loadSettings();
+    this.notifyShowProfile = notifySettings.notificationShowProfile;
+    this.notifyShowGroup = notifySettings.notificationGroup;
+    this.notifyGroupLabel = '';
+    if (this.notifyShowGroup) {
+      const notifyGroups: Array<ProfileGroup> = await loadGroups();
+      const notifyGroup: ProfileGroup | undefined =
+        notifyGroups.find((g: ProfileGroup) => g.id === node.groupId);
+      this.notifyGroupLabel = notifyGroup !== undefined ? notifyGroup.name : '';
+    }
     await setRunningProfileId(pendingId);
     // ---- 5.5 后台刷新(方案第五阶段):只补缓存,失败保留旧缓存,不影响当前会话 ----
     void ResourceResolver.refreshInBackground(remoteRuleSets);
@@ -1015,7 +1079,6 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       this.notificationTrafficTimer = -1;
     }
     // 会话流量累加到节点历史统计(对齐安卓 TrafficLooper.stop 的 finally traffic post)
-    void this.persistSessionTraffic();
     this.notificationLastUp = 0;
     this.notificationLastDown = 0;
     this.notificationLastAt = 0;
@@ -1025,41 +1088,6 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.notificationTotalDown = 0;
     this.notificationStartedAt = 0;
     this.lastNotificationLine = '';
-  }
-
-  /**
-   * 把本次会话的上下行累计写入节点记录(对齐安卓 profileTrafficStatistics):
-   * 鸿蒙无内核级按出站统计,单出站场景下会话总量即当前节点流量。
-   * 开关关闭则跳过;累加后通知 UI 进程刷新节点卡显示。
-   */
-  private async persistSessionTraffic(): Promise<void> {
-    try {
-      const up = this.notificationTotalUp;
-      const down = this.notificationTotalDown;
-      const profileId = this.currentRunId;
-      if (profileId.length === 0 || (up <= 0 && down <= 0)) {
-        return;
-      }
-      const settings = await loadSettings();
-      if (!settings.profileTrafficStatistics) {
-        return;
-      }
-      await mutateProfiles((profiles: Array<Profile>): Array<Profile> => {
-        for (let i = 0; i < profiles.length; i++) {
-          if (profiles[i].id === profileId) {
-            profiles[i].rx = Math.max(0, profiles[i].rx) + down;
-            profiles[i].tx = Math.max(0, profiles[i].tx) + up;
-            profiles[i].updatedAt = Date.now();
-            break;
-          }
-        }
-        return profiles;
-      });
-      publishVpnTraffic(0, 0, up, down);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : `${e}`;
-      LogStore.addLog(`[vpn] 会话流量持久化失败: ${msg}`);
-    }
   }
 
   private formatNotificationSpeed(bytesPerSecond: number): string {
@@ -1088,8 +1116,22 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     return `${(mb / 1024).toFixed(2)} GB`;
   }
 
-  /** 常驻通知(2026-10-23 用户定稿):标题=已连接,正文=**实时速率**,附加行=**本次运行时长**,
-   *  右侧"断开"按钮。不再显示节点名/分组名/延迟(节点看应用内列表即可,通知栏位置留给状态)。 */
+  /** 常驻通知:标题=已连接,正文=**实时速率**,附加行=**节点名[ · 分组名] · 运行时长**,
+   *  右侧"断开"按钮。节点名/分组由设置页开关控制(notificationShowProfile / notificationGroup,
+   *  对齐 OwnBox ServiceNotification;关掉就只剩时长,回到 2026-10-23 的简洁形态)。 */
+  private notificationSubtitle(uptimeLabel: string, elapsedMs: number): string {
+    const uptime: string = formatUptimeText(elapsedMs);
+    if (!this.notifyShowProfile || this.currentNodeName.length === 0) {
+      return `${uptimeLabel} ${uptime}`;
+    }
+    const parts: Array<string> = [this.currentNodeName];
+    if (this.notifyShowGroup && this.notifyGroupLabel.length > 0) {
+      parts.push(this.notifyGroupLabel);
+    }
+    parts.push(uptime);
+    return parts.join(' · ');
+  }
+
   private async showConnectedNotification(): Promise<void> {
     if (this.notificationFailStreak >= 5) {
       return; // 连续 5 次发布失败(通知权限被关):本会话内停用周期通知,流量统计不受影响
@@ -1113,7 +1155,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       const speedText = `${uploadLabel} ${this.formatNotificationSpeed(this.notificationUpSpeed)} / ` +
         `${downloadLabel} ${this.formatNotificationSpeed(this.notificationDownSpeed)}`;
       const elapsedMs = this.notificationStartedAt > 0 ? Date.now() - this.notificationStartedAt : 0;
-      const uptimeText = `${uptimeLabel} ${formatUptimeText(elapsedMs)}`;
+      const uptimeText = this.notificationSubtitle(uptimeLabel, elapsedMs);
       // 仅在内容变化时记一条:通知栏实际显示什么,真机排查(及本轮验收)都能直接对着日志核
       const contentLine = `${speedText} | ${uptimeText}`;
       if (contentLine !== this.lastNotificationLine) {

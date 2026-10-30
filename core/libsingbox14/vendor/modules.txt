@@ -341,7 +341,7 @@ github.com/sagernet/sing/protocol/socks/socks5
 github.com/sagernet/sing/service
 github.com/sagernet/sing/service/filemanager
 github.com/sagernet/sing/service/pause
-# github.com/sagernet/sing-box v1.14.0 => C:/Worker/NekoBox4Harmony/core/sing-box-1.14
+# github.com/sagernet/sing-box v1.14.0 => C:/Users/xiaoli/Downloads/Agent-WorkerSpaces/NekoBox4Harmony/core/sing-box-1.14
 ## explicit; go 1.24
 github.com/sagernet/sing-box
 github.com/sagernet/sing-box/adapter
@@ -474,7 +474,7 @@ github.com/sagernet/sing-snell/internal/reuse
 github.com/sagernet/sing-snell/snellv4
 github.com/sagernet/sing-snell/snellv5
 github.com/sagernet/sing-snell/snellv6
-# github.com/sagernet/sing-tun v0.9.0-beta.4 => C:/Worker/NekoBox4Harmony/core/build/libsingbox-ohos/sing-tun-patched
+# github.com/sagernet/sing-tun v0.9.0-beta.4 => C:/Users/xiaoli/Downloads/Agent-WorkerSpaces/NekoBox4Harmony/core/build/libsingbox-ohos/sing-tun-patched
 ## explicit; go 1.24
 github.com/sagernet/sing-tun
 github.com/sagernet/sing-tun/gtcpip
@@ -760,9 +760,5 @@ google.golang.org/protobuf/types/known/timestamppb
 lukechampine.com/blake3
 lukechampine.com/blake3/bao
 lukechampine.com/blake3/guts
-# nekobox/sessionstate v0.0.0 => ./sessionstate
-## explicit; go 1.24
-nekobox/sessionstate
-# github.com/sagernet/sing-box => C:/Worker/NekoBox4Harmony/core/sing-box-1.14
-# nekobox/sessionstate => ./sessionstate
-# github.com/sagernet/sing-tun => C:/Worker/NekoBox4Harmony/core/build/libsingbox-ohos/sing-tun-patched
+# github.com/sagernet/sing-box => C:/Users/xiaoli/Downloads/Agent-WorkerSpaces/NekoBox4Harmony/core/sing-box-1.14
+# github.com/sagernet/sing-tun => C:/Users/xiaoli/Downloads/Agent-WorkerSpaces/NekoBox4Harmony/core/build/libsingbox-ohos/sing-tun-patched

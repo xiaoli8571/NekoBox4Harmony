@@ -3,6 +3,7 @@ package bbolt
 import (
 	"encoding/hex"
 	"fmt"
+	"runtime/debug"
 
 	"github.com/sagernet/bbolt/internal/common"
 )
@@ -30,6 +31,9 @@ func (tx *Tx) Check(options ...CheckOption) <-chan error {
 	go func() {
 		// Close the channel to signal completion.
 		defer close(ch)
+		// A corrupted page id can point past the memory map; turn the fault
+		// into a panic that check reports.
+		debug.SetPanicOnFault(true)
 		tx.check(chkConfig, ch)
 	}()
 	return ch
@@ -42,7 +46,11 @@ func (tx *Tx) check(cfg checkConfig, ch chan error) {
 		}
 	}()
 	// Force loading free list if opened in ReadOnly mode.
-	tx.db.loadFreelist()
+	err := tx.db.loadFreelist()
+	if err != nil {
+		ch <- err
+		return
+	}
 
 	// Check if any pages are double freed.
 	freed := make(map[common.Pgid]bool)
@@ -90,7 +98,9 @@ func (tx *Tx) check(cfg checkConfig, ch chan error) {
 
 func (tx *Tx) recursivelyCheckPage(pageId common.Pgid, reachable map[common.Pgid]*common.Page, freed map[common.Pgid]bool,
 	kvStringer KVStringer, ch chan error) {
-	tx.checkInvariantProperties(pageId, reachable, freed, kvStringer, ch)
+	if !tx.checkInvariantProperties(pageId, reachable, freed, kvStringer, ch) {
+		return
+	}
 	tx.recursivelyCheckBucketInPage(pageId, reachable, freed, kvStringer, ch)
 }
 
@@ -132,7 +142,9 @@ func (tx *Tx) recursivelyCheckBucket(b *Bucket, reachable map[common.Pgid]*commo
 		return
 	}
 
-	tx.checkInvariantProperties(b.RootPage(), reachable, freed, kvStringer, ch)
+	if !tx.checkInvariantProperties(b.RootPage(), reachable, freed, kvStringer, ch) {
+		return
+	}
 
 	// Check each bucket within this bucket.
 	_ = b.ForEachBucket(func(k []byte) error {
@@ -143,25 +155,45 @@ func (tx *Tx) recursivelyCheckBucket(b *Bucket, reachable map[common.Pgid]*commo
 	})
 }
 
+// checkInvariantProperties reports whether the pages under pageId form a tree
+// of in-bounds branch and leaf pages that nothing else references. Only such a
+// tree is walked further, by the key order check here and by the cursors the
+// callers open on it; a corrupted file can link pages into a cycle, and walking
+// it would never end.
 func (tx *Tx) checkInvariantProperties(pageId common.Pgid, reachable map[common.Pgid]*common.Page, freed map[common.Pgid]bool,
-	kvStringer KVStringer, ch chan error) {
+	kvStringer KVStringer, ch chan error) bool {
+	isTree := true
 	tx.forEachPage(pageId, func(p *common.Page, _ int, stack []common.Pgid) {
-		verifyPageReachable(p, tx.meta.Pgid(), stack, reachable, freed, ch)
+		if !verifyPageReachable(p, tx.meta.Pgid(), stack, reachable, freed, ch) {
+			isTree = false
+		}
 	})
+	if !isTree {
+		return false
+	}
 
 	tx.recursivelyCheckPageKeyOrder(pageId, kvStringer.KeyToString, ch)
+	return true
 }
 
-func verifyPageReachable(p *common.Page, hwm common.Pgid, stack []common.Pgid, reachable map[common.Pgid]*common.Page, freed map[common.Pgid]bool, ch chan error) {
-	if p.Id() > hwm {
+// verifyPageReachable returns false if the page is out of bounds, already
+// reachable, or neither a branch nor a leaf page.
+func verifyPageReachable(p *common.Page, hwm common.Pgid, stack []common.Pgid, reachable map[common.Pgid]*common.Page, freed map[common.Pgid]bool, ch chan error) bool {
+	// Checking the last overflow page also keeps a corrupted overflow count
+	// from filling reachable with billions of ids.
+	if uint64(p.Id())+uint64(p.Overflow()) >= uint64(hwm) {
 		ch <- fmt.Errorf("page %d: out of bounds: %d (stack: %v)", int(p.Id()), int(hwm), stack)
+		return false
 	}
+
+	isTreePage := true
 
 	// Ensure each page is only referenced once.
 	for i := common.Pgid(0); i <= common.Pgid(p.Overflow()); i++ {
 		var id = p.Id() + i
 		if _, ok := reachable[id]; ok {
 			ch <- fmt.Errorf("page %d: multiple references (stack: %v)", int(id), stack)
+			isTreePage = false
 		}
 		reachable[id] = p
 	}
@@ -169,9 +201,12 @@ func verifyPageReachable(p *common.Page, hwm common.Pgid, stack []common.Pgid, r
 	// We should only encounter un-freed leaf and branch pages.
 	if freed[p.Id()] {
 		ch <- fmt.Errorf("page %d: reachable freed", int(p.Id()))
-	} else if !p.IsBranchPage() && !p.IsLeafPage() {
-		ch <- fmt.Errorf("page %d: invalid type: %s (stack: %v)", int(p.Id()), p.Typ(), stack)
 	}
+	if !p.IsBranchPage() && !p.IsLeafPage() {
+		ch <- fmt.Errorf("page %d: invalid type: %s (stack: %v)", int(p.Id()), p.Typ(), stack)
+		return false
+	}
+	return isTreePage
 }
 
 // recursivelyCheckPageKeyOrder verifies database consistency with respect to b-tree

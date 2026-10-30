@@ -1,6 +1,6 @@
 import common from '@ohos.app.ability.common';
 import connection from '@ohos.net.connection';
-import { Profile, ProfileType } from '../model/Profile';
+import { Profile, ProfileGroup, ProfileType } from '../model/Profile';
 import { initStore, loadProfiles, saveProfiles, mutateProfiles, loadGroups, saveGroups, ensureGroupByName, readPrefString, writePrefString, LogStore } from '../model/Store';
 import { parseSubUserInfo, looksLikeClashYaml, looksLikeSingBoxJson, parseSingBoxConfig, subFailureText, subFailureBaseText, dedupKeyOf, isIpLiteral, ClashParseResult } from '../utils/Subscription';
 import { parseClashProxiesWithProviders, ClashGroupDef } from '../utils/ClashProviders';
@@ -58,6 +58,11 @@ export class SubInfo {
   updateWhenConnectedOnly: boolean = false;  // 仅 VPN 已连接时自动更新
   deduplication: boolean = false;            // 更新时去重(对齐安卓 subscriptionDeduplication,默认关闭)
   forceResolve: boolean = false;             // 更新时把节点服务器域名解析为 IP(对齐安卓 subscriptionForceResolve)
+  // 节点名过滤(对齐 OwnBox SubscriptionFilterMode + filterRegex,RawUpdater.kt:199-212)
+  filterMode: string = 'off';                // off / include / exclude
+  filterRegex: string = '';                  // 关键词或正则(忽略大小写;非法正则视为未启用)
+  // 远端已删除但仍在用/测速可用/有流量的节点继续保留(对齐 OwnBox retainValidNodes)
+  retainValidNodes: boolean = false;
   // HTTP 条件请求校验器:下次更新带上,服务端回 304 即跳过正文下载
   etag: string = '';
   lastModified: string = '';
@@ -120,6 +125,10 @@ export async function listSubs(): Promise<Array<SubInfo>> {
       item.updateWhenConnectedOnly = source.updateWhenConnectedOnly === true;
       item.deduplication = source.deduplication === true;
       item.forceResolve = source.forceResolve === true;
+      const rawFilterMode: string = source.filterMode ?? 'off';
+      item.filterMode = (rawFilterMode === 'include' || rawFilterMode === 'exclude') ? rawFilterMode : 'off';
+      item.filterRegex = source.filterRegex ?? '';
+      item.retainValidNodes = source.retainValidNodes === true;
       item.etag = source.etag ?? '';
       item.lastModified = source.lastModified ?? '';
       result.push(item);
@@ -244,6 +253,16 @@ export async function saveSubSettings(url: string, changes: Record<string, Objec
     }
     if (changes['forceResolve'] !== undefined) {
       s.forceResolve = changes['forceResolve'] === true;
+    }
+    if (changes['filterMode'] !== undefined) {
+      const mode: string = `${changes['filterMode']}`;
+      s.filterMode = (mode === 'include' || mode === 'exclude') ? mode : 'off';
+    }
+    if (changes['filterRegex'] !== undefined) {
+      s.filterRegex = `${changes['filterRegex']}`;
+    }
+    if (changes['retainValidNodes'] !== undefined) {
+      s.retainValidNodes = changes['retainValidNodes'] === true;
     }
     if (changes['updateIntervalMinutes'] !== undefined) {
       s.updateIntervalMinutes = normalizeIntervalMinutes(Number(changes['updateIntervalMinutes']));
@@ -549,49 +568,165 @@ export async function markGroupFromSubscription(groupId: string): Promise<void> 
   }
 }
 
-export async function applyClashGroups(groups: Array<ClashGroupDef>, allProfiles: Array<Profile>): Promise<void> {
+/** 给分组打订阅归属标记(订阅主分组也会走这里) */
+export async function markGroupSubUrl(groupId: string, subUrl: string): Promise<void> {
+  if (groupId.length === 0 || subUrl.length === 0) {
+    return;
+  }
+  const groups = await loadGroups();
+  const target = groups.find(g => g.id === groupId);
+  if (target === undefined || target.subUrl === subUrl) {
+    return;
+  }
+  target.subUrl = subUrl;
+  target.updatedAt = Date.now();
+  await saveGroups(groups);
+}
+
+/** 订阅导入时要落到一个分组上的属性变更 */
+interface GroupFlagChange {
+  isSelector: boolean;
+  autoSelect: boolean;
+  subUrl: string;
+  updatedAt: number;
+}
+
+export async function applyClashGroups(groups: Array<ClashGroupDef>, allProfiles: Array<Profile>,
+  subUrl: string = ''): Promise<void> {
+  if (groups.length === 0) {
+    return;
+  }
+  /* ── 成员解析:Clash 的 proxy-groups 允许「组引用组」 ──────────────────────
+     一个组里既可能有节点名,也可能有另一个组的名字(如「🔰 选择节点」里放的是
+     「自动选择」「香港节点」)。以前只按节点名匹配,引用型成员全部落空,
+     这类组装出来没有成员 → 首页分组条(只显示有节点的组)里就只剩「自动选择」。
+     这里递归展开成叶子节点名(带环检测 + 深度上限)。 */
+  const defByName = new Map<string, ClashGroupDef>();
   for (const def of groups) {
-    const memberNames = def.members;
-    // 成员名 -> 本订阅节点 id(只认本次导入范围内的节点)
+    defByName.set(def.name, def);
+  }
+  const resolveLeafNames = (groupName: string, seen: Array<string>, depth: number): Array<string> => {
+    const out: Array<string> = [];
+    const def = defByName.get(groupName);
+    if (def === undefined || depth > 6 || seen.indexOf(groupName) >= 0) {
+      return out;
+    }
+    const nextSeen: Array<string> = seen.concat([groupName]);
+    for (const member of def.members) {
+      if (defByName.has(member)) {
+        for (const leaf of resolveLeafNames(member, nextSeen, depth + 1)) {
+          out.push(leaf);
+        }
+      } else {
+        out.push(member);
+      }
+    }
+    return out;
+  };
+
+  /* ── 只认本订阅的节点 ────────────────────────────────────────────────
+     以前按名字在**全部**节点里找,多订阅同名节点会被互相抢走:吹雪云的组里混进
+     NexPanel 的节点,导致「只看一个订阅」也漏出别的订阅。 */
+  const scoped: Array<Profile> = subUrl.length > 0
+    ? allProfiles.filter((p: Profile) => p.subUrl === subUrl)
+    : allProfiles;
+  const byName = new Map<string, Profile>();
+  for (const p of scoped) {
+    if (!byName.has(p.name)) {
+      byName.set(p.name, p);
+    }
+  }
+
+  const groupsNow: Array<ProfileGroup> = await loadGroups();
+  /** 待写回的分组属性(组对象可能来自不同批次的 loadGroups,统一收在表里再落盘) */
+  const pending: Map<string, GroupFlagChange> = new Map<string, GroupFlagChange>();
+  /** 节点 → 本次解析出的组 id 列表(多重归属,顺序 = 配置里的组顺序) */
+  const membership = new Map<string, Array<string>>();
+
+  for (const def of groups) {
+    const leafNames: Array<string> = resolveLeafNames(def.name, [], 0);
     const memberIds: Array<string> = [];
-    for (const mn of memberNames) {
-      const hit = allProfiles.find(p => p.name === mn);
-      if (hit !== undefined) {
+    for (const name of leafNames) {
+      const hit = byName.get(name);
+      if (hit !== undefined && memberIds.indexOf(hit.id) < 0) {
         memberIds.push(hit.id);
       }
     }
     if (memberIds.length === 0) {
-      continue;
+      continue; // 一个真节点都没有的组不建(避免全空组刷屏)
     }
-    const groupId = await ensureGroupByName(def.name);
+    const groupId: string = await ensureGroupByName(def.name);
     if (groupId.length === 0) {
       continue;
     }
     await markGroupFromSubscription(groupId);
-    // 组类型落到 ProfileGroup 的两个互斥开关上
-    const isUrlTest = def.type === 'url-test' || def.type === 'urltest';
-    const groups1 = await loadGroups();
-    const target = groups1.find(g => g.id === groupId);
-    if (target === undefined) {
-      continue;
+    /* 组类型 → ProfileGroup 的两个互斥开关:
+       url-test/urltest 交给内核自动选;其它(select/fallback/load-balance/relay/未知)
+       一律当手动组 —— 语义落不下的组至少成员可见、可手动选,不会消失。 */
+    const isUrlTest: boolean = def.type === 'url-test' || def.type === 'urltest';
+    pending.set(groupId, {
+      isSelector: !isUrlTest,
+      autoSelect: isUrlTest,
+      subUrl: subUrl,
+      updatedAt: Date.now()
+    });
+    for (const id of memberIds) {
+      const list: Array<string> = membership.get(id) ?? [];
+      if (list.indexOf(groupId) < 0) {
+        list.push(groupId);
+      }
+      membership.set(id, list);
     }
-    if (target.isSelector !== !isUrlTest || target.autoSelect !== isUrlTest) {
-      target.isSelector = !isUrlTest;
-      target.autoSelect = isUrlTest;
-      target.updatedAt = Date.now();
-      await saveGroups(groups1);
-    }
-    // 成员节点归入该组(节点只属于一个分组,故为迁移而非复制)
-    let changed = false;
-    for (const p of allProfiles) {
-      if (memberIds.indexOf(p.id) >= 0 && p.groupId !== groupId) {
-        p.groupId = groupId;
-        changed = true;
+  }
+
+  if (pending.size > 0) {
+    const latest: Array<ProfileGroup> = await loadGroups();
+    let groupsChanged = false;
+    for (const g of latest) {
+      const change: GroupFlagChange | undefined = pending.get(g.id);
+      if (change === undefined) {
+        continue;
+      }
+      if (g.isSelector !== change.isSelector || g.autoSelect !== change.autoSelect) {
+        g.isSelector = change.isSelector;
+        g.autoSelect = change.autoSelect;
+        groupsChanged = true;
+      }
+      if (change.subUrl.length > 0 && g.subUrl !== change.subUrl) {
+        g.subUrl = change.subUrl;
+        groupsChanged = true;
+      }
+      if (groupsChanged) {
+        g.updatedAt = change.updatedAt;
       }
     }
-    if (changed) {
-      await saveProfiles(allProfiles);
+    if (groupsChanged) {
+      await saveGroups(latest);
     }
+  }
+
+  /* ── 写回多重归属 ──────────────────────────────────────────────────
+     groupId 仍是唯一主分组(内核配置只认它):现有主分组若仍在新集合里就保留,
+     否则取配置里的第一个组。subGroupIds 决定首页分组条里每个组显示哪些节点。 */
+  let profilesChanged = false;
+  for (const p of scoped) {
+    const ids: Array<string> = membership.get(p.id) ?? [];
+    if (ids.length === 0) {
+      continue;
+    }
+    const sameLength: boolean = ids.length === p.subGroupIds.length
+      && ids.every((id: string, i: number) => p.subGroupIds[i] === id);
+    if (!sameLength) {
+      p.subGroupIds = ids.slice();
+      profilesChanged = true;
+    }
+    if (ids.indexOf(p.groupId) < 0) {
+      p.groupId = ids[0];
+      profilesChanged = true;
+    }
+  }
+  if (profilesChanged) {
+    await saveProfiles(allProfiles);
   }
 }
 

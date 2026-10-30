@@ -5,15 +5,14 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/badhttp"
 	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/tls"
 	C "github.com/sagernet/sing-box/constant"
@@ -26,7 +25,6 @@ import (
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	sHTTP "github.com/sagernet/sing/protocol/http"
 
 	mDNS "github.com/miekg/dns"
 	"golang.org/x/net/http2"
@@ -34,7 +32,10 @@ import (
 
 const MimeType = "application/dns-message"
 
-var _ adapter.DNSTransport = (*HTTPSTransport)(nil)
+var (
+	_ adapter.DNSTransport         = (*HTTPSTransport)(nil)
+	_ adapter.IdleConnectionKeeper = (*HTTPSTransport)(nil)
+)
 
 func RegisterHTTPS(registry *dns.TransportRegistry) {
 	dns.RegisterTransport[option.RemoteHTTPSDNSServerOptions](registry, C.DNSTypeHTTPS, NewHTTPS)
@@ -48,6 +49,7 @@ type HTTPSTransport struct {
 	headers          http.Header
 	serverAddr       M.Socksaddr
 	fallback         *atomic.Bool
+	keepIdle         atomic.Bool
 	transportAccess  sync.Mutex
 	transport        *HTTPSTransportWrapper
 	transportResetAt time.Time
@@ -78,21 +80,20 @@ func NewHTTPS(ctx context.Context, logger log.ContextLogger, tag string, options
 			host = options.Server
 		}
 	}
-	destinationURL := url.URL{
-		Scheme: "https",
-		Host:   host,
-	}
-	if destinationURL.Host == "" {
-		destinationURL.Host = options.Server
-	}
+	destinationAddress := M.ParseSocksaddrHostPort(host, options.ServerPort)
+	destinationURL := url.URL{Scheme: "https"}
 	if options.ServerPort != 0 && options.ServerPort != 443 {
-		destinationURL.Host = net.JoinHostPort(destinationURL.Host, strconv.Itoa(int(options.ServerPort)))
+		destinationURL.Host = destinationAddress.String()
+	} else if destinationAddress.IsIPv6() {
+		destinationURL.Host = "[" + destinationAddress.AddrString() + "]"
+	} else {
+		destinationURL.Host = destinationAddress.AddrString()
 	}
 	path := options.Path
 	if path == "" {
 		path = "/dns-query"
 	}
-	err = sHTTP.URLSetPath(&destinationURL, path)
+	err = badhttp.URLSetPath(&destinationURL, path)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +132,7 @@ func NewHTTPSRaw(
 		// plain HTTP DoH used by Tailscale
 		fallback.Store(true)
 	}
-	return &HTTPSTransport{
+	transport := &HTTPSTransport{
 		TransportAdapter: adapter,
 		logger:           logger,
 		dialer:           dialer,
@@ -141,24 +142,38 @@ func NewHTTPSRaw(
 		fallback:         fallback,
 		transport:        NewHTTPSTransportWrapper(dialer, serverAddr, fallback),
 	}
+	transport.keepIdle.Store(true)
+	return transport
 }
 
-func (t *HTTPSTransport) Start(stage adapter.StartStage) error {
+func (t *HTTPSTransport) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
+	scope.Add(func() error {
+		t.Reset()
+		return nil
+	})
 	return dialer.InitializeDetour(t.dialer)
-}
-
-func (t *HTTPSTransport) Close() error {
-	t.Reset()
-	return nil
 }
 
 func (t *HTTPSTransport) Reset() {
 	t.transportAccess.Lock()
 	defer t.transportAccess.Unlock()
 	t.resetTransportLocked()
+}
+
+func (t *HTTPSTransport) SetKeepIdleConnections(keep bool) {
+	t.keepIdle.Store(keep)
+	if !keep {
+		t.CloseIdleConnections()
+	}
+}
+
+func (t *HTTPSTransport) CloseIdleConnections() {
+	t.transportAccess.Lock()
+	defer t.transportAccess.Unlock()
+	t.transport.CloseIdleConnections()
 }
 
 func (t *HTTPSTransport) resetTransportLocked() {
@@ -171,6 +186,9 @@ func (t *HTTPSTransport) resetTransportLocked() {
 func (t *HTTPSTransport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
 	startAt := time.Now()
 	response, err := t.exchange(ctx, message)
+	if !t.keepIdle.Load() {
+		t.CloseIdleConnections()
+	}
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			t.transportAccess.Lock()

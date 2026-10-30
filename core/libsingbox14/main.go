@@ -1,4 +1,4 @@
-// NekoBox4Harmony — sing-box 内核进程内包装层(1.14 API)。
+// NekoBox4Harmony — sing-box 内核进程内包装层(1.15 API)。
 //
 // 编译为 HarmonyOS c-shared 库(libsingbox.so),由 NAPI 层 dlopen 调用:
 //   CGoSetTunFd(fd)              — 注入 @ohos.net.vpnExtension 创建的 TUN fd
@@ -467,7 +467,7 @@ func CGoTestActiveSessionsV3() *C.char {
 
 //export CGoSingBoxVersion
 func CGoSingBoxVersion() *C.char {
-	return C.CString("1.14.0-ohos-inproc")
+	return C.CString("1.15.0-alpha.13-ohos-inproc")
 }
 
 func main() {}

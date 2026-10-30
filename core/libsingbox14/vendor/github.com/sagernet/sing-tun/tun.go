@@ -46,11 +46,12 @@ type LinuxTUN interface {
 	BatchRead(buffers [][]byte, offset int, readN []int) (n int, err error)
 	BatchWrite(buffers [][]byte, offset int) (n int, err error)
 	TXChecksumOffload() bool
+	FlushDNSCache()
 }
 
 type DarwinTUN interface {
 	Tun
-	BatchRead() ([]*buf.Buffer, error)
+	BatchRead(frontHeadroom int, rearHeadroom int) ([]*buf.Buffer, error)
 	BatchWrite(buffers []*buf.Buffer) error
 }
 
@@ -73,6 +74,7 @@ type Options struct {
 	Inet6Address                          []netip.Prefix
 	MTU                                   uint32
 	GSO                                   bool
+	MultiQueue                            bool
 	AutoRoute                             bool
 	InterfaceScope                        bool
 	Inet4Gateway                          netip.Addr
@@ -86,6 +88,7 @@ type Options struct {
 	AutoRedirectInputMark                 uint32
 	AutoRedirectOutputMark                uint32
 	AutoRedirectResetMark                 uint32
+	AutoRedirectTProxyMark                uint32
 	AutoRedirectNFQueue                   uint16
 	ExcludeMPTCP                          bool
 	Inet4LoopbackAddress                  []netip.Addr
@@ -97,6 +100,7 @@ type Options struct {
 	Inet6RouteExcludeAddress              []netip.Prefix
 	IncludeInterface                      []string
 	ExcludeInterface                      []string
+	BridgeInterface                       []string
 	IncludeUID                            []ranges.Range[uint32]
 	ExcludeUID                            []ranges.Range[uint32]
 	IncludeAndroidUser                    []int
@@ -116,19 +120,30 @@ type Options struct {
 	EXP_DisableDNSHijack      bool
 	EXP_ExternalConfiguration bool
 
-	// For gvisor stack, it should be enabled when MTU is less than 32768; otherwise it should be less than or equal to 8192.
-	// The above condition is just an estimate and not exact, calculated on M4 pro.
+	// Safe at every MTU: the darwin pending packet limit is derived from the utun control socket
+	// receive buffer.
 	EXP_MultiPendingPackets bool
 
-	// Will cause the darwin network to die, do not use.
+	// Do not enable. In netif mode (every utun handed out by Network Extension) utun_pkt_input
+	// returns ENOSPC without freeing the mbuf once 512 packets are queued
+	// (net.utun.max_pending_input), leaking one mbuf per rejected write until reboot; sendmsg_x
+	// pushes the write rate past the netif drain rate (about 500k to 700k packets per second on an
+	// M4 Pro) and reproduces the device-wide network loss, writev stays below it by its own cost.
 	EXP_SendMsgX bool
 }
 
 func (o *Options) DNSModeOrDefault() string {
 	if o.DNSMode == "" {
-		return DNSModeHijack
+		if o.AutoRoute {
+			return DNSModeHijack
+		}
+		return DNSModeDisabled
 	}
 	return o.DNSMode
+}
+
+func (o *Options) AutoRedirectOutputMarkOrDefault() uint32 {
+	return effectiveMark(o.AutoRedirectOutputMark, DefaultAutoRedirectOutputMark, DefaultAutoRedirectOutputMarkAndroid)
 }
 
 func (o *Options) DNSServerAddress() ([]netip.Addr, error) {

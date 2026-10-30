@@ -1,0 +1,386 @@
+//go:build linux
+
+package resolved
+
+import (
+	"context"
+	"net/netip"
+	"os"
+	"slices"
+	"strconv"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/tls"
+	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/dns"
+	"github.com/sagernet/sing-box/dns/transport"
+	"github.com/sagernet/sing-box/log"
+	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common"
+	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/logger"
+	M "github.com/sagernet/sing/common/metadata"
+	"github.com/sagernet/sing/service"
+
+	mDNS "github.com/miekg/dns"
+)
+
+func RegisterTransport(registry *dns.TransportRegistry) {
+	dns.RegisterTransport[option.ResolvedDNSServerOptions](registry, C.TypeResolved, NewTransport)
+}
+
+var (
+	_ adapter.DNSTransport                    = (*Transport)(nil)
+	_ adapter.DNSTransportWithPreferredDomain = (*Transport)(nil)
+	_ adapter.DNSTransportWithConfiguration   = (*Transport)(nil)
+	_ adapter.DNSTransportWithEnvironment     = (*Transport)(nil)
+)
+
+type Transport struct {
+	dns.TransportAdapter
+	ctx                    context.Context
+	logger                 logger.ContextLogger
+	serviceTag             string
+	acceptDefaultResolvers bool
+	timeout                time.Duration
+	attempts               int
+	rotate                 bool
+	service                *Service
+	linkAccess             sync.RWMutex
+	linkServers            map[*TransportLink]*LinkServers
+}
+
+type LinkServers struct {
+	Link         *TransportLink
+	Servers      []adapter.DNSTransport
+	serverOffset uint32
+	serverScope  *adapter.Scope
+}
+
+func (c *LinkServers) ServerOffset(rotate bool) uint32 {
+	if rotate {
+		return atomic.AddUint32(&c.serverOffset, 1) - 1
+	}
+	return 0
+}
+
+func NewTransport(ctx context.Context, logger log.ContextLogger, tag string, options option.ResolvedDNSServerOptions) (adapter.DNSTransport, error) {
+	return &Transport{
+		TransportAdapter:       dns.NewTransportAdapter(C.DNSTypeDHCP, tag, nil),
+		ctx:                    ctx,
+		logger:                 logger,
+		serviceTag:             options.Service,
+		acceptDefaultResolvers: options.AcceptDefaultResolvers,
+		// timeout:                time.Duration(options.Timeout),
+		// attempts:               options.Attempts,
+		// rotate:                 options.Rotate,
+		timeout:     5 * time.Second,
+		attempts:    2,
+		linkServers: make(map[*TransportLink]*LinkServers),
+	}, nil
+}
+
+func (t *Transport) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage != adapter.StartStateInitialize {
+		return nil
+	}
+	serviceManager := service.FromContext[adapter.ServiceManager](t.ctx)
+	service, loaded := serviceManager.Get(t.serviceTag)
+	if !loaded {
+		return E.New("service not found: ", t.serviceTag)
+	}
+	resolvedInbound, isResolved := service.(*Service)
+	if !isResolved {
+		return E.New("service is not resolved: ", t.serviceTag)
+	}
+	resolvedInbound.updateCallback = t.updateTransports
+	resolvedInbound.deleteCallback = t.deleteTransport
+	t.service = resolvedInbound
+	scope.Add(func() error {
+		t.linkAccess.RLock()
+		defer t.linkAccess.RUnlock()
+		for _, servers := range t.linkServers {
+			servers.serverScope.Close()
+		}
+		return nil
+	})
+	return nil
+}
+
+func (t *Transport) Reset() {
+	t.linkAccess.RLock()
+	defer t.linkAccess.RUnlock()
+	for _, servers := range t.linkServers {
+		for _, server := range servers.Servers {
+			server.Reset()
+		}
+	}
+}
+
+func (t *Transport) Environment() []string {
+	if t.service == nil {
+		return nil
+	}
+	t.service.linkAccess.RLock()
+	defer t.service.linkAccess.RUnlock()
+	linkIndexes := make([]int32, 0, len(t.service.links))
+	for linkIndex := range t.service.links {
+		linkIndexes = append(linkIndexes, linkIndex)
+	}
+	slices.Sort(linkIndexes)
+	var environment []string
+	for _, linkIndex := range linkIndexes {
+		link := t.service.links[linkIndex]
+		linkEntry := "link:" + strconv.Itoa(int(linkIndex))
+		if link.dnsOverTLS {
+			linkEntry += ":tls"
+		}
+		environment = append(environment, linkEntry)
+		for _, address := range link.address {
+			serverAddr, ok := netip.AddrFromSlice(address.Address)
+			if ok {
+				environment = append(environment, serverAddr.String())
+			}
+		}
+		for _, address := range link.addressEx {
+			serverAddr, ok := netip.AddrFromSlice(address.Address)
+			if ok {
+				environment = append(environment, M.SocksaddrFrom(serverAddr, address.Port).String()+"/"+address.Name)
+			}
+		}
+		for _, domain := range link.domain {
+			if domain.RoutingOnly {
+				environment = append(environment, "routing-only:"+domain.Domain)
+			} else {
+				environment = append(environment, domain.Domain)
+			}
+		}
+	}
+	return environment
+}
+
+func (t *Transport) ServerAddresses() []netip.Addr {
+	if t.service == nil {
+		return nil
+	}
+	t.service.linkAccess.RLock()
+	defer t.service.linkAccess.RUnlock()
+	var serverAddresses []netip.Addr
+	for _, link := range t.service.links {
+		for _, address := range link.address {
+			serverAddr, loaded := netip.AddrFromSlice(address.Address)
+			if loaded {
+				serverAddresses = append(serverAddresses, serverAddr)
+			}
+		}
+		for _, address := range link.addressEx {
+			serverAddr, loaded := netip.AddrFromSlice(address.Address)
+			if loaded {
+				serverAddresses = append(serverAddresses, serverAddr)
+			}
+		}
+	}
+	return serverAddresses
+}
+
+func (t *Transport) SearchDomains() []string {
+	if t.service == nil {
+		return nil
+	}
+	t.service.linkAccess.RLock()
+	defer t.service.linkAccess.RUnlock()
+	var searchDomains []string
+	for _, link := range t.service.links {
+		for _, domain := range link.domain {
+			if !domain.RoutingOnly && domain.Domain != "." {
+				searchDomains = append(searchDomains, domain.Domain)
+			}
+		}
+	}
+	return searchDomains
+}
+
+func (t *Transport) updateTransports(link *TransportLink) error {
+	t.linkAccess.Lock()
+	defer t.linkAccess.Unlock()
+	if servers, loaded := t.linkServers[link]; loaded {
+		servers.serverScope.Close()
+	}
+	serverDialer := common.Must1(dialer.NewDefault(t.ctx, option.DialerOptions{
+		AbstractDialerOptions: option.AbstractDialerOptions{
+			BindInterface:      link.iif.Name,
+			UDPFragmentDefault: true,
+		},
+	}))
+	var transports []adapter.DNSTransport
+	for _, address := range link.address {
+		serverAddr, ok := netip.AddrFromSlice(address.Address)
+		if !ok {
+			return os.ErrInvalid
+		}
+		if link.dnsOverTLS {
+			tlsConfig := common.Must1(tls.NewClient(t.ctx, t.logger, serverAddr.String(), option.OutboundTLSOptions{
+				Enabled:    true,
+				ServerName: serverAddr.String(),
+			}))
+			transports = append(transports, transport.NewTLSRaw(t.logger, t.TransportAdapter, serverDialer, M.SocksaddrFrom(serverAddr, 853), tlsConfig))
+
+		} else {
+			transports = append(transports, transport.NewUDPRaw(t.logger, t.TransportAdapter, serverDialer, M.SocksaddrFrom(serverAddr, 53)))
+		}
+	}
+	for _, address := range link.addressEx {
+		serverAddr, ok := netip.AddrFromSlice(address.Address)
+		if !ok {
+			return os.ErrInvalid
+		}
+		serverPort := address.Port
+		if link.dnsOverTLS {
+			if serverPort == 0 {
+				serverPort = 853
+			}
+			var serverName string
+			if address.Name != "" {
+				serverName = address.Name
+			} else {
+				serverName = serverAddr.String()
+			}
+			tlsConfig := common.Must1(tls.NewClient(t.ctx, t.logger, serverAddr.String(), option.OutboundTLSOptions{
+				Enabled:    true,
+				ServerName: serverName,
+			}))
+			transports = append(transports, transport.NewTLSRaw(t.logger, t.TransportAdapter, serverDialer, M.SocksaddrFrom(serverAddr, serverPort), tlsConfig))
+
+		} else {
+			if serverPort == 0 {
+				serverPort = 53
+			}
+			transports = append(transports, transport.NewUDPRaw(t.logger, t.TransportAdapter, serverDialer, M.SocksaddrFrom(serverAddr, serverPort)))
+		}
+	}
+	serverScope := adapter.NewScope(t.ctx, t.logger)
+	for _, serverTransport := range transports {
+		err := serverTransport.Start(adapter.StartStateStart, serverScope)
+		if err != nil {
+			return E.Errors(err, serverScope.Close())
+		}
+	}
+	t.linkServers[link] = &LinkServers{
+		Link:        link,
+		Servers:     transports,
+		serverScope: serverScope,
+	}
+	return nil
+}
+
+func (t *Transport) deleteTransport(link *TransportLink) {
+	t.linkAccess.Lock()
+	defer t.linkAccess.Unlock()
+	servers, loaded := t.linkServers[link]
+	if !loaded {
+		return
+	}
+	servers.serverScope.Close()
+	delete(t.linkServers, link)
+}
+
+func (t *Transport) PreferredDomain(domain string) bool {
+	t.service.linkAccess.RLock()
+	defer t.service.linkAccess.RUnlock()
+	for _, link := range t.service.links {
+		for _, linkDomain := range link.domain {
+			if linkDomain.Domain == "." {
+				continue
+			}
+			if mDNS.IsSubDomain(mDNS.Fqdn(linkDomain.Domain), domain) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
+	done := make(chan struct{})
+	var (
+		response *mDNS.Msg
+		err      error
+	)
+	t.ExchangeAsync(ctx, message, func(callbackResponse *mDNS.Msg, callbackErr error) {
+		response = callbackResponse
+		err = callbackErr
+		close(done)
+	})
+	<-done
+	return response, err
+}
+
+func (t *Transport) ExchangeAsync(ctx context.Context, message *mDNS.Msg, callback func(response *mDNS.Msg, err error)) {
+	question := message.Question[0]
+	var (
+		selectedLink   *TransportLink
+		selectedLabels int
+	)
+	t.service.linkAccess.RLock()
+	for _, link := range t.service.links {
+		for _, domain := range link.domain {
+			if domain.Domain == "." && domain.RoutingOnly && !t.acceptDefaultResolvers {
+				continue
+			}
+			domainName := mDNS.Fqdn(domain.Domain)
+			if !mDNS.IsSubDomain(domainName, question.Name) {
+				continue
+			}
+			labels := mDNS.CountLabel(domainName)
+			if selectedLink == nil || labels > selectedLabels {
+				selectedLink = link
+				selectedLabels = labels
+			}
+		}
+	}
+	if selectedLink == nil && t.acceptDefaultResolvers {
+		for l := len(t.service.defaultRouteSequence); l > 0; l-- {
+			selectedLink = t.service.links[t.service.defaultRouteSequence[l-1]]
+			if len(selectedLink.address) > 0 || len(selectedLink.addressEx) > 0 {
+				break
+			}
+		}
+	}
+	t.service.linkAccess.RUnlock()
+	if selectedLink == nil {
+		callback(dns.FixedResponseStatus(message, mDNS.RcodeNameError), nil)
+		return
+	}
+	t.linkAccess.RLock()
+	servers := t.linkServers[selectedLink]
+	t.linkAccess.RUnlock()
+	if servers == nil || len(servers.Servers) == 0 {
+		callback(dns.FixedResponseStatus(message, mDNS.RcodeNameError), nil)
+		return
+	}
+	err := transport.ValidateQuestionName(question.Name)
+	if err != nil {
+		callback(nil, err)
+		return
+	}
+	serverOffset := servers.ServerOffset(t.rotate)
+	serverCount := uint32(len(servers.Servers))
+	attemptExchangers := make([]transport.AsyncExchanger, 0, t.attempts*int(serverCount))
+	for range t.attempts {
+		for j := range serverCount {
+			server := servers.Servers[(serverOffset+j)%serverCount]
+			attemptExchangers = append(attemptExchangers, func(exchangeCtx context.Context, exchangeCallback func(response *mDNS.Msg, err error)) {
+				attemptCtx, cancel := context.WithTimeout(exchangeCtx, t.timeout)
+				server.ExchangeAsync(attemptCtx, message, func(response *mDNS.Msg, attemptErr error) {
+					cancel()
+					exchangeCallback(response, attemptErr)
+				})
+			})
+		}
+	}
+	transport.ExchangeSequential(ctx, attemptExchangers, nil, callback)
+}

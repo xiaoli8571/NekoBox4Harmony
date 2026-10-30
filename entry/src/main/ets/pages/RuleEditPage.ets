@@ -107,6 +107,7 @@ function fieldLabelOf(field: string): string {
 @Entry
 @Component
 struct RuleEditPage {
+  @State litKey: string = '';
   /** '' = 新建;否则编辑既有规则;convertFrom = 旧规则转换来源(§8.5,需用户显式改写) */
   @State ruleId: string = '';
   /** 顶部让位(状态栏高度,运行时查询;2026-10-24 真机反馈新建规则页顶控件被状态栏盖住) */
@@ -614,9 +615,16 @@ struct RuleEditPage {
             Button(this.saving ? '保存中…' : '保存')
               .height(40)
               .layoutWeight(1)
-              .backgroundColor($r('app.color.primary'))
-              .fontColor($r('app.color.surface'))
+              .backgroundColor(this.litKey === 'pb:RuleEditPage:1' ? $r('app.color.primary') : $r('app.color.surface'))
+              .fontColor(this.litKey === 'pb:RuleEditPage:1' ? $r('app.color.surface') : $r('app.color.text_1'))
               .enabled(!this.saving)
+              .onTouch((event: TouchEvent) => {
+                if (event.type === TouchType.Down) {
+                  this.litKey = 'pb:RuleEditPage:1';
+                } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                  this.litKey = '';
+                }
+              })
               .onClick(() => {
                 void this.save();
               })

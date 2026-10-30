@@ -380,7 +380,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   assert.equal(Object.keys(all).length, defs.length);
   assert.equal(typeof all.mtu, 'number');
   assert.equal(all.mtu, 1400);
-  assert.equal(all.stack, 'system');
+  assert.equal(all.stack, 'gvisor');
   assert.equal(all.latencyStaleMs, 21600000, '6*3600*1000 evaluated');
   assert.equal(all.perAppMode, 'off');
   assert.equal(all.testExpectStatus, 'any');

@@ -26,11 +26,11 @@
     },
     {
       "name": "text_primary",
-      "value": "#182230"
+      "value": "#0C1219"
     },
     {
       "name": "text_secondary",
-      "value": "#5D6B7E"
+      "value": "#3C4A61"
     },
     {
       "name": "divider",
@@ -74,7 +74,7 @@
     },
     {
       "name": "text_disabled",
-      "value": "#9E9E9E"
+      "value": "#8A8A8A"
     },
     {
       "name": "control_disabled",
@@ -110,15 +110,19 @@
     },
     {
       "name": "text_1",
-      "value": "#17181A"
+      "value": "#0E0F12"
     },
     {
       "name": "text_2",
-      "value": "#5F646B"
+      "value": "#3A4048"
     },
     {
       "name": "text_3",
-      "value": "#6E6A63"
+      "value": "#45403A"
+    },
+    {
+      "name": "btn_outline",
+      "value": "#D9D6D0"
     },
     {
       "name": "hairline",

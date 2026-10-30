@@ -81,15 +81,20 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		return nil, E.New("Proxy Protocol is deprecated and removed in sing-box 1.6.0")
 	}
 	if defaultDialer, isDefaultDialer := common.Cast[*dialer.DefaultDialer](outbound.dialer); isDefaultDialer {
+		icmpControl := defaultDialer.ICMPControl()
 		outbound.icmpPort = ping.NewPort(ctx, logger, func(destination netip.Addr) control.Func {
-			return defaultDialer.DialerForICMPDestination(destination).Control
+			return icmpControl
 		}, 0)
 	}
 	return outbound, nil
 }
 
-func (h *Outbound) Start(stage adapter.StartStage) error {
+func (h *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	switch stage {
+	case adapter.StartStateInitialize:
+		if h.icmpPort != nil {
+			scope.Add(h.icmpPort.Close)
+		}
 	case adapter.StartStatePostStart, adapter.StartStateStarted:
 		if len(h.myAddresses.Load()) == 0 {
 			h.fetchMyAddresses()
@@ -99,12 +104,16 @@ func (h *Outbound) Start(stage adapter.StartStage) error {
 }
 
 func (h *Outbound) fetchMyAddresses() {
-	// OHOS: auto_detect_interface=false 时 InterfaceMonitor 为 nil(route/network.go
-	// 补丁 2 早退),nil 接口调方法会直接 SIGSEGV;上游 dhcp.go 也做了同样的判空。
+	// OHOS: auto_detect_interface=false 时 InterfaceMonitor 为 nil(route/network.go 补丁 2 早退),
+	// nil 接口调方法直接 SIGSEGV;上游 dhcp.go 也做了同样的判空。
 	if h.network.InterfaceMonitor() == nil {
 		return
 	}
-	myInterfaceNames := h.network.InterfaceMonitor().MyInterfaces()
+	interfaceMonitor := h.network.InterfaceMonitor()
+	if interfaceMonitor == nil {
+		return
+	}
+	myInterfaceNames := interfaceMonitor.MyInterfaces()
 	if len(myInterfaceNames) == 0 {
 		return
 	}
@@ -181,6 +190,10 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 
 func (h *Outbound) PreMatchFlow(network string, destination netip.Addr) adapter.PreMatchAction {
 	if network == N.NetworkICMP && h.icmpPort != nil {
+		if h.isMyLoopbackAddress(destination) {
+			h.logger.Error("reject ", network, " connection to ", destination, ": loopback connection to TUN range")
+			return adapter.PreMatchReject
+		}
 		return adapter.PreMatchFlow
 	}
 	return adapter.PreMatchContinue
@@ -204,13 +217,6 @@ func (h *Outbound) DetachReturn(returnPath tun.Return) error {
 
 func (h *Outbound) WritePackets(packets [][]byte) error {
 	return h.icmpPort.WritePackets(packets)
-}
-
-func (h *Outbound) Close() error {
-	if h.icmpPort != nil {
-		return h.icmpPort.Close()
-	}
-	return nil
 }
 
 func (h *Outbound) DialParallel(ctx context.Context, network string, destination M.Socksaddr, destinationAddresses []netip.Addr) (net.Conn, error) {
@@ -243,6 +249,9 @@ func (h *Outbound) DialParallelNetwork(ctx context.Context, network string, dest
 		h.logger.InfoContext(ctx, "outbound connection to ", destination)
 	case N.NetworkUDP:
 		h.logger.InfoContext(ctx, "outbound packet connection to ", destination)
+	}
+	if fallbackDelay == 0 {
+		fallbackDelay = h.fallbackDelay
 	}
 	return dialer.DialParallelNetwork(ctx, h.dialer, network, destination, destinationAddresses, len(destinationAddresses) > 0 && destinationAddresses[0].Is6(), networkStrategy, networkType, fallbackNetworkType, fallbackDelay)
 }

@@ -383,6 +383,31 @@ export async function writePrefString(key: string, value: string): Promise<void>
   await pref.flush();
 }
 
+/**
+ * 原始配置覆盖(对齐 OwnBox ConfigEditActivity):按节点 id 存整段 sing-box JSON。
+ * 空串 = 没有覆盖,连接时用 ConfigBuilder 生成的配置。
+ */
+export async function readRawConfigOverride(profileId: string): Promise<string> {
+  if (profileId.length === 0) {
+    return '';
+  }
+  return readPrefString(`raw_cfg_${profileId}`, '');
+}
+
+export async function writeRawConfigOverride(profileId: string, json: string): Promise<void> {
+  if (profileId.length === 0) {
+    return;
+  }
+  await writePrefString(`raw_cfg_${profileId}`, json);
+}
+
+export async function clearRawConfigOverride(profileId: string): Promise<void> {
+  if (profileId.length === 0) {
+    return;
+  }
+  await writePrefString(`raw_cfg_${profileId}`, '');
+}
+
 export async function getPendingProfileId(): Promise<string> {
   const pref = await requirePref();
   return (await pref.get(KEY_PENDING, '')) as string;

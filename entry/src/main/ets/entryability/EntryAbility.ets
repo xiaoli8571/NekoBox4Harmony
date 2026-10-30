@@ -1,3 +1,4 @@
+import { ForegroundFlag } from '../utils/ProbeNotify';
 import UIAbility from '@ohos.app.ability.UIAbility';
 import Want from '@ohos.app.ability.Want';
 import AbilityConstant from '@ohos.app.ability.AbilityConstant';
@@ -24,6 +25,9 @@ import { SubscriptionSourceStore } from '../core/SubscriptionSourceStore';
 import { ProbeStore } from '../core/ProbeStore';
 import { MigrationV5, MigrationResult } from '../model/MigrationV5';
 import { errText } from '../utils/ErrText';
+import { publishAccent } from '../common/Theme';
+import { KEY_BOOT_STARTED, currentBootStartedAt, isNewBoot } from '../common/BootMarker';
+import { readPrefString, writePrefString } from '../model/Store';
 
 /**
  * 窗口/系统栏底色的**显式**取值,与 `resources/{base,dark}/element/color.json` 的 `bg_page` 逐字一致。
@@ -219,7 +223,19 @@ export default class EntryAbility extends UIAbility {
   }
 
   private handleAction(want: Want): void {
-    if (want.parameters === undefined || `${want.parameters['action']}` !== 'disconnect') {
+    const params = want.parameters;
+    if (params === undefined) {
+      return;
+    }
+    /* 长按图标快捷方式(resources/base/profile/shortcuts_config.json)。
+       卡片点击(postCardAction router)也走这里。冷启动与热启动两条路径都进本方法,
+       统一写 AppStorage,由 Index 的 @StorageLink/@Watch 消费并清空。 */
+    const shortcut: string = `${params['shortcut'] ?? ''}`;
+    if (shortcut.length > 0) {
+      AppStorage.setOrCreate<string>('pendingShortcut', shortcut);
+      LogStore.addLog(`[app] 快捷方式入口: ${shortcut}`);
+    }
+    if (`${params['action']}` !== 'disconnect') {
       return;
     }
     VpnService.disconnect(this.context).catch((e: Object) => {
@@ -395,7 +411,41 @@ export default class EntryAbility extends UIAbility {
     unsubscribeVpnApplied();
   }
 
+  /**
+   * 启动收尾:主题强调色发布 + 开机自启(对齐 OwnBox BootReceiver + StartupHelper)。
+   * 平台限制见 BootMarker 注释:鸿蒙收不到开机广播,只能在用户首次打开应用时补连。
+   */
+  private async applyAccentAndBootConnect(): Promise<void> {
+    try {
+      await initStore(this.context);
+      const settings = await loadSettings();
+      publishAccent(settings.themeAccent);
+      const now = currentBootStartedAt();
+      const previous = await readPrefString(KEY_BOOT_STARTED, '');
+      const prevValue = previous.length > 0 ? parseInt(previous) : 0;
+      const fresh = isNewBoot(isNaN(prevValue) ? 0 : prevValue, now);
+      if (now > 0 && `${now}` !== previous) {
+        await writePrefString(KEY_BOOT_STARTED, `${now}`);
+      }
+      if (!fresh || !settings.autoStartOnBoot) {
+        return;
+      }
+      /* 自启目标 = 上次选中的节点(selected_profile_id,与 Index 选节点同一键) */
+      const target = await readPrefString('selected_profile_id', '');
+      if (target.length === 0) {
+        LogStore.addLog('[app] 开机自启:没有上次选中的节点,跳过');
+        return;
+      }
+      await VpnService.connect(this.context, target, false);
+      LogStore.addLog('[app] 检测到重启 + 开机自启:已按上次节点自动连接');
+    } catch (e) {
+      LogStore.addLog(`[app] 开机自启/强调色: ${errText(e)}`);
+    }
+  }
+
   onForeground(): void {
+    ForegroundFlag.set(true);
+    void this.applyAccentAndBootConnect();
     this.applyAppearance();
     this.updateDueSubscriptionsInBackground();
     // 通知 VPN 扩展:应用回到前台(扩展据此执行「唤醒后重置连接」,对齐安卓 wakeResetConnections)
@@ -403,6 +453,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onBackground(): void {
+    ForegroundFlag.set(false);
     this.updateDueSubscriptionsInBackground();
   }
 }

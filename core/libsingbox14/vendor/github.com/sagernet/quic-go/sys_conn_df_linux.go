@@ -38,4 +38,8 @@ func isSendMsgSizeErr(err error) bool {
 	return errors.Is(err, unix.EMSGSIZE)
 }
 
-func isRecvMsgSizeErr(error) bool { return false }
+// A connected UDP socket reports an ICMP Fragmentation Needed or Packet Too Big message for one of its
+// datagrams as EMSGSIZE from the next send or receive call (udp_err and udpv6_err in the kernel).
+func isRecvMsgSizeErr(err error) bool {
+	return errors.Is(err, unix.EMSGSIZE)
+}

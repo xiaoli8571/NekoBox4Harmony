@@ -410,8 +410,8 @@ struct ProfileEdit {
               Button($r('app.string.parse_and_fill'))
                 .layoutWeight(1)
                 .height(UiSpec.BTN_HEIGHT)
-                .backgroundColor($r('app.color.primary'))
-                .fontColor($r('app.color.surface'))
+                .backgroundColor(this.litKey === 'paste:parse' ? $r('app.color.primary') : $r('app.color.surface'))
+                .fontColor(this.litKey === 'paste:parse' ? $r('app.color.surface') : $r('app.color.text_1'))
                 .visualEffect(pressLightEffect(this.litKey === 'paste:parse', true))
                 .onTouch((event: TouchEvent) => {
                   if (event.type === TouchType.Down) {
@@ -553,6 +553,9 @@ struct ProfileEdit {
   CommonFields() {
     Column({ space: 10 }) {
       this.Field($r('app.string.profile_name'), $r('app.string.profile_name_placeholder'), this.p.name, (v: string) => { this.p.name = v; })
+      /* 别名(对齐 OwnBox 节点可重命名):只影响显示,不改订阅来源名。
+         节点图标 2026-10-26 已下线(用户要求):emoji/字符图标实际很少用,维护成本高于收益。 */
+      this.Field($r('app.string.profile_alias'), $r('app.string.profile_alias_placeholder'), this.p.alias, (v: string) => { this.p.alias = v; })
       this.Field($r('app.string.server_address'), 'domain or IP', this.p.server, (v: string) => { this.p.server = v; })
       this.Field($r('app.string.port'), '443', `${this.p.serverPort === 0 ? '' : this.p.serverPort}`,
         (v: string) => { this.p.serverPort = parseInt(v.length > 0 ? v : '0'); }, InputType.Number)
@@ -768,7 +771,7 @@ struct ProfileEdit {
               if (this.chainSelected(cand.id)) {
                 Text(`${this.chainIds().indexOf(cand.id) + 1}`)
                   .fontSize(12).fontWeight(700).fontColor($r('app.color.surface'))
-                  .backgroundColor($r('app.color.primary'))
+                  .backgroundColor(this.litKey === 'paste:parse' ? $r('app.color.primary') : $r('app.color.surface'))
                   .width(22).height(22).borderRadius(11).textAlign(TextAlign.Center)
               }
               Text(cand.name)

@@ -125,6 +125,7 @@ type PeerAwareEndpoint interface {
 var (
 	ErrBindAlreadyOpen   = errors.New("bind is already open")
 	ErrWrongEndpointType = errors.New("endpoint type does not correspond with bind type")
+	ErrRebindRequired    = errors.New("bind must be reopened")
 )
 
 func (fn ReceiveFunc) PrettyName() string {

@@ -31,6 +31,15 @@
         //    (日志 "DATA_TRANSFER 长时任务申请失败"),加回即通过。
         //    声明与用途一致(真实下载),AGC 用途审核可解释。
         "backgroundModes": ["dataTransfer"],
+        // 长按应用图标弹出的快捷方式(节点/流量/诊断/日志)。
+        // 每个 shortcut 带 parameters.shortcut,由 EntryAbility.handleAction 落进
+        // AppStorage['pendingShortcut'],Index 的 @Watch 消费后清空。
+        "metadata": [
+          {
+            "name": "ohos.ability.shortcuts",
+            "resource": "$profile:shortcuts_config"
+          }
+        ],
         "skills": [
           {
             "entities": ["entity.system.home"],
@@ -47,6 +56,20 @@
         // 本 SDK(HarmonyOS 6.1)合法值为 "vpn";旧文档中的 "vpnExtension" 已不适用
         "type": "vpn",
         "exported": false
+      },
+      {
+        // 桌面服务卡片(静态卡:卡片进程拿不到 :vpn 状态,详情见 StatusFormAbility 注释)
+        "name": "StatusFormAbility",
+        "srcEntry": "./ets/form/StatusFormAbility.ets",
+        "description": "$string:form_status_desc",
+        "type": "form",
+        "exported": false,
+        "metadata": [
+          {
+            "name": "ohos.extension.form",
+            "resource": "$profile:form_status"
+          }
+        ]
       }
     ],
     "requestPermissions": [

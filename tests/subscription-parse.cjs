@@ -302,6 +302,22 @@ const PROVIDER_YAML = `proxies:
     assert.equal(r[0].name, 'TJ');
   });
 
+  await test('plain sing-box JSON containing https URLs is still imported', () => {
+    // 2026-10-30 用户反馈「导入不认 json 文件」:完整配置里的 rule_set/DoH 都是 https://,
+    // 旧判据 !content.includes('://') 会把它当链接列表 → 0 节点。
+    const cfg = JSON.stringify({
+      dns: { servers: [{ tag: 'dns-remote', address: 'https://1.1.1.1/dns-query' }] },
+      route: { rule_set: [{ type: 'remote', tag: 'geosite', url: 'https://example.com/geosite.srs' }] },
+      outbounds: [
+        { type: 'selector', tag: 'proxy', outbounds: ['VLESS1'] },
+        { type: 'vless', tag: 'VLESS1', server: 'v1.example.com', server_port: 443, uuid: '11111111-2222-3333-4444-555555555555' }
+      ]
+    });
+    const r = link.parseShareText(cfg);
+    assert.equal(r.length, 1, 'expected 1 outbound, got ' + r.length);
+    assert.equal(r[0].name, 'VLESS1');
+  });
+
   await test('plain text that is not base64 is not mangled into nodes', () => {
     // 机场的「不支持本站协议」提示:不得因为宽松解码被当成节点
     const r = link.parseShareText('您的客户端不支持本站协议,请使用 Clash 客户端');

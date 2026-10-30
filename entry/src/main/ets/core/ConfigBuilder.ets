@@ -19,6 +19,9 @@ const TUN_ADDR_V4 = '172.19.0.1/30';
 // 统一为同一个常量值:此前 ConfigBuilder 兜底写 gstatic、其余入口写 cp.cloudflare.com,
 // 同一次会话里出现两套探测目标,gstatic 在国内常被污染/劫持,导致"明明能上网却整组测速失败"。
 export const DEFAULT_PROBE_URL: string = 'http://cp.cloudflare.com/';
+
+/** 唯一可选协议栈(界面已下线选项,2026-10-26) */
+export const TUN_STACK: string = 'gvisor';
 const TUN_ADDR_V6 = 'fdfe:dcba:9876::1/126';
 const FAKEIP_RANGE_V4 = '198.18.0.0/15';
 const FAKEIP_RANGE_V6 = 'fc00::/18';
@@ -843,7 +846,8 @@ function profileRootTag(id: string): string {
 export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: string,
   logPath: string = '', geositePath: string = '', geoIpPath: string = '',
   customRules: Array<RouteRule> = [], preparedRuleSets: Array<PreparedRuleSet> = [],
-  cachePath: string = '', allProfiles: Array<Profile> = [], groups: Array<ProfileGroup> = []): string {
+  cachePath: string = '', allProfiles: Array<Profile> = [], groups: Array<ProfileGroup> = [],
+  webUiPath: string = ''): string {
   if (p.type !== ProfileType.CUSTOM && p.type !== ProfileType.CHAIN && p.server.length === 0) {
     throw new Error('服务器地址为空');
   }
@@ -869,7 +873,9 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
   tun['mtu'] = s.mtu;
   tun['auto_route'] = false;   // 路由由鸿蒙 VPN 框架管理
   tun['strict_route'] = false;
-  tun['stack'] = s.stack;
+  /* 2026-10-26:协议栈固定 gvisor —— 本项目在 OHOS 上禁用了 netlink,system 栈失去内核路由支持;
+     gvisor 是纯用户态 netstack,兼容性最好且 sing-tun 对其开启 GSO,综合性能最优。界面已去掉该选项。 */
+  tun['stack'] = TUN_STACK;
   // 1.13+:inbound 级 sniff/sniff_override_destination 已移除,改为 route action:"sniff"
   // (新 sniff 动作嗅探成功即覆写目的域名,不再区分 keep/override)
   const inbounds: Array<Object> = [tun];
@@ -879,6 +885,14 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     mixed['tag'] = 'mixed-in';
     mixed['listen'] = s.allowAccess ? '0.0.0.0' : '127.0.0.1';
     mixed['listen_port'] = s.mixedPort;
+    /* 局域网共享鉴权(对齐 OwnBox LAN sharing 的 user/password):
+       只有真的对外监听且填了用户名才挂 users —— 回环场景加鉴权只会让本机客户端连不上。 */
+    if (s.allowAccess && s.lanAuthUser.length > 0) {
+      const user: Record<string, Object> = {};
+      user['username'] = s.lanAuthUser;
+      user['password'] = s.lanAuthPass;
+      mixed['users'] = [user];
+    }
     inbounds.push(mixed);
   }
 
@@ -1357,6 +1371,12 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     const clashApi: Record<string, Object> = {};
     clashApi['external_controller'] = `127.0.0.1:${s.clashApiPort}`;
     clashApi['secret'] = s.clashApiSecret;
+    /* Web 面板(yacd):对齐 OwnBox 的 DashboardManager/LocalYacdDashboard —— 内核自带静态
+       资源服务,面板从 /ui 打开,走同一套 clash_api 鉴权。目录由 WebUiAssets 解压到沙箱,
+       这里只消费路径;没解压成功就不写(缺省 external_ui 为空 = 面板 404,不影响代理)。 */
+    if (webUiPath.length > 0) {
+      clashApi['external_ui'] = webUiPath;
+    }
     experimental['clash_api'] = clashApi;
   }
   const cacheFile: Record<string, Object> = {};

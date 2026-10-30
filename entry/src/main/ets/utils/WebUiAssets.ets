@@ -9,7 +9,53 @@ import { LogStore } from '../model/Store';
  */
 
 const RAWFILE_NAME = 'yacd.zip';
+/* 已知子目录名(仅用作提示;真实发现靠 dumpSubdirWithIndex:zip 内实测叫 `Yacd-meta-gh-pages`,
+   大小写与本表不一致,Linux 沙箱文件系统区分大小写 ⇒ 固定表匹配失败 → external_ui 为空 → /ui 404) */
 const CANDIDATE_SUBDIRS: Array<string> = ['yacd-gh-pages', 'yacd', 'gh-pages', 'yacd-meta'];
+
+/** 在一层目录里找含 index.html 的子目录(大小写无关且不依赖固定名单) */
+function findSubdirWithIndex(baseDir: string): string {
+  let names: Array<string> = [];
+  try {
+    names = fs.listFileSync(baseDir);
+  } catch (e) {
+    return '';
+  }
+  for (const name of names) {
+    if (fileExists(`${baseDir}/${name}/index.html`)) {
+      return `${baseDir}/${name}`;
+    }
+    /* 再下探一层:有些打包方式是 <base>/yacd/<hash>/index.html */
+    if (fileExists(`${baseDir}/${name}`)) {
+      const deeper = findSubdirWithIndexOneLevel(`${baseDir}/${name}`);
+      if (deeper.length > 0) {
+        return deeper;
+      }
+    }
+  }
+  /* 名单兵底(理论上不会走到) */
+  for (const name of CANDIDATE_SUBDIRS) {
+    if (fileExists(`${baseDir}/${name}/index.html`)) {
+      return `${baseDir}/${name}`;
+    }
+  }
+  return '';
+}
+
+function findSubdirWithIndexOneLevel(dir: string): string {
+  let names: Array<string> = [];
+  try {
+    names = fs.listFileSync(dir);
+  } catch (e) {
+    return '';
+  }
+  for (const name of names) {
+    if (fileExists(`${dir}/${name}/index.html`)) {
+      return `${dir}/${name}`;
+    }
+  }
+  return '';
+}
 
 function fileExists(path: string): boolean {
   try {
@@ -69,13 +115,7 @@ export async function ensureYacdExtracted(context: common.Context): Promise<stri
     await zlib.unzipFile(zipPath, baseDir, unzipOpts);
     let uiDir = baseDir;
     if (!fileExists(`${baseDir}/index.html`)) {
-      let found = '';
-      for (const name of CANDIDATE_SUBDIRS) {
-        if (fileExists(`${baseDir}/${name}/index.html`)) {
-          found = `${baseDir}/${name}`;
-          break;
-        }
-      }
+      const found = findSubdirWithIndex(baseDir);
       if (found.length === 0) {
         LogStore.addLog('[ui] yacd 解压后未找到 index.html,Dashboard 无法加载面板');
         return '';

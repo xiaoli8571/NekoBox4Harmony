@@ -1,6 +1,6 @@
 import common from '@ohos.app.ability.common';
+import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
-import pasteboard from '@ohos.pasteboard';
 import picker from '@ohos.file.picker';
 import fs from '@ohos.file.fs';
 import util from '@ohos.util';
@@ -9,7 +9,6 @@ import { pressLightEffect } from '../common/Effects';
 import { initStore, resetAllData, LogStore } from '../model/Store';
 import { exportBackup, importBackup, BackupRestoreResult } from '../core/Backup';
 import { VpnService } from '../core/VpnService';
-import { getClipboardText } from '../utils/ClipboardHelper';
 import { stunTest, StunResult } from '../utils/StunTester';
 import bundleManager from '@ohos.bundle.bundleManager';
 import deviceInfo from '@ohos.deviceInfo';
@@ -318,12 +317,68 @@ export struct ToolsPage {
     return 'http://cp.cloudflare.com/';
   }
 
+  /**
+   * 功能入口磁贴(两列):图标 + 标题 + 一行说明。
+   * 2026-10-30 用户反馈「一行一个功能显示特别乱」——六个入口原来各占一张整行卡片,
+   * 手机上要滚半天;改两列后同一屏就能看全。
+   */
+  @Builder
+  toolTile(symbol: Resource, title: ResourceStr, desc: ResourceStr, url: string, key: string) {
+    Column({ space: 5 }) {
+      SymbolGlyph(symbol)
+        .fontSize(20)
+        .fontColor([$r('app.color.primary')])
+      Text(title)
+        .fontSize(13).fontWeight(700).fontColor($r('app.color.text_1'))
+        .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+      Text(desc)
+        .fontSize(10.5).fontColor($r('app.color.text_2')).lineHeight(14)
+        .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+    }
+    .width('48.4%')
+    .height(92)
+    .alignItems(HorizontalAlign.Start)
+    .justifyContent(FlexAlign.Center)
+    .padding(12)
+    .borderRadius(14)
+    .backgroundColor($r('app.color.surface'))
+    .margin({ bottom: 12 })
+    .visualEffect(pressLightEffect(this.litKey === key, true))
+    .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down) {
+        this.litKey = key;
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.litKey = '';
+      }
+    })
+    .onClick(() => {
+      void router.pushUrl({ url: url });
+    })
+  }
+
   build() {
     Column() {
       /* 标题与抽屉入口都在壳层的 HDS 顶栏里(Index.shellTitleBar),这里不再自带页头 */
 
       Scroll() {
         Column({ space: 14 }) {
+          // ---- 功能入口:两列磁贴(一屏看全,不再一行一个) ----
+          Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
+            this.toolTile($r('sys.symbol.checkmark'), $r('app.string.tools_diag_title'),
+              $r('app.string.tools_diag_desc'), 'pages/DiagnosticsPage', 'tile:diag')
+            this.toolTile($r('sys.symbol.bolt'), $r('app.string.tools_traffic_title'),
+              $r('app.string.tools_traffic_desc'), 'pages/TrafficPage', 'tile:traffic')
+            this.toolTile($r('sys.symbol.cloud'), $r('app.string.tools_webui_title'),
+              $r('app.string.tools_webui_desc'), 'pages/WebUiPage', 'tile:webui')
+            this.toolTile($r('sys.symbol.arrow_up_left_and_arrow_down_right'), $r('app.string.lan_title'),
+              $r('app.string.tools_lan_desc'), 'pages/LanSharingPage', 'tile:lan')
+            this.toolTile($r('sys.symbol.doc_text'), $r('app.string.cfg_edit_title'),
+              $r('app.string.tools_cfg_edit_desc'), 'pages/ConfigEditPage', 'tile:cfg')
+            this.toolTile($r('sys.symbol.list_square'), $r('app.string.messages_title'),
+              $r('app.string.tools_messages_desc'), 'pages/MessagesPage', 'tile:msg')
+          }
+          .width('100%')
+
           // NAT 行为发现(STUN)
           Column({ space: 10 }) {
             Text($r('app.string.stun_title'))
@@ -337,8 +392,10 @@ export struct ToolsPage {
               Button(this.stunTesting ? $r('app.string.stun_testing') : $r('app.string.stun_test'))
                 .height(40)
                 .enabled(!this.stunTesting)
-                .backgroundColor(this.stunTesting ? $r('app.color.control_disabled') : $r('app.color.primary'))
-                .fontColor($r('app.color.surface'))
+                .backgroundColor(this.stunTesting ? $r('app.color.control_disabled') :
+                  (this.litKey === 'tools:stun' ? $r('app.color.primary') : $r('app.color.surface')))
+                .fontColor(this.stunTesting ? $r('app.color.text_3') :
+                  (this.litKey === 'tools:stun' ? $r('app.color.surface') : $r('app.color.text_1')))
                 /* 卡片在 Scroll 里(会跟滚动跑位)⇒ 只"按下才亮",不挂常亮光源、不加 scale */
                 .visualEffect(pressLightEffect(this.litKey === 'tools:stun', true))
                 .onTouch((event: TouchEvent) => {
@@ -391,9 +448,10 @@ export struct ToolsPage {
               Button(this.backupFileBusy ? $r('app.string.processing') : $r('app.string.export_backup_file'))
                 .layoutWeight(1)
                 .height(UiSpec.BTN_HEIGHT)
-                .enabled(!this.backupFileBusy)
-                .backgroundColor($r('app.color.primary'))
-                .fontColor($r('app.color.surface'))
+                .backgroundColor(this.litKey === 'tools:backup:export' ? $r('app.color.primary') : $r('app.color.surface'))
+                .fontColor(this.litKey === 'tools:backup:export' ? $r('app.color.surface') : $r('app.color.text_1'))
+                .border({ width: 1, color: $r('app.color.btn_outline') })
+                .borderRadius(UiSpec.BTN_RADIUS)
                 .visualEffect(pressLightEffect(this.litKey === 'tools:backup:export', true))
                 .onTouch((event: TouchEvent) => {
                   if (event.type === TouchType.Down) {
@@ -406,9 +464,10 @@ export struct ToolsPage {
               Button($r('app.string.restore_from_file'))
                 .layoutWeight(1)
                 .height(UiSpec.BTN_HEIGHT)
-                .enabled(!this.backupFileBusy)
                 .backgroundColor($r('app.color.surface'))
                 .fontColor($r('app.color.text_primary'))
+                .border({ width: 1, color: $r('app.color.btn_outline') })
+                .borderRadius(UiSpec.BTN_RADIUS)
                 .visualEffect(pressLightEffect(this.litKey === 'tools:backup:import', true))
                 .onTouch((event: TouchEvent) => {
                   if (event.type === TouchType.Down) {
@@ -419,57 +478,6 @@ export struct ToolsPage {
                 })
                 .onClick(() => this.importBackupFile())
             }.width('100%')
-            Row({ space: 8 }) {
-              Button($r('app.string.backup_to_clipboard'))
-                .layoutWeight(1)
-                .height(UiSpec.BTN_HEIGHT)
-                .backgroundColor($r('app.color.surface'))
-                .fontColor($r('app.color.text_primary'))
-                .visualEffect(pressLightEffect(this.litKey === 'tools:clipboard:export', true))
-                .onTouch((event: TouchEvent) => {
-                  if (event.type === TouchType.Down) {
-        this.litKey = 'tools:clipboard:export';
-      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.litKey = '';
-      }
-                })
-                .onClick(async () => {
-                  try {
-                    const data = await exportBackup(this.context);
-                    const pasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, data);
-                    await pasteboard.getSystemPasteboard().setData(pasteData);
-                    promptAction.showToast({ message: $r('app.string.settings_clipboard_backup_done') });
-                  } catch (e) {
-                    promptAction.showToast({ message: $r('app.string.settings_clipboard_backup_failed', e instanceof Error ? e.message : `${e}`) });
-                  }
-                })
-              Button($r('app.string.restore_from_clipboard'))
-                .layoutWeight(1)
-                .height(UiSpec.BTN_HEIGHT)
-                .backgroundColor($r('app.color.surface'))
-                .fontColor($r('app.color.text_primary'))
-                .visualEffect(pressLightEffect(this.litKey === 'tools:clipboard:import', true))
-                .onTouch((event: TouchEvent) => {
-                  if (event.type === TouchType.Down) {
-        this.litKey = 'tools:clipboard:import';
-      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.litKey = '';
-      }
-                })
-                .onClick(async () => {
-                  try {
-                    const text = await getClipboardText();
-                    if (text.trim().length === 0) {
-                      promptAction.showToast({ message: $r('app.string.settings_clipboard_empty') });
-                      return;
-                    }
-                    const result = await this.restoreText(text);
-                    promptAction.showToast({ message: this.restoreSummary(result) });
-                  } catch (e) {
-                    promptAction.showToast({ message: this.backupErrorText(e instanceof Error ? e.message : `${e}`) });
-                  }
-                })
-            }.width('100%')
           }
           .alignItems(HorizontalAlign.Start)
           .width('100%')
@@ -477,59 +485,72 @@ export struct ToolsPage {
           .borderRadius(UiSpec.CARD_RADIUS)
           .backgroundColor($r('app.color.surface'))
 
-          // W20:诊断包(版本/内核能力/revision/错误类别/脱敏日志;不自动上传)
-          Column({ space: 10 }) {
-            Text('诊断包')
-              .fontSize(14.5).fontWeight(700).fontColor($r('app.color.text_1')).width('100%')
-            Text('生成含版本、内核能力、配置修订与脱敏日志的诊断文本;不包含节点密钥与订阅地址,生成后由你选择复制或取消,不会自动上传。')
-              .fontSize(11.5).fontColor($r('app.color.text_secondary')).width('100%')
-            Button('生成诊断包')
-              .height(UiSpec.BTN_HEIGHT)
-              .backgroundColor($r('app.color.primary'))
-              .fontColor($r('app.color.surface'))
-              .visualEffect(pressLightEffect(this.litKey === 'tools:diag', true))
-              .onTouch((event: TouchEvent) => {
-                if (event.type === TouchType.Down) {
-                  this.litKey = 'tools:diag';
-                } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-                  this.litKey = '';
-                }
-              })
-              .onClick(() => {
-                void this.generateDiagnostics();
-              })
-          }
-          .alignItems(HorizontalAlign.Start)
-          .width('100%')
-          .padding(UiSpec.GAP_MD)
-          .borderRadius(UiSpec.CARD_RADIUS)
-          .backgroundColor($r('app.color.surface'))
+          // ---- 维护:诊断包 / 恢复出厂(一行两列;危险操作仍要两次确认) ----
+          Row({ space: 12 }) {
+            Column({ space: 8 }) {
+              Text('诊断包')
+                .fontSize(13).fontWeight(700).fontColor($r('app.color.text_1'))
+                .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+              Text('版本/内核能力/修订号 + 脱敏日志,不会自动上传')
+                .fontSize(10.5).fontColor($r('app.color.text_2')).lineHeight(14)
+                .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+              Button('生成')
+                .height(34).fontSize(12.5)
+                .backgroundColor(this.litKey === 'tools:diag' ? $r('app.color.primary') : $r('app.color.surface'))
+                .fontColor(this.litKey === 'tools:diag' ? $r('app.color.surface') : $r('app.color.text_1'))
+                .border({ width: 1, color: $r('app.color.btn_outline') })
+                .borderRadius(UiSpec.BTN_RADIUS)
+                .visualEffect(pressLightEffect(this.litKey === 'tools:diag', true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+                    this.litKey = 'tools:diag';
+                  } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                    this.litKey = '';
+                  }
+                })
+                .onClick(() => {
+                  void this.generateDiagnostics();
+                })
+            }
+            .layoutWeight(1)
+            .height(132)
+            .alignItems(HorizontalAlign.Start)
+            .padding(12)
+            .borderRadius(14)
+            .backgroundColor($r('app.color.surface'))
 
-          // 恢复出厂
-          Column({ space: 10 }) {
-            Text($r('app.string.reset_title'))
-              .fontSize(14.5).fontWeight(700).fontColor($r('app.color.text_1')).width('100%')
-            Text($r('app.string.reset_desc'))
-              .fontSize(11.5).fontColor($r('app.color.text_secondary')).width('100%')
-            Button($r('app.string.reset_action'))
-              .height(UiSpec.BTN_HEIGHT)
-              .backgroundColor($r('app.color.error'))
-              .fontColor($r('app.color.surface'))
-              .visualEffect(pressLightEffect(this.litKey === 'tools:reset', true))
-              .onTouch((event: TouchEvent) => {
-                if (event.type === TouchType.Down) {
-        this.litKey = 'tools:reset';
-      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.litKey = '';
-      }
-              })
-              .onClick(() => this.requestReset())
+            Column({ space: 8 }) {
+              Text($r('app.string.reset_title'))
+                .fontSize(13).fontWeight(700).fontColor($r('app.color.text_1'))
+                .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+              Text($r('app.string.reset_desc'))
+                .fontSize(10.5).fontColor($r('app.color.text_2')).lineHeight(14)
+                .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+              Button($r('app.string.reset_action'))
+                .height(34).fontSize(12.5).fontWeight(600)
+                .backgroundColor(this.litKey === 'tools:reset' ? $r('app.color.error') : $r('app.color.surface'))
+                .fontColor(this.litKey === 'tools:reset' ? $r('app.color.surface') : $r('app.color.error'))
+                .border({ width: 1, color: $r('app.color.btn_outline') })
+                .borderRadius(UiSpec.BTN_RADIUS)
+                .visualEffect(pressLightEffect(this.litKey === 'tools:reset', true))
+                .onTouch((event: TouchEvent) => {
+                  if (event.type === TouchType.Down) {
+                    this.litKey = 'tools:reset';
+                  } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                    this.litKey = '';
+                  }
+                })
+                .onClick(() => this.requestReset())
+            }
+            .layoutWeight(1)
+            .height(132)
+            .alignItems(HorizontalAlign.Start)
+            .padding(12)
+            .borderRadius(14)
+            .backgroundColor($r('app.color.surface'))
           }
-          .alignItems(HorizontalAlign.Start)
           .width('100%')
-          .padding(UiSpec.GAP_MD)
-          .borderRadius(UiSpec.CARD_RADIUS)
-          .backgroundColor($r('app.color.surface'))
+          .alignItems(VerticalAlign.Top)
         }
         .width('100%')
         .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING, top: 8, bottom: 20 })

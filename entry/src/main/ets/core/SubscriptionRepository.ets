@@ -2,11 +2,11 @@ import { Profile } from '../model/Profile';
 import { SnapshotContent, computeChecksum } from '../model/ConfigSnapshot';
 import {
   UserOverride, SubscriptionSourceSnapshot, SourceNodeRecord, parseOverrideRecord, overrideToRecord,
-  identityKeyOf, sourceNodeOf, profileFromSourceNode, mergeParsedIntoOwned
+  identityKeyOf, sourceNodeOf, profileFromSourceNode, mergeParsedIntoOwned, retainValidNodes
 } from '../model/SubscriptionLayers';
 import { SubInfo, SubUpdateResult, listSubs, saveSubs, subNameOf, stableProfileId,
   applyForceResolve, renameCollisions, dedupProfiles, parseSubscriptionBody,
-  markGroupFromSubscription, applyClashGroups, resolveDialerProxies, applySubUserInfo,
+  markGroupFromSubscription, markGroupSubUrl, applyClashGroups, resolveDialerProxies, applySubUserInfo,
   appContextOrNull, MIN_INTERVAL_MINUTES
 } from './Subscriptions';
 import { loadProfiles, saveProfiles, mutateProfiles, loadSettings, readPrefString,
@@ -15,6 +15,7 @@ import { fetchSubscriptionConditional, fetchTextUrl, subFailureText, ClashParseR
   looksLikeClashYaml, looksLikeSingBoxJson, SUB_UA, SUB_UA_FALLBACKS, decodeFilename
 } from '../utils/Subscription';
 import { parseClashGroups, ClashGroupDef } from '../utils/ClashProviders';
+import { filterIsActive, filterNameIndexes } from '../model/NodeFilter';
 import { ConfigRepository } from './ConfigRepository';
 import { SubscriptionSourceStore } from './SubscriptionSourceStore';
 
@@ -188,6 +189,22 @@ export class SubscriptionRepository {
       effective = dedup.profiles;
       prep.duplicateNames = dedup.duplicates;
     }
+    // 4) 节点名过滤(对齐 OwnBox RawUpdater.kt:199-212;先过滤再入层,过滤器为空时原样返回)
+    if (subForFlags !== undefined && filterIsActive(subForFlags.filterMode, subForFlags.filterRegex)) {
+      const names: Array<string> = effective.map((p: Profile) => p.name);
+      const indexes: Array<number> = filterNameIndexes(names, subForFlags.filterMode, subForFlags.filterRegex);
+      if (indexes.length === 0) {
+        // 不把用户现有的节点全删掉:过滤结果为空一律当作本次更新失败
+        throw new Error('订阅过滤器排除了全部节点,已放弃本次更新(保留现有节点)');
+      }
+      const filtered: Array<Profile> = [];
+      for (let i = 0; i < indexes.length; i++) {
+        filtered.push(effective[indexes[i]]);
+      }
+      LogStore.addLog(`[sub] ${url} 节点过滤(${subForFlags.filterMode}/${subForFlags.filterRegex}) ` +
+        `保留 ${filtered.length}/${effective.length}`);
+      effective = filtered;
+    }
     prep.profiles = effective;
     prep.clashGroups = looksLikeClashYaml(content) ? parseClashGroups(content) : [];
     return prep;
@@ -217,6 +234,7 @@ export class SubscriptionRepository {
     }
     const subGroupId = await ensureGroupByName(groupName);
     await markGroupFromSubscription(subGroupId);
+    await markGroupSubUrl(subGroupId, url);
     const selectedId = await readPrefString('selected_profile_id', '');
     const owned = existing.filter((p: Profile) => p.subUrl === url);
     const now = Date.now();
@@ -225,6 +243,14 @@ export class SubscriptionRepository {
     for (let i = 0; i < merge.conflicts.length; i++) {
       const c = merge.conflicts[i];
       LogStore.addLog(`[subtx] ${url} 覆盖冲突(${c.kind}): ${c.message}`);
+    }
+    // 保留有效节点(对齐 OwnBox retainValidNodes):只救「在用/测速可用/有流量」的远端已删节点
+    if (sub.retainValidNodes === true) {
+      const retained = retainValidNodes(merge, owned, url, selectedId, now);
+      if (retained.retainedNames.length > 0) {
+        LogStore.addLog(`[subtx] ${url} 保留有效节点 ${retained.retainedNames.length} 个: ` +
+          retained.retainedNames.slice(0, 8).join(', '));
+      }
     }
     const kept: Array<Profile> = existing.filter((p: Profile) => p.subUrl !== url);
     for (let i = 0; i < merge.kept.length; i++) {
@@ -236,7 +262,7 @@ export class SubscriptionRepository {
     resolveDialerProxies(prep.profiles, kept);
     await saveProfiles(kept);
     if (prep.clashGroups.length > 0) {
-      await applyClashGroups(prep.clashGroups, kept);
+      await applyClashGroups(prep.clashGroups, kept, url);
     }
     // 选中项失效:兜底指向本订阅第一个节点(与原实现一致)
     if (selectedId.length > 0 && !kept.some((item: Profile) => item.id === selectedId)) {

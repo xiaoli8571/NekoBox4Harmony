@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"slices"
 	"sort"
 	"unicode/utf8"
 
@@ -45,6 +46,7 @@ func NewMatcher(domains []string, domainSuffix []string, generateLegacy bool) *M
 		domainList = append(domainList, reverseDomain(domain))
 	}
 	sort.Strings(domainList)
+	domainList = slices.Compact(domainList)
 	return &Matcher{newSuccinctSet(domainList)}
 }
 
@@ -54,6 +56,18 @@ func ReadMatcher(reader varbin.Reader) (*Matcher, error) {
 		return nil, err
 	}
 	return &Matcher{set}, nil
+}
+
+func NewMatcherFromMmap(data Mmap) (*Matcher, error) {
+	set, err := newSuccinctSetFromMmap(data)
+	if err != nil {
+		return nil, err
+	}
+	return &Matcher{set}, nil
+}
+
+func (m *Matcher) Mmap() Mmap {
+	return m.set.mmap()
 }
 
 func (m *Matcher) Write(writer varbin.Writer) error {

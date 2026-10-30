@@ -310,6 +310,11 @@ func (s *Service[U]) NewConnection(ctx context.Context, conn net.Conn, source M.
 	option := headerBuffer[34]
 	paddingLen := int(headerBuffer[35] >> 4)
 	security := headerBuffer[35] & 0x0F
+	switch security {
+	case SecurityTypeNone, SecurityTypeLegacy, SecurityTypeAes128Gcm, SecurityTypeChacha20Poly1305:
+	default:
+		return E.New("unknown security type: ", security)
+	}
 	command := headerBuffer[37]
 	switch command {
 	case CommandTCP, CommandUDP, CommandMux:
@@ -442,6 +447,10 @@ func (c *rawServerConn) FrontHeadroom() int {
 
 func (c *rawServerConn) RearHeadroom() int {
 	return MaxRearHeadroom
+}
+
+func (c *rawServerConn) ReaderOverhead() int {
+	return ReaderOverhead(c.security, c.option)
 }
 
 func (c *rawServerConn) NeedHandshakeForWrite() bool {

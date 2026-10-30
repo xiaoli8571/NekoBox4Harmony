@@ -21,8 +21,8 @@ func (m *msgXState) reset() {
 func (s *StdNetBind) SetSinglePeerMode() {
 }
 
-func (s *StdNetBind) sendMsgX(conn *net.UDPConn, msgs []ipv6.Message) (bool, error) {
-	return false, nil
+func (s *StdNetBind) sendMsgX(conn *net.UDPConn, msgs []ipv6.Message) error {
+	panic("sendMsgX is not supported on this platform")
 }
 
 func (s *StdNetBind) makeReceiveMsgX(conn *net.UDPConn, isV6 bool) (ReceiveFunc, error) {

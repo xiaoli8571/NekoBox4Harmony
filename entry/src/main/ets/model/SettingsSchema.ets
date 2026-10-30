@@ -214,6 +214,8 @@ function buildDefs(): Array<SettingDef> {
     'settings_always_show_address', '地址 显示 节点卡 always address'));
   out.push(def('notificationGroup', 'appearance', APPLY_IMMEDIATE, 'bool', 'false',
     'settings_notification_group', '通知 分组名 notification group'));
+  out.push(def('notificationShowProfile', 'appearance', APPLY_IMMEDIATE, 'bool', 'true',
+    'settings_notification_profile', '通知 节点名 节点 profile notification'));
   out.push(def('showBottomBar', 'appearance', APPLY_IMMEDIATE, 'bool', 'false',
     'settings_show_bottom_bar', '底部 速率条 FAB 显示 bottom bar'));
   out.push(def('navLayout', 'appearance', APPLY_IMMEDIATE, 'enum', '"bottom"',
@@ -237,8 +239,9 @@ function buildDefs(): Array<SettingDef> {
   // ---- advanced（reconnect）
   out.push(def('mtu', 'advanced', APPLY_RECONNECT, 'number', '1400',
     'settings_mtu', 'MTU 大包分包 tun'));
-  out.push(def('stack', 'advanced', APPLY_RECONNECT, 'enum', '"system"',
-    'settings_stack', '协议栈 栈 stack system gvisor'));
+  /* 2026-10-26:协议栈无 UI(固定 gvisor),字段保留以免旧备份导入报错 */
+  out.push(def('stack', 'advanced', APPLY_RECONNECT, 'enum', '"gvisor"',
+    'settings_stack', '协议栈 栈 stack gvisor'));
   out.push(def('logLevel', 'advanced', APPLY_RECONNECT, 'enum', '"info"',
     'settings_log_level', '日志 级别 log level trace debug info warn error'));
   out.push(def('allowInsecureAll', 'advanced', APPLY_RECONNECT, 'bool', 'false',
@@ -255,6 +258,17 @@ function buildDefs(): Array<SettingDef> {
     'settings_global_custom', '全局 自定义 配置 JSON custom config'));
   out.push(def('coexistFix202609Applied', 'advanced', APPLY_RECONNECT, 'bool', 'false',
     'settings_coexist_fix', '迁移标记 内部 coexist 202609'));
+  // ---- 开机自启 / 局域网共享鉴权 / 主题色 / 首页编排(对齐 OwnBox 对应功能) ----
+  out.push(def('autoStartOnBoot', 'startup', APPLY_NEXT_TASK, 'bool', 'false',
+    'settings_auto_start_boot', '开机 自启 启动 autostart boot'));
+  out.push(def('lanAuthUser', 'inbound', APPLY_RECONNECT, 'string', '""',
+    'settings_lan_auth_user', '局域网 共享 用户名 lan auth username'));
+  out.push(def('lanAuthPass', 'inbound', APPLY_RECONNECT, 'string', '""',
+    'settings_lan_auth_pass', '局域网 共享 密码 lan auth password'));
+  out.push(def('themeAccent', 'appearance', APPLY_NEXT_TASK, 'enum', '"blue"',
+    'settings_theme_accent', '主题 强调色 颜色 accent theme'));
+  out.push(def('homeHiddenSections', 'appearance', APPLY_NEXT_TASK, 'string', '""',
+    'settings_home_sections', '首页 布局 卡片 编排 home sections'));
   return out;
 }
 

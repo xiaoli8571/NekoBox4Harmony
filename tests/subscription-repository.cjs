@@ -35,6 +35,8 @@ const Layers = load('entry/src/main/ets/model/SubscriptionLayers.ets', {
   './Profile': ProfileMod,
   './ConfigSnapshot': SnapshotMod
 });
+// 订阅过滤(include/exclude 正则)是纯函数,直接加载生产实现而不是在测试里重写一遍
+const NodeFilterMod = load('entry/src/main/ets/model/NodeFilter.ets');
 
 const Profile = ProfileMod.Profile;
 
@@ -98,6 +100,7 @@ function makeEnv() {
       return { profiles, skipped: 0, skippedNames: [], note: '' };
     },
     markGroupFromSubscription: async () => {},
+    markGroupSubUrl: async () => {},
     applyClashGroups: async () => {},
     resolveDialerProxies: () => {},
     applySubUserInfo: async () => {},
@@ -167,6 +170,7 @@ function makeEnv() {
     '../model/Profile': ProfileMod,
     '../model/ConfigSnapshot': SnapshotMod,
     '../model/SubscriptionLayers': Layers,
+    '../model/NodeFilter': NodeFilterMod,
     './Subscriptions': Subs,
     '../model/Store': Store,
     '../utils/Subscription': Fetcher,

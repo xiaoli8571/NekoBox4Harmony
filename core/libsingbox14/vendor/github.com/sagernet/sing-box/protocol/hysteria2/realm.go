@@ -9,6 +9,7 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	boxService "github.com/sagernet/sing-box/adapter/service"
+	"github.com/sagernet/sing-box/common/badhttp"
 	"github.com/sagernet/sing-box/common/listener"
 	"github.com/sagernet/sing-box/common/tls"
 	C "github.com/sagernet/sing-box/constant"
@@ -18,7 +19,6 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	N "github.com/sagernet/sing/common/network"
 	aTLS "github.com/sagernet/sing/common/tls"
-	sHTTP "github.com/sagernet/sing/protocol/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -65,7 +65,7 @@ func NewRealmService(ctx context.Context, logger log.ContextLogger, tag string, 
 	chiRouter.Use(middleware.RequestSize(maxRequestBodyBytes))
 	chiRouter.Use(func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			logger.DebugContext(r.Context(), r.Method, " ", r.RequestURI, " ", sHTTP.SourceAddress(r))
+			logger.DebugContext(r.Context(), r.Method, " ", r.RequestURI, " ", badhttp.SourceAddress(r))
 			handler.ServeHTTP(w, r)
 		})
 	})
@@ -122,7 +122,14 @@ func NewRealmService(ctx context.Context, logger log.ContextLogger, tag string, 
 	return s, nil
 }
 
-func (s *RealmService) Start(stage adapter.StartStage) error {
+func (s *RealmService) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage == adapter.StartStateInitialize {
+		scope.Add(func() error {
+			s.cancel()
+			return nil
+		})
+		return nil
+	}
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -131,11 +138,17 @@ func (s *RealmService) Start(stage adapter.StartStage) error {
 		if err != nil {
 			return E.Cause(err, "create TLS config")
 		}
+		scope.Add(s.tlsConfig.Close)
 	}
 	tcpListener, err := s.listener.ListenTCP()
 	if err != nil {
 		return err
 	}
+	scope.Add(s.listener.Close)
+	scope.Add(func() error {
+		s.server.closeAll()
+		return nil
+	})
 	if s.tlsConfig != nil {
 		if !common.Contains(s.tlsConfig.NextProtos(), http2.NextProtoTLS) {
 			s.tlsConfig.SetNextProtos(append([]string{"h2"}, s.tlsConfig.NextProtos()...))
@@ -148,15 +161,6 @@ func (s *RealmService) Start(stage adapter.StartStage) error {
 			s.logger.Error("serve error: ", err)
 		}
 	}()
+	scope.Add(s.httpServer.Close)
 	return nil
-}
-
-func (s *RealmService) Close() error {
-	s.cancel()
-	err := common.Close(common.PtrOrNil(s.httpServer))
-	s.server.closeAll()
-	return E.Errors(err, common.Close(
-		common.PtrOrNil(s.listener),
-		s.tlsConfig,
-	))
 }

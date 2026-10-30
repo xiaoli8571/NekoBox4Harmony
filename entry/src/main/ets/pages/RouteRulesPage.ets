@@ -987,8 +987,15 @@ export struct RouteRulesPanel {
             Button('新建规则')
               .height(36)
               .width('100%')
-              .backgroundColor($r('app.color.primary'))
-              .fontColor($r('app.color.surface'))
+              .backgroundColor(this.litKey === 'pb:RouteRulesPage:1' ? $r('app.color.primary') : $r('app.color.surface'))
+              .fontColor(this.litKey === 'pb:RouteRulesPage:1' ? $r('app.color.surface') : $r('app.color.text_1'))
+              .onTouch((event: TouchEvent) => {
+                if (event.type === TouchType.Down) {
+                  this.litKey = 'pb:RouteRulesPage:1';
+                } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                  this.litKey = '';
+                }
+              })
               .onClick(() => this.newRule())
             Text('规则按上面的内核编译顺序生效（#1 最先匹配）；上移/下移即调整优先级，保存后在顶部「待应用」里统一应用。')
               .fontSize(10)
@@ -1064,23 +1071,6 @@ export struct RouteRulesPanel {
      * 不能套 Scroll:内容比视口矮时 Scroll 会把子组件垂直居中(真机实测内容
      * 顶距 +390px),PerAppManager 内部 List 已自带滚动,这里直接 Column 顶排。 */
     Column({ space: 10 }) {
-      Column({ space: 4 }) {
-        Text('分应用代理')
-          .fontSize(14)
-          .fontWeight(700)
-          .fontColor($r('app.color.text_1'))
-          .width('100%')
-        Text(this.pendingChanges > 0 ? `待应用修改 ${this.pendingChanges} 项` : '无待应用修改')
-          .fontSize(11)
-          .fontColor(this.pendingChanges > 0 ? $r('app.color.warning') : $r('app.color.text_3'))
-          .width('100%')
-      }
-      .alignItems(HorizontalAlign.Start)
-      .width('100%')
-      .padding(12)
-      .backgroundColor($r('app.color.surface'))
-      .borderRadius(12)
-
       PerAppManager({
         onApplyNow: () => {
           this.onApplyPerApp();
@@ -1531,6 +1521,7 @@ export struct RouteRulesPanel {
  */
 @CustomDialog
 struct QuickRuleDialog {
+  @State litKey: string = '';
   controller?: CustomDialogController;
   @Link name: string;
   @Link payload: string;
@@ -1611,8 +1602,15 @@ struct QuickRuleDialog {
           })
         Button($r('app.string.confirm'))
           .layoutWeight(1)
-          .backgroundColor($r('app.color.primary'))
-          .fontColor($r('app.color.surface'))
+          .backgroundColor(this.litKey === 'pb:RouteRulesPage:2' ? $r('app.color.primary') : $r('app.color.surface'))
+          .fontColor(this.litKey === 'pb:RouteRulesPage:2' ? $r('app.color.surface') : $r('app.color.text_1'))
+          .onTouch((event: TouchEvent) => {
+            if (event.type === TouchType.Down) {
+              this.litKey = 'pb:RouteRulesPage:2';
+            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+              this.litKey = '';
+            }
+          })
           .onClick(() => this.onConfirm())
       }.width('100%')
     }

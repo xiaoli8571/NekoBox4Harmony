@@ -1,12 +1,12 @@
 package tun
 
 import (
+	"errors"
 	"os"
 	"runtime"
 	"sync"
 	"time"
 
-	"github.com/sagernet/netlink"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	"github.com/sagernet/sing/common/x/list"
@@ -14,11 +14,19 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const (
+	netlinkGroups = unix.RTMGRP_LINK |
+		unix.RTMGRP_IPV4_IFADDR |
+		unix.RTMGRP_IPV6_IFADDR |
+		unix.RTMGRP_IPV4_ROUTE |
+		unix.RTMGRP_IPV6_ROUTE
+	netlinkReceiveBufferSize = 1 << 20
+)
+
 type networkUpdateMonitor struct {
-	routeUpdate   chan netlink.RouteUpdate
-	linkUpdate    chan netlink.LinkUpdate
-	addressUpdate chan netlink.AddrUpdate
-	close         chan struct{}
+	socket *os.File
+	update chan struct{}
+	close  chan struct{}
 
 	access    sync.Mutex
 	callbacks list.List[NetworkUpdateCallback]
@@ -33,11 +41,9 @@ var ErrNetlinkBanned = E.New(
 
 func NewNetworkUpdateMonitor(logger logger.Logger) (NetworkUpdateMonitor, error) {
 	monitor := &networkUpdateMonitor{
-		routeUpdate:   make(chan netlink.RouteUpdate, 2),
-		linkUpdate:    make(chan netlink.LinkUpdate, 2),
-		addressUpdate: make(chan netlink.AddrUpdate, 2),
-		close:         make(chan struct{}),
-		logger:        logger,
+		update: make(chan struct{}, 1),
+		close:  make(chan struct{}),
+		logger: logger,
 	}
 	// check is netlink banned by google
 	if runtime.GOOS == "android" {
@@ -57,17 +63,61 @@ func NewNetworkUpdateMonitor(logger logger.Logger) (NetworkUpdateMonitor, error)
 }
 
 func (m *networkUpdateMonitor) Start() error {
-	if err := netlink.RouteSubscribe(m.routeUpdate, m.close); err != nil {
-		m.logger.Debug("route subscribe: ", err)
+	// OHOS: netlink monitor disabled on OpenHarmony —— 沙箱里 netlink 订阅必然失败,
+	// 0.9.7 起用 unix.Socket 直连,失败会直接中断 TUN 启动;
+	// 平台判定用 openharmony build tag 常量(runtime.GOOS 在 fork 上是 "linux")。
+	if isOpenHarmonyRuntime {
+		m.logger.Debug("netlink monitor disabled on OpenHarmony")
+		go m.loopUpdate(time.Second)
+		return nil
 	}
-	if err := netlink.LinkSubscribe(m.linkUpdate, m.close); err != nil {
-		m.logger.Debug("link subscribe: ", err)
+	netlinkSocket, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_RAW|unix.SOCK_CLOEXEC|unix.SOCK_NONBLOCK, unix.NETLINK_ROUTE)
+	if err != nil {
+		return E.Cause(err, "create netlink socket")
 	}
-	if err := netlink.AddrSubscribe(m.addressUpdate, m.close); err != nil {
-		m.logger.Debug("address subscribe: ", err)
+	groups := uint32(netlinkGroups)
+	if runtime.GOOS == "android" {
+		groups |= unix.RTMGRP_IPV4_RULE | 1<<(unix.RTNLGRP_IPV6_RULE-1)
 	}
+	err = unix.Bind(netlinkSocket, &unix.SockaddrNetlink{
+		Family: unix.AF_NETLINK,
+		Groups: groups,
+	})
+	if err != nil {
+		unix.Close(netlinkSocket)
+		// gVisor rejects these netlink groups with EOPNOTSUPP, or EACCES in releases before 2025-11
+		if E.IsMulti(err, unix.EOPNOTSUPP, unix.EACCES) {
+			return nil
+		}
+		return E.Cause(err, "subscribe netlink groups")
+	}
+	err = unix.SetsockoptInt(netlinkSocket, unix.SOL_SOCKET, unix.SO_RCVBUFFORCE, netlinkReceiveBufferSize)
+	if err != nil {
+		unix.SetsockoptInt(netlinkSocket, unix.SOL_SOCKET, unix.SO_RCVBUF, netlinkReceiveBufferSize)
+	}
+	m.socket = os.NewFile(uintptr(netlinkSocket), "netlink")
+	go m.loopRead()
 	go m.loopUpdate(time.Second)
 	return nil
+}
+
+func (m *networkUpdateMonitor) loopRead() {
+	buffer := make([]byte, unix.Getpagesize())
+	for {
+		_, err := m.socket.Read(buffer)
+		if err != nil && !errors.Is(err, unix.ENOBUFS) {
+			select {
+			case <-m.close:
+			default:
+				m.logger.Error("read netlink socket: ", err)
+			}
+			return
+		}
+		select {
+		case m.update <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func (m *networkUpdateMonitor) loopUpdate(minDuration time.Duration) {
@@ -82,9 +132,7 @@ func (m *networkUpdateMonitor) loopUpdate(minDuration time.Duration) {
 		select {
 		case <-m.close:
 			return
-		case <-m.routeUpdate:
-		case <-m.linkUpdate:
-		case <-m.addressUpdate:
+		case <-m.update:
 		case <-timerC:
 			if pending {
 				m.emit()
@@ -112,5 +160,8 @@ func (m *networkUpdateMonitor) Close() error {
 	default:
 	}
 	close(m.close)
+	if m.socket != nil {
+		return m.socket.Close()
+	}
 	return nil
 }

@@ -1,6 +1,7 @@
 package tun
 
 import (
+	"bytes"
 	"encoding/binary"
 
 	"github.com/sagernet/sing-tun/gtcpip"
@@ -17,50 +18,34 @@ type rewriteRule struct {
 	rewriteDestinationPort bool
 }
 
-func applyRewrite(packet *forwardPacket, rule *rewriteRule) {
-	oldSource := packet.network.SourceAddress()
-	oldDestination := packet.network.DestinationAddress()
-	newSource := oldSource
-	newDestination := oldDestination
+func applyRewriteAddresses(packet *forwardPacket, rule *rewriteRule) uint64 {
+	sourceAddress, destinationAddress := packet.addressSlices()
+	var addressDelta uint64
 	if rule.sourceAddress.Len() > 0 {
-		newSource = rule.sourceAddress
+		addressDelta += rewriteAddress(sourceAddress, rule.sourceAddress.AsSlice())
 	}
 	if rule.destinationAddress.Len() > 0 {
-		newDestination = rule.destinationAddress
+		addressDelta += rewriteAddress(destinationAddress, rule.destinationAddress.AsSlice())
 	}
-	if ipHdr, isIPv4 := packet.network.(header.IPv4); isIPv4 {
-		if newSource != oldSource {
-			ipHdr.SetSourceAddressWithChecksumUpdate(newSource)
-		}
-		if newDestination != oldDestination {
-			ipHdr.SetDestinationAddressWithChecksumUpdate(newDestination)
-		}
-	} else {
-		if newSource != oldSource {
-			packet.network.SetSourceAddress(newSource)
-		}
-		if newDestination != oldDestination {
-			packet.network.SetDestinationAddress(newDestination)
-		}
+	if packet.ipVersion == 4 && addressDelta != 0 {
+		ipHdr := header.IPv4(packet.network)
+		ipHdr.SetChecksum(updateChecksum(ipHdr.Checksum(), addressDelta))
 	}
+	return addressDelta
+}
+
+func applyRewrite(packet *forwardPacket, rule *rewriteRule) {
+	addressDelta := applyRewriteAddresses(packet, rule)
 	transport := packet.transport
 	switch packet.protocol {
 	case uint8(header.TCPProtocolNumber):
 		if len(transport) < header.TCPMinimumSize {
 			return
 		}
-		tcpHdr := header.TCP(transport)
-		if newSource != oldSource {
-			tcpHdr.UpdateChecksumPseudoHeaderAddress(oldSource, newSource, true)
-		}
-		if newDestination != oldDestination {
-			tcpHdr.UpdateChecksumPseudoHeaderAddress(oldDestination, newDestination, true)
-		}
-		if rule.rewriteSourcePort {
-			tcpHdr.SetSourcePortWithChecksumUpdate(rule.sourcePort)
-		}
-		if rule.rewriteDestinationPort {
-			tcpHdr.SetDestinationPortWithChecksumUpdate(rule.destinationPort)
+		delta := addressDelta + rewritePorts(transport, rule)
+		if delta != 0 {
+			tcpHdr := header.TCP(transport)
+			tcpHdr.SetChecksum(updateChecksum(tcpHdr.Checksum(), delta))
 		}
 	case uint8(header.UDPProtocolNumber):
 		if len(transport) < header.UDPMinimumSize {
@@ -68,25 +53,15 @@ func applyRewrite(packet *forwardPacket, rule *rewriteRule) {
 		}
 		udpHdr := header.UDP(transport)
 		if packet.ipVersion == 4 && udpHdr.Checksum() == 0 {
-			if rule.rewriteSourcePort {
-				udpHdr.SetSourcePort(rule.sourcePort)
-			}
-			if rule.rewriteDestinationPort {
-				udpHdr.SetDestinationPort(rule.destinationPort)
-			}
+			rewritePorts(transport, rule)
 			return
 		}
-		if newSource != oldSource {
-			udpHdr.UpdateChecksumPseudoHeaderAddress(oldSource, newSource, true)
+		delta := addressDelta + rewritePorts(transport, rule)
+		if delta != 0 {
+			udpHdr.SetChecksum(updateChecksum(udpHdr.Checksum(), delta))
 		}
-		if newDestination != oldDestination {
-			udpHdr.UpdateChecksumPseudoHeaderAddress(oldDestination, newDestination, true)
-		}
-		if rule.rewriteSourcePort {
-			udpHdr.SetSourcePortWithChecksumUpdate(rule.sourcePort)
-		}
-		if rule.rewriteDestinationPort {
-			udpHdr.SetDestinationPortWithChecksumUpdate(rule.destinationPort)
+		if udpHdr.Checksum() == 0 {
+			udpHdr.SetChecksum(0xffff)
 		}
 	case uint8(header.ICMPv4ProtocolNumber):
 		if len(transport) < header.ICMPv4MinimumSize {
@@ -103,11 +78,8 @@ func applyRewrite(packet *forwardPacket, rule *rewriteRule) {
 			return
 		}
 		icmpHdr := header.ICMPv6(transport)
-		if newSource != oldSource {
-			icmpHdr.UpdateChecksumPseudoHeaderAddress(oldSource, newSource)
-		}
-		if newDestination != oldDestination {
-			icmpHdr.UpdateChecksumPseudoHeaderAddress(oldDestination, newDestination)
+		if addressDelta != 0 {
+			icmpHdr.SetChecksum(updateChecksum(icmpHdr.Checksum(), addressDelta))
 		}
 		if rule.rewriteSourcePort {
 			icmpHdr.SetIdentWithChecksumUpdate(rule.sourcePort)
@@ -117,12 +89,49 @@ func applyRewrite(packet *forwardPacket, rule *rewriteRule) {
 	}
 }
 
+func rewriteAddress(field []byte, address []byte) uint64 {
+	if bytes.Equal(field, address) {
+		return 0
+	}
+	var delta uint64
+	for offset := 0; offset < len(field); offset += 4 {
+		delta += uint64(^binary.BigEndian.Uint32(field[offset:])) + uint64(binary.BigEndian.Uint32(address[offset:]))
+	}
+	copy(field, address)
+	return delta
+}
+
+func rewritePorts(transport []byte, rule *rewriteRule) uint64 {
+	var delta uint64
+	if rule.rewriteSourcePort {
+		delta += checksumDelta(binary.BigEndian.Uint16(transport), rule.sourcePort)
+		binary.BigEndian.PutUint16(transport, rule.sourcePort)
+	}
+	if rule.rewriteDestinationPort {
+		delta += checksumDelta(binary.BigEndian.Uint16(transport[2:]), rule.destinationPort)
+		binary.BigEndian.PutUint16(transport[2:], rule.destinationPort)
+	}
+	return delta
+}
+
+func checksumDelta(previous uint16, next uint16) uint64 {
+	if previous == next {
+		return 0
+	}
+	return uint64(^previous) + uint64(next)
+}
+
+func updateChecksum(current uint16, delta uint64) uint16 {
+	return ^checksum.Fold(uint64(^current) + delta)
+}
+
 func applyRewriteRaw(packet *forwardPacket, rule *rewriteRule) {
+	sourceAddress, destinationAddress := packet.addressSlices()
 	if rule.sourceAddress.Len() > 0 {
-		packet.network.SetSourceAddress(rule.sourceAddress)
+		copy(sourceAddress, rule.sourceAddress.AsSlice())
 	}
 	if rule.destinationAddress.Len() > 0 {
-		packet.network.SetDestinationAddress(rule.destinationAddress)
+		copy(destinationAddress, rule.destinationAddress.AsSlice())
 	}
 	transport := packet.transport
 	switch packet.protocol {
@@ -172,7 +181,9 @@ func applyRewriteRaw(packet *forwardPacket, rule *rewriteRule) {
 }
 
 func recomputeChecksums(packet *forwardPacket) {
-	if ipHdr, isIPv4 := packet.network.(header.IPv4); isIPv4 {
+	sourceAddress, destinationAddress := packet.addressSlices()
+	if packet.ipVersion == 4 {
+		ipHdr := header.IPv4(packet.network)
 		ipHdr.SetChecksum(0)
 		ipHdr.SetChecksum(^ipHdr.CalculateChecksum())
 	}
@@ -185,7 +196,7 @@ func recomputeChecksums(packet *forwardPacket) {
 		tcpHdr := header.TCP(transport)
 		tcpHdr.SetChecksum(0)
 		payloadChecksum := checksum.Checksum(tcpHdr.Payload(), 0)
-		pseudoChecksum := header.PseudoHeaderChecksum(header.TCPProtocolNumber, packet.network.SourceAddressSlice(), packet.network.DestinationAddressSlice(), uint16(len(transport)))
+		pseudoChecksum := header.PseudoHeaderChecksum(header.TCPProtocolNumber, sourceAddress, destinationAddress, uint16(len(transport)))
 		tcpHdr.SetChecksum(^tcpHdr.CalculateChecksum(checksum.Combine(pseudoChecksum, payloadChecksum)))
 	case uint8(header.UDPProtocolNumber):
 		if len(transport) < header.UDPMinimumSize {
@@ -197,7 +208,7 @@ func recomputeChecksums(packet *forwardPacket) {
 		}
 		udpHdr.SetChecksum(0)
 		payloadChecksum := checksum.Checksum(udpHdr.Payload(), 0)
-		pseudoChecksum := header.PseudoHeaderChecksum(header.UDPProtocolNumber, packet.network.SourceAddressSlice(), packet.network.DestinationAddressSlice(), udpHdr.Length())
+		pseudoChecksum := header.PseudoHeaderChecksum(header.UDPProtocolNumber, sourceAddress, destinationAddress, udpHdr.Length())
 		udpChecksum := ^udpHdr.CalculateChecksum(checksum.Combine(pseudoChecksum, payloadChecksum))
 		if udpChecksum == 0 {
 			udpChecksum = 0xffff
@@ -218,8 +229,8 @@ func recomputeChecksums(packet *forwardPacket) {
 		icmpHdr.SetChecksum(0)
 		icmpHdr.SetChecksum(header.ICMPv6Checksum(header.ICMPv6ChecksumParams{
 			Header: icmpHdr,
-			Src:    packet.network.SourceAddressSlice(),
-			Dst:    packet.network.DestinationAddressSlice(),
+			Src:    sourceAddress,
+			Dst:    destinationAddress,
 		}))
 	}
 }
@@ -237,13 +248,7 @@ func clampTCPMSS(packet *forwardPacket, effectiveMTU uint32) {
 	if tcpHeaderLength < header.TCPMinimumSize || tcpHeaderLength > len(transport) {
 		return
 	}
-	var networkHeaderLength int
-	switch packet.ipVersion {
-	case 4:
-		networkHeaderLength = len(packet.network.(header.IPv4)) - len(transport)
-	default:
-		networkHeaderLength = len(packet.network.(header.IPv6)) - len(transport)
-	}
+	networkHeaderLength := len(packet.network) - len(transport)
 	if effectiveMTU <= uint32(networkHeaderLength+header.TCPMinimumSize) {
 		return
 	}

@@ -59,15 +59,21 @@ func newIovecBuffer(mtu int) iovecBuffer {
 	}
 }
 
-func (b *iovecBuffer) nextIovecs() []unix.Iovec {
+func (b *iovecBuffer) nextIovecs(frontHeadroom int, rearHeadroom int) []unix.Iovec {
 	if b.iovecs[0].Len == 0 {
 		headBuffer := make([]byte, PacketOffset)
 		b.iovecs[0].Base = &headBuffer[0]
 		b.iovecs[0].SetLen(PacketOffset)
 	}
+	bufferSize := frontHeadroom + b.mtu + rearHeadroom
+	if b.buffer != nil && (b.buffer.Start() != frontHeadroom || b.buffer.Cap() != bufferSize) {
+		b.buffer.Release()
+		b.buffer = nil
+	}
 	if b.buffer == nil {
-		b.buffer = buf.NewSize(b.mtu)
-		b.iovecs[1] = b.buffer.Iovec(b.buffer.Cap())
+		b.buffer = buf.NewSize(bufferSize)
+		b.buffer.Resize(frontHeadroom, 0)
+		b.iovecs[1] = b.buffer.Iovec(b.mtu)
 	}
 	return b.iovecs
 }
@@ -111,14 +117,14 @@ func New(options Options) (Tun, error) {
 			unix.Close(tunFd)
 			return nil, err
 		}
-		err = configure(tunFd, options.EXP_MultiPendingPackets, batchSize)
+		err = configure(tunFd, options.EXP_MultiPendingPackets, int(options.MTU))
 		if err != nil {
 			unix.Close(tunFd)
 			return nil, err
 		}
 	} else {
 		tunFd = options.FileDescriptor
-		err := configure(tunFd, options.EXP_MultiPendingPackets, batchSize)
+		err := configure(tunFd, options.EXP_MultiPendingPackets, int(options.MTU))
 		if err != nil {
 			return nil, err
 		}
@@ -341,24 +347,79 @@ func create(tunFd int, ifIndex int, name string, options Options) error {
 	return nil
 }
 
-func configure(tunFd int, multiPendingPackets bool, batchSize int) error {
+const (
+	utunReceiveBufferTarget  = 8 << 20
+	utunReceiveBufferMinimum = 1 << 20
+	utunReceiveBufferDefault = 512 << 10
+	utunMaxPendingPackets    = 64
+)
+
+func configure(tunFd int, multiPendingPackets bool, mtu int) error {
 	err := unix.SetNonblock(tunFd, true)
 	if err != nil {
 		return os.NewSyscallError("SetNonblock", err)
 	}
-	if multiPendingPackets {
-		const UTUN_OPT_MAX_PENDING_PACKETS = 16
-		err = unix.SetsockoptInt(tunFd, 2, UTUN_OPT_MAX_PENDING_PACKETS, batchSize)
-		if err != nil {
-			return os.NewSyscallError("SetsockoptInt UTUN_OPT_MAX_PENDING_PACKETS", err)
-		}
+	if !multiPendingPackets {
+		return nil
+	}
+	// The utun control socket drops outbound packets with ENOBUFS once the queued bytes reach
+	// SO_RCVBUF (kern_control.c ctl_rcvbspace; sbspace counts bytes only for SB_KCTL, default
+	// 512 KB), whereas reaching UTUN_OPT_MAX_PENDING_PACKETS pauses the interface until the
+	// socket is read (if_utun.c utun_start / utun_ctl_rcvd). SO_RCVBUF is clamped to
+	// kern.ipc.maxsockbuf by sbreserve.
+	receiveBuffer := raiseReceiveBuffer(tunFd)
+	pending := receiveBuffer / 8 * 7 / (mtu + PacketOffset)
+	pending = max(min(pending, utunMaxPendingPackets), 1)
+	const UTUN_OPT_MAX_PENDING_PACKETS = 16
+	err = unix.SetsockoptInt(tunFd, 2, UTUN_OPT_MAX_PENDING_PACKETS, pending)
+	if err != nil {
+		return os.NewSyscallError("SetsockoptInt UTUN_OPT_MAX_PENDING_PACKETS", err)
 	}
 	return nil
 }
 
-func (t *NativeTun) BatchRead() ([]*buf.Buffer, error) {
+func raiseReceiveBuffer(tunFd int) int {
+	for size := utunReceiveBufferTarget; size >= utunReceiveBufferMinimum; size /= 2 {
+		err := unix.SetsockoptInt(tunFd, unix.SOL_SOCKET, unix.SO_RCVBUF, size)
+		if err == nil {
+			break
+		}
+	}
+	current, err := unix.GetsockoptInt(tunFd, unix.SOL_SOCKET, unix.SO_RCVBUF)
+	if err != nil || current <= 0 {
+		return utunReceiveBufferDefault
+	}
+	return current
+}
+
+func (t *NativeTun) rawFileDescriptor() int {
+	return t.tunFd
+}
+
+// os.NewFile registers a non-blocking descriptor with the runtime poller, which then wakes an
+// idle thread for every packet the engine loop is already waiting for on its own kqueue.
+func (t *NativeTun) detachRuntimePoller() error {
+	duplicated, err := unix.FcntlInt(uintptr(t.tunFd), unix.F_DUPFD_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	previous := t.tunFile
+	t.tunFd = duplicated
+	t.tunFile = newUnpolledFile(duplicated, "utun")
+	return previous.Close()
+}
+
+func (t *NativeTun) transmitAccess() *sync.Mutex {
+	return &t.writeAccess
+}
+
+func (t *NativeTun) enableMaxPendingPackets() error {
+	return configure(t.tunFd, true, int(t.options.MTU))
+}
+
+func (t *NativeTun) BatchRead(frontHeadroom int, rearHeadroom int) ([]*buf.Buffer, error) {
 	for i := 0; i < t.batchSize; i++ {
-		iovecs := t.iovecs[i].nextIovecs()
+		iovecs := t.iovecs[i].nextIovecs(frontHeadroom, rearHeadroom)
 		// Cannot clear only the length field. Older versions of the darwin kernel will check whether other data is empty.
 		// https://github.com/Darm64/XNU/blob/xnu-2782.40.9/bsd/kern/uipc_syscalls.c#L2026-L2048
 		t.msgHdrs[i] = rawfile.MsgHdrX{}

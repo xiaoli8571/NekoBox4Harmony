@@ -43,7 +43,7 @@ type SentPacketHandler interface {
 
 	SetCongestionControl(congestion.CongestionControl)
 
-	// MaybeNotifyAppLimited records that the packer has no data to send. The congestion
-	// controller is notified on the next sent packet.
-	MaybeNotifyAppLimited()
+	// UpdateAppLimited is called after every attempt to send packets. The congestion
+	// controller is notified on the packets sent while the connection is application-limited.
+	UpdateAppLimited(now monotime.Time, hasPendingData bool)
 }

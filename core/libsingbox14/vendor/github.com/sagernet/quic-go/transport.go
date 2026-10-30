@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -257,6 +258,10 @@ func (t *Transport) dial(ctx context.Context, addr net.Addr, host string, tlsCon
 	var initialPacketNumber protocol.PacketNumber
 	if conf.ChromeParrot {
 		initialPacketNumber = 1
+		remoteAddr, hasAddrPort := addr.(interface{ AddrPort() netip.AddrPort })
+		if hasAddrPort && remoteAddr.AddrPort().Addr().Unmap().Is6() {
+			conf.InitialPacketSize = chromeInitialPacketSizeIPv6
+		}
 	}
 	return t.doDial(ctx,
 		newSendConn(t.conn, addr, packetInfo{}, utils.DefaultLogger),
@@ -555,7 +560,8 @@ func (t *Transport) listen(conn rawConn) {
 			continue
 		}
 		if err != nil {
-			// Windows returns an error when receiving a UDP datagram that doesn't fit into the provided buffer.
+			// Windows returns an error when receiving a UDP datagram that doesn't fit into the provided buffer,
+			// Linux and darwin when an ICMP Packet Too Big arrives for a datagram sent on a connected socket.
 			if isRecvMsgSizeErr(err) {
 				continue
 			}

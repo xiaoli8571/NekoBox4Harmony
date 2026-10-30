@@ -271,3 +271,73 @@ function copyUriToPath(srcUri: string, targetPath: string): boolean {
   }
   return total >= 1024;
 }
+
+// ---- GeoSite/GeoIP 后台自动更新(2026-10-26 用户要求:自动代理后在后台自动更新) ----
+/** 库文件超过该年龄即视为过期(7 天) */
+export const GEO_AUTO_TTL_MS: number = 7 * 24 * 60 * 60 * 1000;
+/** 两次自动检查的最小间隔(1 小时):频繁重连时不必反复拉取 */
+const GEO_CHECK_INTERVAL_MS: number = 60 * 60 * 1000;
+const GEO_CHECK_STAMP = 'auto-check.stamp';
+
+let geoAutoRunning: boolean = false;
+
+function stampPath(context: common.Context): string {
+  return `${geoDir(context)}/${GEO_CHECK_STAMP}`;
+}
+
+function lastCheckMs(context: common.Context): number {
+  try {
+    return fs.statSync(stampPath(context)).mtime * 1000;
+  } catch (e) {
+    // 从未检查过
+    return 0;
+  }
+}
+
+function ageMsOf(path: string): number {
+  try {
+    return Date.now() - fs.statSync(path).mtime * 1000;
+  } catch (e) {
+    // 文件缺失 = 无限期过期
+    return Number.MAX_SAFE_INTEGER;
+  }
+}
+
+function touchCheckStamp(context: common.Context): void {
+  try {
+    const f = fs.openSync(stampPath(context), fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+    fs.writeSync(f.fd, `${Date.now()}`);
+    fs.closeSync(f.fd);
+  } catch (e) {
+    // 戳记写失败不影响更新本身
+  }
+}
+
+/** 是否需要后台自动更新:节流通过 + 任一库缺失/过期 */
+export function geoAutoUpdateDue(context: common.Context): boolean {
+  if (Date.now() - lastCheckMs(context) < GEO_CHECK_INTERVAL_MS) {
+    return false;
+  }
+  return ageMsOf(geoSitePath(context)) > GEO_AUTO_TTL_MS || ageMsOf(geoIpPath(context)) > GEO_AUTO_TTL_MS;
+}
+
+/**
+ * 后台自动更新 Geo 库:连接建立后调用,不阻塞连接。
+ * 返回 'updated' / ''(无需更新);下载失败时抛错由调用方记录,不打断隧道。
+ */
+export async function autoUpdateGeoAssets(context: common.Context): Promise<string> {
+  if (geoAutoRunning) {
+    return '';
+  }
+  if (!geoAutoUpdateDue(context)) {
+    return '';
+  }
+  geoAutoRunning = true;
+  try {
+    await downloadGeoAssets(context);
+    return 'updated';
+  } finally {
+    geoAutoRunning = false;
+    touchCheckStamp(context);
+  }
+}

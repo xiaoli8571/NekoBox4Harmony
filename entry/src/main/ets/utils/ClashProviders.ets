@@ -172,8 +172,10 @@ export function parseClashGroups(yaml: string): Array<ClashGroupDef> {
       continue;
     }
     const type = providerStr(g, 'type').trim().toLowerCase();
-    // 只支持能映射到 ProfileGroup 的两类组;falload/relay 等语义不同,跳过。
-    if (type !== 'select' && type !== 'url-test' && type !== 'urltest' && type !== 'selector') {
+    /* 组类型不再过滤:Clash 里常见的 select / url-test 之外还有 fallback、load-balance、
+       relay,以前一律丢掉,用户的订阅就只剩一两个组(真机反馈「吹雪云只显示自动选择」)。
+       语义落不下的一律当手动组(isSelector),至少成员可见、可手动选,不会凭空消失。 */
+    if (type.length === 0) {
       continue;
     }
     const membersNode = g.get('proxies');
@@ -182,6 +184,9 @@ export function parseClashGroups(yaml: string): Array<ClashGroupDef> {
     }
     const members: Array<string> = [];
     let hasReal = false;
+    /* 成员可以是节点名,也可以是**另一个组的名字**(Clash 允许组引用组)。
+       后者必须先保留下来,由 applyClashGroups 递归展开成叶子节点;
+       以前直接按节点名匹配,匹配不上就丢 → "选择节点"这类纯引用组全空。 */
     for (const m of membersNode.items) {
       // 序列里的成员就是裸标量节点(不是 map),必须直接读 .scalar。
       // 早先用 providerStr(m, '') 会去 m.get('') 取键,永远拿不到 → 所有成员被丢弃。

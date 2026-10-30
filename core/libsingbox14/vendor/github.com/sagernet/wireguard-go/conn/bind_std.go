@@ -498,12 +498,10 @@ func (s *StdNetBind) Send(bufs [][]byte, endpoint Endpoint, offset int) error {
 	defer s.udpAddrPool.Put(ua)
 	if is6 {
 		as16 := standardEndpoint.DstIP().As16()
-		copy(ua.IP, as16[:])
-		ua.IP = ua.IP[:16]
+		ua.IP = append(ua.IP[:0], as16[:]...)
 	} else {
 		as4 := standardEndpoint.DstIP().As4()
-		copy(ua.IP, as4[:])
-		ua.IP = ua.IP[:4]
+		ua.IP = append(ua.IP[:0], as4[:]...)
 	}
 	ua.Port = int(standardEndpoint.Port())
 	var (
@@ -584,10 +582,7 @@ func (s *StdNetBind) send(conn *net.UDPConn, pc batchWriter, msgs []ipv6.Message
 		}
 	} else {
 		if supportsMsgX {
-			handled, sendErr := s.sendMsgX(conn, msgs)
-			if handled {
-				return sendErr
-			}
+			return s.sendMsgX(conn, msgs)
 		}
 		for _, msg := range msgs {
 			_, _, err = conn.WriteMsgUDP(msg.Buffers[0], msg.OOB, msg.Addr.(*net.UDPAddr))

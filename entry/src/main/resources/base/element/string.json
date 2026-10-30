@@ -1202,7 +1202,7 @@
     },
     {
       "name": "settings_geo_import_hint",
-      "value": "从文件导入 geoip.db / geosite.db(覆盖内置 cn 库)"
+      "value": "从文件导入 geoip.db / geosite.db"
     },
     {
       "name": "settings_geo_site",
@@ -1318,7 +1318,7 @@
     },
     {
       "name": "settings_theme_note",
-      "value": "主题选项会保存为应用偏好；受当前 SDK 能力限制，部分页面需重新进入后刷新。"
+      "value": "主题选项保存为应用偏好,部分页面需重新进入后刷新"
     },
     {
       "name": "settings_per_app_hint_exclude",
@@ -2114,11 +2114,19 @@
     },
     {
       "name": "about_license_body",
-      "value": "sing-box 为 GPL-3.0;应用图标来自 NekoBoxForAndroid(GPL-3.0)。"
+      "value": "sing-box 为 GPL-3.0。"
     },
     {
       "name": "settings_general",
       "value": "常规"
+    },
+    {
+      "name": "settings_advanced",
+      "value": "高级"
+    },
+    {
+      "name": "settings_advanced_desc",
+      "value": "默认收起。日志、测速参数、自定义配置、入站与 Clash API 都在这里。"
     },
     {
       "name": "settings_auto_connect",
@@ -2134,7 +2142,7 @@
     },
     {
       "name": "latency_test_mode_desc",
-      "value": "URL Test 经节点实际访问下方测试网址，只有全链路可用才计绿；TCPing 仅测服务器端口握手（固定 3000ms，跳过 Hysteria/TUIC/WireGuard 等不支持握手测试的协议），失效节点也可能显示绿色。"
+      "value": "URL Test 全链路可用才计绿;TCPing 仅测端口握手,失效节点也可能显示绿色"
     },
     {
       "name": "settings_route",
@@ -2158,7 +2166,7 @@
     },
     {
       "name": "settings_test_url_desc",
-      "value": "URL Test 会经节点实际访问此网址。默认 http://cp.cloudflare.com/（与安卓版一致）；换用 HTTPS 网址会额外计入到目标站的 TLS 握手，数值会偏高。"
+      "value": "URL Test 经节点访问此网址;HTTPS 网址会额外计入 TLS 握手,数值偏高"
     },
     {
       "name": "settings_test_concurrent",
@@ -2226,7 +2234,7 @@
     },
     {
       "name": "settings_server_dns_strategy_hint",
-      "value": "解析代理服务器自身域名时的 IP 优先级(对齐安卓 domain_strategy_for_server)"
+      "value": "解析代理服务器自身域名时的 IP 优先级"
     },
     {
       "name": "strategy_default",
@@ -2266,7 +2274,7 @@
     },
     {
       "name": "settings_fakedns_desc",
-      "value": "用假 IP 加速域名分流(真机验证项)"
+      "value": "用假 IP 加速域名分流"
     },
     {
       "name": "settings_mixed_port",
@@ -2418,7 +2426,7 @@
     },
     {
       "name": "settings_resolve_destination_desc",
-      "value": "连接前先解析域名,让 IP 类规则(如 geoip)能匹配域名流量"
+      "value": "先解析域名,让 IP 类规则可匹配"
     },
     {
       "name": "settings_global_custom_config",
@@ -2426,7 +2434,7 @@
     },
     {
       "name": "settings_global_custom_config_desc",
-      "value": "与生成的 sing-box 根配置浅合并,非法 JSON 会被忽略"
+      "value": "与生成的配置浅合并,非法 JSON 会被忽略"
     },
     {
       "name": "show_bottom_bar",
@@ -3301,8 +3309,592 @@
       "value": "系统"
     },
     {
+      "name": "app_page_about",
+      "value": "关于"
+    },
+    {
       "name": "operation_failed",
       "value": "操作失败: %s"
+    },
+    {
+      "name": "per_app_installed_title",
+      "value": "已安装应用"
+    },
+    {
+      "name": "per_app_installed_include_system",
+      "value": "含系统应用"
+    },
+    {
+      "name": "per_app_installed_refresh",
+      "value": "刷新"
+    },
+    {
+      "name": "per_app_installed_loading",
+      "value": "正在读取已安装应用…"
+    },
+    {
+      "name": "per_app_installed_failed",
+      "value": "无法读取已安装应用:%1$s(仍可手动输入包名)"
+    },
+    {
+      "name": "per_app_installed_empty",
+      "value": "没有匹配的应用"
+    },
+    {
+      "name": "per_app_system_tag",
+      "value": "系统"
+    },
+    {
+      "name": "per_app_entries_title",
+      "value": "已添加的条目"
+    },
+    {
+      "name": "settings_notification_profile",
+      "value": "通知显示节点名"
+    },
+    {
+      "name": "sub_filter_title",
+      "value": "节点过滤"
+    },
+    {
+      "name": "sub_filter_summary",
+      "value": "按节点名过滤(忽略大小写,支持正则;下次更新生效)"
+    },
+    {
+      "name": "sub_filter_placeholder",
+      "value": "关键词或正则"
+    },
+    {
+      "name": "sub_filter_mode_off",
+      "value": "关闭"
+    },
+    {
+      "name": "sub_filter_mode_include",
+      "value": "只保留匹配"
+    },
+    {
+      "name": "sub_filter_mode_exclude",
+      "value": "排除匹配"
+    },
+    {
+      "name": "sub_retain_valid",
+      "value": "保留有效节点"
+    },
+    {
+      "name": "sub_retain_valid_summary",
+      "value": "远端已删除但正在使用、测速可用或有流量的节点继续保留"
+    },
+    {
+      "name": "diag_title",
+      "value": "服务可用性诊断"
+    },
+    {
+      "name": "diag_subtitle",
+      "value": "落地 IP · AI 工具 · 流媒体 · 常用服务"
+    },
+    {
+      "name": "diag_test_all",
+      "value": "全部检测"
+    },
+    {
+      "name": "diag_landing_ip",
+      "value": "落地 IP"
+    },
+    {
+      "name": "diag_landing_loading",
+      "value": "正在查询出口 IP…"
+    },
+    {
+      "name": "diag_landing_failed",
+      "value": "查询失败,请检查网络后重试"
+    },
+    {
+      "name": "diag_landing_idle",
+      "value": "尚未查询"
+    },
+    {
+      "name": "diag_mode_tunnel",
+      "value": "经代理"
+    },
+    {
+      "name": "diag_mode_direct",
+      "value": "直连"
+    },
+    {
+      "name": "diag_refresh",
+      "value": "刷新"
+    },
+    {
+      "name": "diag_direct_hint",
+      "value": "VPN 未连接:以下结果反映本机直连情况,不是节点的出口"
+    },
+    {
+      "name": "diag_cat_all",
+      "value": "全部"
+    },
+    {
+      "name": "diag_cat_ai",
+      "value": "AI 工具"
+    },
+    {
+      "name": "diag_cat_streaming",
+      "value": "流媒体"
+    },
+    {
+      "name": "diag_cat_common",
+      "value": "常用服务"
+    },
+    {
+      "name": "diag_state_idle",
+      "value": "未检测"
+    },
+    {
+      "name": "diag_state_testing",
+      "value": "检测中…"
+    },
+    {
+      "name": "diag_state_available",
+      "value": "可用"
+    },
+    {
+      "name": "diag_state_restricted",
+      "value": "地区受限"
+    },
+    {
+      "name": "diag_state_unavailable",
+      "value": "不可用"
+    },
+    {
+      "name": "diag_running_hint",
+      "value": "正在检测…"
+    },
+    {
+      "name": "diag_footer_note",
+      "value": "判定逻辑与 OwnBox 一致:AI 服务看地区黑名单与风控文案,流媒体看独家内容页/地区码。结果只代表当前出口,换节点请重新检测。"
+    },
+    {
+      "name": "tools_diag_title",
+      "value": "服务可用性诊断"
+    },
+    {
+      "name": "tools_diag_desc",
+      "value": "13 项服务 + 落地 IP:AI 工具/流媒体/常用服务能否访问、地区是否受限"
+    },
+    {
+      "name": "tools_diag_open",
+      "value": "打开诊断"
+    },
+    {
+      "name": "traffic_title",
+      "value": "流量与测速"
+    },
+    {
+      "name": "traffic_subtitle",
+      "value": "实时曲线 · 会话累计 · 下载/上传测速"
+    },
+    {
+      "name": "traffic_resume",
+      "value": "继续"
+    },
+    {
+      "name": "traffic_pause",
+      "value": "暂停"
+    },
+    {
+      "name": "traffic_paused_hint",
+      "value": "已暂停采样"
+    },
+    {
+      "name": "traffic_live_hint",
+      "value": "每秒采样"
+    },
+    {
+      "name": "traffic_down",
+      "value": "下行"
+    },
+    {
+      "name": "traffic_up",
+      "value": "上行"
+    },
+    {
+      "name": "traffic_peak",
+      "value": "峰值"
+    },
+    {
+      "name": "traffic_session",
+      "value": "本次会话"
+    },
+    {
+      "name": "traffic_reset",
+      "value": "清零"
+    },
+    {
+      "name": "traffic_footer_note",
+      "value": "曲线取自内核每秒上报的实时速率;测速为真实字节吞吐(下载 10MB / 上传 2MB,上限 20 秒)。未连接时两者反映本机直连,不是节点速度。"
+    },
+    {
+      "name": "speed_down_title",
+      "value": "下载测速"
+    },
+    {
+      "name": "speed_down_hint",
+      "value": "拉取 10MB 随机数据,按实际到手字节计速"
+    },
+    {
+      "name": "speed_up_title",
+      "value": "上传测速"
+    },
+    {
+      "name": "speed_up_hint",
+      "value": "上传 2MB 随机数据(不压缩,避免结果虚高)"
+    },
+    {
+      "name": "speed_start",
+      "value": "开始测速"
+    },
+    {
+      "name": "speed_failed",
+      "value": "测速失败:%1$s"
+    },
+    {
+      "name": "speed_verdict_slow",
+      "value": "偏慢"
+    },
+    {
+      "name": "speed_verdict_fair",
+      "value": "一般"
+    },
+    {
+      "name": "speed_verdict_good",
+      "value": "良好"
+    },
+    {
+      "name": "speed_verdict_fast",
+      "value": "很快"
+    },
+    {
+      "name": "tools_traffic_title",
+      "value": "流量曲线与测速"
+    },
+    {
+      "name": "tools_traffic_desc",
+      "value": "最近 1 分钟上下行曲线、会话累计、真实字节吞吐测速"
+    },
+    {
+      "name": "tools_traffic_open",
+      "value": "打开流量"
+    },
+    {
+      "name": "nodes_show_more",
+      "value": "已显示 %1$d / %2$d 个节点 · 点此加载更多"
+    },
+    {
+      "name": "shortcut_nodes",
+      "value": "节点"
+    },
+    {
+      "name": "shortcut_traffic",
+      "value": "流量与测速"
+    },
+    {
+      "name": "shortcut_diagnostics",
+      "value": "服务诊断"
+    },
+    {
+      "name": "shortcut_logs",
+      "value": "运行日志"
+    },
+    {
+      "name": "form_status_name",
+      "value": "连接状态"
+    },
+    {
+      "name": "form_status_desc",
+      "value": "桌面卡片:一键进入流量与测速"
+    },
+    {
+      "name": "form_status_hint",
+      "value": "桌面卡片不常驻后台,状态以应用内为准"
+    },
+    {
+      "name": "form_status_open",
+      "value": "点击查看流量与测速"
+    },
+    {
+      "name": "sub_row_home_off",
+      "value": "首页只看本订阅"
+    },
+    {
+      "name": "sub_row_home_on",
+      "value": "✓ 首页只看本订阅（点击取消）"
+    },
+    {
+      "name": "home_scope_all",
+      "value": "首页已切回：显示全部订阅"
+    },
+    {
+      "name": "home_scope_one",
+      "value": "首页只显示:%1$s 的分组"
+    },
+    {
+      "name": "home_scope_tip",
+      "value": "订阅页「更多 → 首页只看本订阅」可按订阅隔离分组;当前只看:%1$s"
+    },
+    {
+      "name": "home_scope_count",
+      "value": "首页显示已选 %1$d 个订阅"
+    },
+    {
+      "name": "sub_home_check_on",
+      "value": "已勾选:在首页显示此订阅"
+    },
+    {
+      "name": "sub_home_check_off",
+      "value": "勾选后首页只显示已勾选的订阅"
+    },
+    {
+      "name": "web_ui_title",
+      "value": "Web 面板"
+    },
+    {
+      "name": "web_ui_back",
+      "value": "返回"
+    },
+    {
+      "name": "web_ui_reload",
+      "value": "刷新面板"
+    },
+    {
+      "name": "web_ui_retry",
+      "value": "重试"
+    },
+    {
+      "name": "tools_webui_title",
+      "value": "Web 面板(yacd)"
+    },
+    {
+      "name": "tools_webui_desc",
+      "value": "内核自带的流量/连接/规则面板,应用内直接打开,无需外部浏览器。需开启 Clash API 并先连接。"
+    },
+    {
+      "name": "tools_webui_open",
+      "value": "打开面板"
+    },
+    {
+      "name": "probe_notify_title",
+      "value": "节点测速完成"
+    },
+    {
+      "name": "probe_notify_cancelled",
+      "value": "测速已取消"
+    },
+    {
+      "name": "lan_title",
+      "value": "局域网共享"
+    },
+    {
+      "name": "lan_saved",
+      "value": "已保存,重连后生效"
+    },
+    {
+      "name": "lan_copied",
+      "value": "已复制代理地址"
+    },
+    {
+      "name": "lan_copy_failed",
+      "value": "复制失败"
+    },
+    {
+      "name": "lan_enable",
+      "value": "允许局域网设备接入"
+    },
+    {
+      "name": "lan_enable_desc",
+      "value": "开启后同网段设备可用本机代理"
+    },
+    {
+      "name": "lan_address",
+      "value": "本机地址"
+    },
+    {
+      "name": "lan_copy",
+      "value": "复制"
+    },
+    {
+      "name": "lan_port",
+      "value": "代理端口"
+    },
+    {
+      "name": "lan_reconnect_note",
+      "value": "端口/开关改动需要重连 VPN 才生效"
+    },
+    {
+      "name": "lan_auth_title",
+      "value": "访问鉴权"
+    },
+    {
+      "name": "lan_auth_desc",
+      "value": "填了用户名才会强制校验;仅对内网开放时建议留空"
+    },
+    {
+      "name": "lan_auth_user",
+      "value": "用户名"
+    },
+    {
+      "name": "lan_auth_pass",
+      "value": "密码"
+    },
+    {
+      "name": "cfg_edit_title",
+      "value": "原始配置"
+    },
+    {
+      "name": "cfg_edit_copy",
+      "value": "复制"
+    },
+    {
+      "name": "cfg_edit_no_profile",
+      "value": "还没有节点,先添加节点再编辑配置"
+    },
+    {
+      "name": "cfg_edit_override_on",
+      "value": "正在使用自定义配置"
+    },
+    {
+      "name": "cfg_edit_generated",
+      "value": "当前是自动生成的配置"
+    },
+    {
+      "name": "cfg_edit_clear",
+      "value": "清除覆盖"
+    },
+    {
+      "name": "cfg_edit_save",
+      "value": "保存覆盖"
+    },
+    {
+      "name": "cfg_edit_warning",
+      "value": "保存后连接会用这段配置;JSON 不合法时自动回退生成的配置"
+    },
+    {
+      "name": "cfg_edit_empty",
+      "value": "配置内容为空"
+    },
+    {
+      "name": "cfg_edit_invalid",
+      "value": "JSON 不合法或缺少 outbounds"
+    },
+    {
+      "name": "cfg_edit_saved",
+      "value": "已保存自定义配置"
+    },
+    {
+      "name": "cfg_edit_cleared",
+      "value": "已恢复自动生成"
+    },
+    {
+      "name": "cfg_edit_copied",
+      "value": "配置已复制"
+    },
+    {
+      "name": "messages_title",
+      "value": "消息中心"
+    },
+    {
+      "name": "messages_read_all",
+      "value": "全部已读"
+    },
+    {
+      "name": "messages_clear",
+      "value": "清空"
+    },
+    {
+      "name": "messages_empty",
+      "value": "暂无消息"
+    },
+    {
+      "name": "messages_sub_updated",
+      "value": "订阅已更新"
+    },
+    {
+      "name": "messages_added",
+      "value": "新增"
+    },
+    {
+      "name": "messages_failed",
+      "value": "失败"
+    },
+    {
+      "name": "tools_open",
+      "value": "打开"
+    },
+    {
+      "name": "tools_lan_desc",
+      "value": "把本机代理共享给同网段的其它设备"
+    },
+    {
+      "name": "tools_cfg_edit_desc",
+      "value": "查看并改写当前节点生成的 sing-box 配置"
+    },
+    {
+      "name": "tools_messages_desc",
+      "value": "订阅更新、测速等事件的历史记录"
+    },
+    {
+      "name": "settings_auto_start_boot",
+      "value": "开机自动连接"
+    },
+    {
+      "name": "settings_auto_start_boot_desc",
+      "value": "检测到设备重启后,首次打开应用自动连接上次节点"
+    },
+    {
+      "name": "settings_theme_accent",
+      "value": "主题强调色"
+    },
+    {
+      "name": "settings_home_sections",
+      "value": "首页区块"
+    },
+    {
+      "name": "home_sec_groups",
+      "value": "分组条"
+    },
+    {
+      "name": "home_sec_nodes",
+      "value": "节点列表"
+    },
+    {
+      "name": "home_sec_bottombar",
+      "value": "底部状态与连接键"
+    },
+    {
+      "name": "profile_alias",
+      "value": "别名"
+    },
+    {
+      "name": "profile_alias_placeholder",
+      "value": "只在界面上显示的名字"
+    },
+    {
+      "name": "profile_icon",
+      "value": "图标"
+    },
+    {
+      "name": "profile_icon_placeholder",
+      "value": "单个 emoji 或字符"
+    },
+    {
+      "name": "probe_notify_body",
+      "value": "所有节点的测速已结束"
+    },
+    {
+      "name": "settings_lan_auth_user",
+      "value": "局域网用户名"
+    },
+    {
+      "name": "settings_lan_auth_pass",
+      "value": "局域网密码"
     }
   ]
 }

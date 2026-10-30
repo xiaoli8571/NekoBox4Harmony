@@ -57,21 +57,26 @@ func (p *sharedCertificateProvider) GetACMENextProtos() []string {
 }
 
 type inlineCertificateProvider struct {
+	ctx      context.Context
+	logger   log.ContextLogger
 	provider adapter.CertificateProviderService
+	scope    *adapter.Scope
 }
 
 func (p *inlineCertificateProvider) Start() error {
+	p.scope = adapter.NewScope(p.ctx, p.logger)
+	name := "certificate-provider/" + p.provider.Type()
 	for _, stage := range adapter.ListStartStages {
-		err := adapter.LegacyStart(p.provider, stage)
+		err := p.scope.Start(name, p.provider, stage)
 		if err != nil {
-			return err
+			return E.Errors(err, p.scope.Close())
 		}
 	}
 	return nil
 }
 
 func (p *inlineCertificateProvider) Close() error {
-	return p.provider.Close()
+	return p.scope.Close()
 }
 
 func (p *inlineCertificateProvider) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
@@ -467,18 +472,23 @@ func NewSTDServer(ctx context.Context, logger log.ContextLogger, options option.
 				}
 			}
 			tlsConfig.ClientCAs = clientCertificateCA
-		} else if len(options.ClientCertificatePublicKeySHA256) > 0 {
+		} else if len(options.ClientCertificateSHA256) > 0 || len(options.ClientCertificatePublicKeySHA256) > 0 {
+			var certificateOptional bool
 			switch tlsConfig.ClientAuth {
 			case tls.RequireAndVerifyClientCert:
 				tlsConfig.ClientAuth = tls.RequireAnyClientCert
 			case tls.VerifyClientCertIfGiven:
 				tlsConfig.ClientAuth = tls.RequestClientCert
+				certificateOptional = true
 			}
 			tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-				return VerifyPublicKeySHA256(options.ClientCertificatePublicKeySHA256, rawCerts)
+				if certificateOptional && len(rawCerts) == 0 {
+					return nil
+				}
+				return VerifyPinnedCertificate(options.ClientCertificateSHA256, options.ClientCertificatePublicKeySHA256, rawCerts)
 			}
 		} else {
-			return nil, E.New("missing client_certificate, client_certificate_path or client_certificate_public_key_sha256 for client authentication")
+			return nil, E.New("missing client_certificate, client_certificate_path, client_certificate_sha256 or client_certificate_public_key_sha256 for client authentication")
 		}
 	}
 	var echKeyPath string
@@ -548,6 +558,8 @@ func newCertificateProvider(ctx context.Context, logger log.ContextLogger, optio
 		return nil, E.Cause(err, "create inline certificate provider")
 	}
 	return &inlineCertificateProvider{
+		ctx:      ctx,
+		logger:   logger,
 		provider: provider,
 	}, nil
 }

@@ -783,3 +783,77 @@ function migrateOverride(oldOv: UserOverride, newKey: string, nowMs: number): Us
   next.updatedAt = nowMs;
   return next;
 }
+
+/**
+ * 保留有效节点(对齐 OwnBox RawUpdater.kt:315-341 `retainValidNodes`)。
+ *
+ * OwnBox 的判据:当前连接/选中节点、上次测速成功(status==1 && ping>0)、有流量记录(rx/tx>0);
+ * 其余远端已删除的节点照常清理。鸿蒙侧沿用同一口径(latencyMs>0 即视为测速成功)。
+ *
+ * 实现:合并阶段远端缺失的节点会转墓碑(deletedAt>0)。本函数把这些节点里仍然
+ * 「有效」的重新提升为活跃节点:加回 merge.kept、墓碑改回 deletedAt=0 的活覆盖,
+ * 并把名字从 deletedNames 里摘掉(否则界面会报「删除 N 个」而实际没删)。
+ */
+export class RetainResult {
+  retainedNames: Array<string> = [];
+}
+
+function shouldRetainProfile(p: Profile, selectedId: string): boolean {
+  if (p.id === selectedId) {
+    return true;
+  }
+  if (p.latencyMs > 0) {
+    return true;
+  }
+  return p.rx > 0 || p.tx > 0;
+}
+
+export function retainValidNodes(merge: MergeApplyResult, owned: Array<Profile>, url: string,
+  selectedId: string, nowMs: number): RetainResult {
+  const result = new RetainResult();
+  if (owned.length === 0) {
+    return result;
+  }
+  const keptIds: Set<string> = new Set<string>();
+  for (let i = 0; i < merge.kept.length; i++) {
+    keptIds.add(merge.kept[i].id);
+  }
+  const tombstoneIndex: Map<string, number> = new Map<string, number>();
+  for (let i = 0; i < merge.nextOverrides.length; i++) {
+    const ov: UserOverride = merge.nextOverrides[i];
+    if (ov.deletedAt > 0) {
+      tombstoneIndex.set(ov.identityKey, i);
+    }
+  }
+  for (let i = 0; i < owned.length; i++) {
+    const old: Profile = owned[i];
+    if (keptIds.has(old.id) || !shouldRetainProfile(old, selectedId)) {
+      continue;
+    }
+    const key: string = identityKeyOf(url, old);
+    const index: number | undefined = tombstoneIndex.get(key);
+    if (index === undefined) {
+      continue;
+    }
+    const tomb: UserOverride = merge.nextOverrides[index];
+    old.subUrl = url;
+    old.updatedAt = nowMs;
+    merge.kept.push(old);
+    keptIds.add(old.id);
+    merge.deletedNames = merge.deletedNames.filter((n: string) => n !== old.name);
+    const live: UserOverride = new UserOverride();
+    live.subscriptionUrl = url;
+    live.identityKey = key;
+    live.alias = tomb.alias;
+    live.pinned = tomb.pinned;
+    live.sortOrder = tomb.sortOrder;
+    live.displayGroupId = tomb.displayGroupId.length > 0 ? tomb.displayGroupId : old.groupId;
+    live.transportOverrides = tomb.transportOverrides.slice();
+    live.deletedAt = 0;
+    live.updatedAt = nowMs;
+    merge.nextOverrides[index] = live;
+    result.retainedNames.push(old.name);
+  }
+  merge.changed = merge.deletedNames.length + merge.addedNames.length + merge.updatedNames.length;
+  return result;
+}

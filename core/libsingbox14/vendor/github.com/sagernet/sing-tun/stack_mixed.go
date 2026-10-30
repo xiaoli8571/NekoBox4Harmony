@@ -48,7 +48,7 @@ func (m *Mixed) Start() error {
 	if err != nil {
 		return err
 	}
-	udpForwarder := NewUDPForwarder(m.ctx, ipStack, m.handler, m.udpNATOptions)
+	udpForwarder := NewUDPForwarder(m.ctx, ipStack, m.handler, m.dispatcher, m.udpNATOptions)
 	err = udpForwarder.Start()
 	if err != nil {
 		return err
@@ -57,6 +57,7 @@ func (m *Mixed) Start() error {
 	m.udpForwarder = udpForwarder
 	m.stack = ipStack
 	m.endpoint = endpoint
+	m.dispatchStage = m.dispatcher.NewStage(nil, func() { m.resumeJudged(m.processPacket) })
 	go m.tunLoop()
 	go m.packetLoop()
 	return nil
@@ -101,26 +102,35 @@ func (m *Mixed) tunLoop() {
 		return
 	}
 	packetBuffer := make([]byte, m.mtu+PacketOffset)
+	var readRetry ReadRetry
 	for {
 		n, err := m.tun.Read(packetBuffer)
 		if err != nil {
-			if E.IsClosed(err) {
-				return
+			if IsRecoverableReadError(err) {
+				m.logger.Debug(E.Cause(err, "read packet"))
+				readRetry.Wait(err)
+				continue
 			}
-			m.logger.Error(E.Cause(err, "read packet"))
+			if !E.IsClosed(err) {
+				m.logger.Error(E.Cause(err, "read packet"))
+			}
+			return
 		}
-		if n < header.IPv4MinimumSize {
+		readRetry.Reset()
+		if n-PacketOffset < header.IPv4MinimumSize {
 			continue
 		}
 		rawPacket := packetBuffer[:n]
 		packet := packetBuffer[PacketOffset:n]
+		m.processAccess.Lock()
 		if m.processPacket(packet) {
 			_, err = m.tun.Write(rawPacket)
 			if err != nil {
 				m.logger.Trace(E.Cause(err, "write packet"))
 			}
 		}
-		m.dispatcher.Flush()
+		m.dispatchStage.Flush()
+		m.processAccess.Unlock()
 	}
 }
 
@@ -134,13 +144,15 @@ func (m *Mixed) wintunLoop(winTun WinTun) {
 			release()
 			continue
 		}
+		m.processAccess.Lock()
 		if m.processPacket(packet) {
 			_, err = winTun.Write(packet)
 			if err != nil {
 				m.logger.Trace(E.Cause(err, "write packet"))
 			}
 		}
-		m.dispatcher.Flush()
+		m.dispatchStage.Flush()
+		m.processAccess.Unlock()
 		release()
 	}
 }
@@ -152,17 +164,25 @@ func (m *Mixed) batchLoopLinux(linuxTUN LinuxTUN, batchSize int) {
 	for i := range packetBuffers {
 		packetBuffers[i] = make([]byte, m.mtu+PacketOffset+m.frontHeadroom)
 	}
+	var readRetry ReadRetry
 	for {
 		n, err := linuxTUN.BatchRead(packetBuffers, m.frontHeadroom, packetSizes)
 		if err != nil {
-			if E.IsClosed(err) {
+			if !IsRecoverableReadError(err) {
+				if !E.IsClosed(err) {
+					m.logger.Error(E.Cause(err, "batch read packet"))
+				}
 				return
 			}
-			m.logger.Error(E.Cause(err, "batch read packet"))
+			m.logger.Debug(E.Cause(err, "batch read packet"))
+			readRetry.Wait(err)
+		} else {
+			readRetry.Reset()
 		}
 		if n == 0 {
 			continue
 		}
+		m.processAccess.Lock()
 		for i := 0; i < n; i++ {
 			packetSize := packetSizes[i]
 			if packetSize < header.IPv4MinimumSize {
@@ -181,26 +201,35 @@ func (m *Mixed) batchLoopLinux(linuxTUN LinuxTUN, batchSize int) {
 			}
 			writeBuffers = writeBuffers[:0]
 		}
-		m.dispatcher.Flush()
+		m.dispatchStage.Flush()
+		m.processAccess.Unlock()
 	}
 }
 
 func (m *Mixed) batchLoopDarwin(darwinTUN DarwinTUN) {
 	var writeBuffers []*buf.Buffer
 	var releaseBuffers []*buf.Buffer
+	var readRetry ReadRetry
 	for {
-		buffers, err := darwinTUN.BatchRead()
+		buffers, err := darwinTUN.BatchRead(0, 0)
 		if err != nil {
-			if E.IsClosed(err) || errors.Is(err, syscall.EBADF) {
+			if !IsRecoverableReadError(err) {
+				if !E.IsClosed(err) && !errors.Is(err, syscall.EBADF) {
+					m.logger.Error(E.Cause(err, "batch read packet"))
+				}
 				return
 			}
-			m.logger.Error(E.Cause(err, "batch read packet"))
+			m.logger.Debug(E.Cause(err, "batch read packet"))
+			readRetry.Wait(err)
+		} else {
+			readRetry.Reset()
 		}
 		if len(buffers) == 0 {
 			continue
 		}
 		writeBuffers = writeBuffers[:0]
 		releaseBuffers = releaseBuffers[:0]
+		m.processAccess.Lock()
 		for _, buffer := range buffers {
 			packetSize := buffer.Len()
 			if packetSize < header.IPv4MinimumSize {
@@ -220,7 +249,8 @@ func (m *Mixed) batchLoopDarwin(darwinTUN DarwinTUN) {
 			}
 			buf.ReleaseMulti(writeBuffers)
 		}
-		m.dispatcher.Flush()
+		m.dispatchStage.Flush()
+		m.processAccess.Unlock()
 		buf.ReleaseMulti(releaseBuffers)
 	}
 }
@@ -246,6 +276,10 @@ func (m *Mixed) processPacket(packet []byte) bool {
 }
 
 func (m *Mixed) processIPv4(ipHdr header.IPv4) (writeBack bool, err error) {
+	if !ipHdr.IsValid(len(ipHdr)) {
+		return false, E.New("ipv4: invalid packet")
+	}
+	ipHdr = ipHdr[:ipHdr.TotalLength()]
 	writeBack = true
 	destination := ipHdr.DestinationAddr()
 	if destination == m.broadcastAddr || !destination.IsGlobalUnicast() {
@@ -273,6 +307,10 @@ func (m *Mixed) processIPv4(ipHdr header.IPv4) (writeBack bool, err error) {
 }
 
 func (m *Mixed) processIPv6(ipHdr header.IPv6) (writeBack bool, err error) {
+	if !ipHdr.IsValid(len(ipHdr)) {
+		return false, E.New("ipv6: invalid packet")
+	}
+	ipHdr = ipHdr[:header.IPv6MinimumSize+int(ipHdr.PayloadLength())]
 	writeBack = true
 	destination := ipHdr.DestinationAddr()
 	if !destination.IsGlobalUnicast() {
