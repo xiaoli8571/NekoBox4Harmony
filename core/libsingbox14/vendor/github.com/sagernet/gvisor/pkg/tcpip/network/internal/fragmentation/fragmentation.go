@@ -160,7 +160,8 @@ func NewFragmentation(blockSize uint16, highMemoryLimit, lowMemoryLimit int, rea
 // the protocol to identify a fragment.
 func (f *Fragmentation) Process(
 	id FragmentID, first, last uint16, more bool, proto uint8, pkt *stack.PacketBuffer) (
-	*stack.PacketBuffer, uint8, bool, error) {
+	*stack.PacketBuffer, uint8, bool, error,
+) {
 	if first > last {
 		return nil, 0, false, fmt.Errorf("first=%d is greater than last=%d: %w", first, last, ErrInvalidArgs)
 	}
@@ -301,6 +302,7 @@ type PacketFragmenter struct {
 	fragmentCount      int
 	currentFragment    int
 	fragmentOffset     int
+	mark               uint32
 }
 
 // MakePacketFragmenter prepares the struct needed for packet fragmentation.
@@ -331,6 +333,7 @@ func MakePacketFragmenter(pkt *stack.PacketBuffer, fragmentPayloadLen uint32, re
 		reserve:            reserve,
 		fragmentPayloadLen: int(fragmentPayloadLen),
 		fragmentCount:      int(fragmentCount),
+		mark:               pkt.Mark,
 	}
 }
 
@@ -350,6 +353,7 @@ func (pf *PacketFragmenter) BuildNextFragment() (*stack.PacketBuffer, int, int, 
 
 	fragPkt := stack.NewPacketBuffer(stack.PacketBufferOptions{
 		ReserveHeaderBytes: pf.reserve,
+		Mark:               pf.mark,
 	})
 
 	// Copy data for the fragment.

@@ -18,9 +18,10 @@
 package cpuid
 
 import (
-	"io/ioutil"
+	"bufio"
+	"bytes"
+	"os"
 	"strconv"
-	"strings"
 
 	"github.com/sagernet/gvisor/pkg/log"
 )
@@ -62,15 +63,25 @@ const xSaveInfoNumLeaves = 64 // Maximum number of xSaveInfo leaves.
 
 // The "extended" functions.
 const (
-	extendedStart         cpuidFunction = 0x80000000
-	extendedFunctionInfo  cpuidFunction = extendedStart + 0 // Returns highest available extended function in eax.
-	extendedFeatures                    = extendedStart + 1 // Returns some extended feature bits in edx and ecx.
-	processorBrandString2               = extendedStart + 2 // Processor Name String Identifier.
-	processorBrandString3               = extendedStart + 3 // Processor Name String Identifier.
-	processorBrandString4               = extendedStart + 4 // Processor Name String Identifier.
-	l1CacheAndTLBInfo                   = extendedStart + 5 // Returns L2 cache information.
-	l2CacheInfo                         = extendedStart + 6 // Returns L2 cache information.
-	addressSizes                        = extendedStart + 8 // Physical and virtual address sizes.
+	extendedStart           cpuidFunction = 0x80000000
+	extendedFunctionInfo    cpuidFunction = extendedStart + 0  // Returns highest available extended function in eax.
+	extendedFeatures                      = extendedStart + 1  // Returns some extended feature bits in edx and ecx.
+	processorBrandString2                 = extendedStart + 2  // Processor Name String Identifier.
+	processorBrandString3                 = extendedStart + 3  // Processor Name String Identifier.
+	processorBrandString4                 = extendedStart + 4  // Processor Name String Identifier.
+	l1CacheAndTLBInfo                     = extendedStart + 5  // Returns L2 cache information.
+	l2CacheInfo                           = extendedStart + 6  // Returns L2 cache information.
+	addressSizes                          = extendedStart + 8  // Physical and virtual address sizes.
+	amdMemoryEncryptionInfo               = extendedStart + 31 // AMD memory encryption information.
+)
+
+// AMD-defined memory encryption feature bits and fields.
+const (
+	amdSecureMemoryEncryption        = 1 << 0
+	amdSecureEncryptedVirtualization = 1 << 1
+	amdMemoryEncryptionFeatureMask   = amdSecureMemoryEncryption | amdSecureEncryptedVirtualization
+	amdPhysAddrReductionShift        = 6
+	amdPhysAddrReductionMask         = 0x3f
 )
 
 var allowedBasicFunctions = [...]bool{
@@ -83,14 +94,15 @@ var allowedBasicFunctions = [...]bool{
 }
 
 var allowedExtendedFunctions = [...]bool{
-	extendedFunctionInfo - extendedStart:  true,
-	extendedFeatures - extendedStart:      true,
-	addressSizes - extendedStart:          true,
-	processorBrandString2 - extendedStart: true,
-	processorBrandString3 - extendedStart: true,
-	processorBrandString4 - extendedStart: true,
-	l1CacheAndTLBInfo - extendedStart:     true,
-	l2CacheInfo - extendedStart:           true,
+	extendedFunctionInfo - extendedStart:    true,
+	extendedFeatures - extendedStart:        true,
+	addressSizes - extendedStart:            true,
+	processorBrandString2 - extendedStart:   true,
+	processorBrandString3 - extendedStart:   true,
+	processorBrandString4 - extendedStart:   true,
+	l1CacheAndTLBInfo - extendedStart:       true,
+	l2CacheInfo - extendedStart:             true,
+	amdMemoryEncryptionInfo - extendedStart: true,
 }
 
 // Function executes a CPUID function.
@@ -118,7 +130,7 @@ func (i *In) normalize() {
 	switch cpuidFunction(i.Eax) {
 	case vendorID, featureInfo, intelCacheDescriptors, extendedFunctionInfo, extendedFeatures:
 		i.Ecx = 0 // Ignore.
-	case processorBrandString2, processorBrandString3, processorBrandString4, l1CacheAndTLBInfo, l2CacheInfo:
+	case processorBrandString2, processorBrandString3, processorBrandString4, l1CacheAndTLBInfo, l2CacheInfo, amdMemoryEncryptionInfo:
 		i.Ecx = 0 // Ignore.
 	case intelDeterministicCacheParams, extendedFeatureInfo:
 		// Preserve i.Ecx.
@@ -162,6 +174,23 @@ func (fs FeatureSet) query(fn cpuidFunction) (uint32, uint32, uint32, uint32) {
 	return out.Eax, out.Ebx, out.Ecx, out.Edx
 }
 
+// Intersect returns the intersection of features between self and allowedFeatures.
+func (fs FeatureSet) Intersect(allowedFeatures map[Feature]struct{}) (FeatureSet, error) {
+	hs := fs.ToStatic()
+
+	// only keep features inside allowedFeatures.
+	for f := range allFeatures {
+		if fs.HasFeature(f) {
+			if _, ok := allowedFeatures[f]; !ok {
+				log.Infof("Removing CPU feature %v as it is not allowed.", f)
+				hs.Remove(f)
+			}
+		}
+	}
+
+	return hs.ToFeatureSet(), nil
+}
+
 var hostFeatureSet FeatureSet
 
 // HostFeatureSet returns a host CPUID.
@@ -171,48 +200,51 @@ func HostFeatureSet() FeatureSet {
 	return hostFeatureSet
 }
 
-var (
-	// cpuFreqMHz is the native CPU frequency.
-	cpuFreqMHz float64
-)
+// cpuFreqMHz is the native CPU frequency.
+var cpuFreqMHz float64
 
 // Reads max cpu frequency from host /proc/cpuinfo. Must run before syscall
 // filter installation. This value is used to create the fake /proc/cpuinfo
 // from a FeatureSet.
 func readMaxCPUFreq() {
-	cpuinfob, err := ioutil.ReadFile("/proc/cpuinfo")
+	cpuinfoFile, err := os.Open("/proc/cpuinfo")
 	if err != nil {
 		// Leave it as 0... the VDSO bails out in the same way.
-		log.Warningf("Could not read /proc/cpuinfo: %v", err)
+		log.Warningf("Could not open /proc/cpuinfo: %v", err)
 		return
 	}
-	cpuinfo := string(cpuinfob)
+	defer cpuinfoFile.Close()
 
 	// We get the value straight from host /proc/cpuinfo. On machines with
 	// frequency scaling enabled, this will only get the current value
 	// which will likely be inaccurate. This is fine on machines with
 	// frequency scaling disabled.
-	for _, line := range strings.Split(cpuinfo, "\n") {
-		if strings.Contains(line, "cpu MHz") {
-			splitMHz := strings.Split(line, ":")
+	s := bufio.NewScanner(cpuinfoFile)
+	for s.Scan() {
+		line := s.Bytes()
+		if bytes.Contains(line, []byte("cpu MHz")) {
+			splitMHz := bytes.Split(line, []byte(":"))
 			if len(splitMHz) < 2 {
-				log.Warningf("Could not read /proc/cpuinfo: malformed cpu MHz line")
+				log.Warningf("Could not parse /proc/cpuinfo: malformed cpu MHz line: %q", line)
 				return
 			}
 
-			// If there was a problem, leave cpuFreqMHz as 0.
 			var err error
-			cpuFreqMHz, err = strconv.ParseFloat(strings.TrimSpace(splitMHz[1]), 64)
+			splitMHzStr := string(bytes.TrimSpace(splitMHz[1]))
+			f64MHz, err := strconv.ParseFloat(splitMHzStr, 64)
 			if err != nil {
-				log.Warningf("Could not parse cpu MHz value %v: %v", splitMHz[1], err)
-				cpuFreqMHz = 0
+				log.Warningf("Could not parse cpu MHz value %q: %v", splitMHzStr, err)
 				return
 			}
+			cpuFreqMHz = f64MHz
 			return
 		}
 	}
+	if err := s.Err(); err != nil {
+		log.Warningf("Could not read /proc/cpuinfo: %v", err)
+		return
+	}
 	log.Warningf("Could not parse /proc/cpuinfo, it is empty or does not contain cpu MHz")
-
 }
 
 // xgetbv reads an extended control register.

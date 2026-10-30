@@ -1,22 +1,25 @@
-# sing-box 1.11.9 内核(core)
+# sing-box 1.15.0-alpha.13 内核(core)
 
 本目录存放 VPN 内核相关内容,参考 NekoBoxForAndroid 的做法:内核与应用解耦。
 
 ## 当前架构(进程内 c-shared 库)
 
 内核以 c-shared .so 形式在 :vpn 扩展进程内 dlopen 运行(沙箱禁止 exec)。
-**v1.5.x 起,内核为仓库自带源码 `core/sing-box-1.11/`(sing-box v1.11.9 + OHOS 补丁),
+**v1.5.x 起,内核为仓库自带源码 `core/sing-box-1.15/`(sing-box 1.15.0-alpha.13 + OHOS 补丁),
 克隆仓库即可构建,无需另找源码。**
+
+> 2026-10-30:内核从 1.14.0 升级到 **1.15.0-alpha.13**(与 OwnBoxForAndroid 对齐)。
+> `core/sing-box-1.11/` 与 `core/sing-box-1.14/` 保留作回滚源,发布内核固定用 1.15。
 
 ```
 core/libsingbox14/          Go 包装层(//export CGoStartSingBox/CGoStopSingBox/CGoSetTunFd/CGoSingBoxVersion)
-core/sing-box-1.11/         sing-box v1.11.9 源码(含 OHOS 补丁,随仓库分发)
+core/sing-box-1.15/         sing-box 1.15.0-alpha.13 源码(含 OHOS 补丁,随仓库分发;1.11/1.14 为回滚备用)
 core/patches/               历史补丁 + zz-ohos/(fallback 安装源)
 core/scripts/build-ohos-toolchain.sh    一次性构建 OHOS Go fork(openharmony-sig/ohos_golang_go,go1.24 分支)
 core/scripts/build-libsingbox-ohos.sh   交叉编译 libsingbox.so → entry/libs/arm64-v8a/
 ```
 
-### sing-box-1.11 内的 OHOS 补丁(脚本幂等校验,缺一 fail-closed)
+### sing-box-1.15 内的 OHOS 补丁(脚本幂等校验,缺一 fail-closed)
 
 1. `protocol/tun/inbound.go` — TUN fd 注入:扩展进程把 vpnExtension 的 fd 经
    `SING_BOX_TUN_FD` 环境变量交给 sing-tun(显式非法值报错)。
@@ -53,7 +56,19 @@ node hvigorw.js --mode module -p product=default assembleHap --no-daemon
 注意:PackageHap 需要命令行有 java(用 DevEco 自带 JBR 加 PATH 即可),否则报
 `spawn java ENOENT`(00308018)。
 
-## 升级实验(未启用)
+## 升级实验(已完成)
 
-sing-box 1.13.12 / 1.14 的升级实验源码不在仓库内(曾以坏 gitlink 入库,已移除);
-本机 `C:\Users\Administrator\Downloads\NekoBox\core\` 下留有实验副本,勿当作发布内核。
+sing-box 1.14.0 / 1.15.0-alpha.13 均已入库并可直接构建;1.15 为当前发布内核。
+回滚方式:`SINGBOX_TAG=v1.14.0 SINGBOX_SRC=$PWD/core/sing-box-1.14 bash core/scripts/build-libsingbox-ohos.sh`。
+
+## 构建标签(build tags)
+
+`core/scripts/build-libsingbox-ohos.sh` 的 `BUILD_TAGS` 必须包含:
+
+- `with_gvisor` — **App 侧 `ConfigBuilder.TUN_STACK` 固定为 gvisor,缺此标签会编出 gVisor 桩,
+  真机开 VPN 立即报 `gVisor is not included in this build, rebuild with -tags with_gvisor`(2.5.0 首包事故)。**
+- `with_quic`(Hysteria2/TUIC)、`with_utls`(REALITY)、`with_clash_api`(Web 面板/流量统计)。
+
+WireGuard(`protocol/wireguard`)、DHCP DNS、fakeip 等由 `core/libsingbox14/lean_context.go`
+直接 import  + 显式注册,不依赖 `with_*` 标签;gRPC 传输走 `with_grpc` 未启用时的 `grpc_lite` 实现。
+一致性由 `tests/kernel-version.cjs` 守住(TUN_STACK=gvisor ⇔ BUILD_TAGS 含 with_gvisor)。

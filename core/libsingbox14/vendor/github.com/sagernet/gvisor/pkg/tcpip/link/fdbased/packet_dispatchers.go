@@ -18,16 +18,18 @@
 package fdbased
 
 import (
-	"golang.org/x/sys/unix"
 	"github.com/sagernet/gvisor/pkg/buffer"
 	"github.com/sagernet/gvisor/pkg/rawfile"
 	"github.com/sagernet/gvisor/pkg/tcpip"
 	"github.com/sagernet/gvisor/pkg/tcpip/link/stopfd"
 	"github.com/sagernet/gvisor/pkg/tcpip/stack"
 	"github.com/sagernet/gvisor/pkg/tcpip/stack/gro"
+	"golang.org/x/sys/unix"
 )
 
 // BufConfig defines the shape of the buffer used to read packets from the NIC.
+// The duplication of 256 is intended so that the sum of the elements can cover
+// the maximum packet size we expect to receive. See TestBufConfigMaxLength.
 var BufConfig = []int{128, 256, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768}
 
 // +stateify savable

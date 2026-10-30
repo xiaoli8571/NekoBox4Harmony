@@ -175,11 +175,9 @@ retry:
 		slot := ancestorsapmSlotAt(slots, i)
 		slotVal := atomic.LoadPointer(&slot.val)
 		if slotVal == nil {
-
 			return nil
 		}
 		if slotVal == ancestorsevacuated() {
-
 			goto retry
 		}
 		if slot.key == key {
@@ -268,11 +266,9 @@ retry:
 			shard.dirtyMu.Unlock()
 		}
 		if slotVal == ancestorsevacuated() {
-
 			goto retry
 		}
 		if slot.key == key {
-
 			for {
 				if (compare && oldVal != slotVal) || newVal == slotVal {
 					if slotVal == ancestorstombstone() {
@@ -310,7 +306,6 @@ func (shard *ancestorsapmShard) rehash(oldSlots unsafe.Pointer) {
 	defer shard.rehashMu.Unlock()
 
 	if shard.slots != oldSlots {
-
 		return
 	}
 
@@ -385,7 +380,6 @@ func (m *ancestorsAtomicPtrMap) Range(f func(key *MutexClass, val *string) bool)
 }
 
 func (shard *ancestorsapmShard) doRange(f func(key *MutexClass, val *string) bool) bool {
-
 	shard.rehashMu.Lock()
 	defer shard.rehashMu.Unlock()
 	slots := shard.slots

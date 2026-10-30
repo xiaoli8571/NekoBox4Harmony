@@ -22,6 +22,7 @@ import (
 	"github.com/sagernet/gvisor/pkg/sleep"
 	"github.com/sagernet/gvisor/pkg/sync"
 	"github.com/sagernet/gvisor/pkg/tcpip"
+	"github.com/sagernet/gvisor/pkg/tcpip/link/qdisc"
 	"github.com/sagernet/gvisor/pkg/tcpip/stack"
 )
 
@@ -58,9 +59,9 @@ type discipline struct {
 type queueDispatcher struct {
 	lower stack.LinkWriter
 
-	mu sync.Mutex `state:"nosave"`
+	mu queueDispatcherMutex `state:"nosave"`
 	// +checklocks:mu
-	queue packetBufferCircularList
+	queue qdisc.PacketBufferCircularList
 
 	newPacketWaker sleep.Waker `state:"nosave"`
 	closeWaker     sleep.Waker `state:"nosave"`
@@ -78,7 +79,7 @@ func New(lower stack.LinkWriter, n int, queueLen int) stack.QueueingDiscipline {
 	for i := range d.dispatchers {
 		qd := &d.dispatchers[i]
 		qd.lower = lower
-		qd.queue.init(queueLen)
+		qd.queue.Init(queueLen)
 
 		d.wg.Add(1)
 		go func() {
@@ -101,19 +102,19 @@ func (qd *queueDispatcher) dispatchLoop() {
 		case &qd.newPacketWaker:
 		case &qd.closeWaker:
 			qd.mu.Lock()
-			for p := qd.queue.removeFront(); p != nil; p = qd.queue.removeFront() {
+			for p := qd.queue.RemoveFront(); p != nil; p = qd.queue.RemoveFront() {
 				p.DecRef()
 			}
-			qd.queue.decRef()
+			qd.queue.DecRef()
 			qd.mu.Unlock()
 			return
 		default:
 			panic("unknown waker")
 		}
 		qd.mu.Lock()
-		for pkt := qd.queue.removeFront(); pkt != nil; pkt = qd.queue.removeFront() {
+		for pkt := qd.queue.RemoveFront(); pkt != nil; pkt = qd.queue.RemoveFront() {
 			batch.PushBack(pkt)
-			if batch.Len() < BatchSize && !qd.queue.isEmpty() {
+			if batch.Len() < BatchSize && !qd.queue.IsEmpty() {
 				continue
 			}
 			qd.mu.Unlock()
@@ -137,9 +138,13 @@ func (d *discipline) WritePacket(pkt *stack.PacketBuffer) tcpip.Error {
 	}
 	qd := &d.dispatchers[int(pkt.Hash)%len(d.dispatchers)]
 	qd.mu.Lock()
-	haveSpace := qd.queue.hasSpace()
+	if d.closed.Load() == qDiscClosed {
+		qd.mu.Unlock()
+		return &tcpip.ErrClosedForSend{}
+	}
+	haveSpace := qd.queue.HasSpace()
 	if haveSpace {
-		qd.queue.pushBack(pkt.IncRef())
+		qd.queue.PushBack(pkt.IncRef())
 	}
 	qd.mu.Unlock()
 	if !haveSpace {

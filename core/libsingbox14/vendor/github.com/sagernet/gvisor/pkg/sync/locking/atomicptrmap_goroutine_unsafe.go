@@ -175,11 +175,9 @@ retry:
 		slot := goroutineLocksapmSlotAt(slots, i)
 		slotVal := atomic.LoadPointer(&slot.val)
 		if slotVal == nil {
-
 			return nil
 		}
 		if slotVal == goroutineLocksevacuated() {
-
 			goto retry
 		}
 		if slot.key == key {
@@ -268,11 +266,9 @@ retry:
 			shard.dirtyMu.Unlock()
 		}
 		if slotVal == goroutineLocksevacuated() {
-
 			goto retry
 		}
 		if slot.key == key {
-
 			for {
 				if (compare && oldVal != slotVal) || newVal == slotVal {
 					if slotVal == goroutineLockstombstone() {
@@ -310,7 +306,6 @@ func (shard *goroutineLocksapmShard) rehash(oldSlots unsafe.Pointer) {
 	defer shard.rehashMu.Unlock()
 
 	if shard.slots != oldSlots {
-
 		return
 	}
 
@@ -385,7 +380,6 @@ func (m *goroutineLocksAtomicPtrMap) Range(f func(key int64, val *goroutineLocks
 }
 
 func (shard *goroutineLocksapmShard) doRange(f func(key int64, val *goroutineLocks) bool) bool {
-
 	shard.rehashMu.Lock()
 	defer shard.rehashMu.Unlock()
 	slots := shard.slots

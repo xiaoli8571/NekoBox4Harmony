@@ -15,12 +15,10 @@
 package tcp
 
 import (
-	"github.com/sagernet/sing/common"
 	"math"
 	"time"
 
 	"github.com/sagernet/gvisor/pkg/tcpip"
-	"github.com/sagernet/gvisor/pkg/tcpip/stack"
 )
 
 // effectivelyInfinity is an initialization value used for round-trip times
@@ -59,7 +57,7 @@ const (
 // See: https://tools.ietf.org/html/rfc8312.
 // +stateify savable
 type cubicState struct {
-	stack.TCPCubicState
+	TCPCubicState
 
 	// numCongestionEvents tracks the number of congestion events since last
 	// RTO.
@@ -70,18 +68,25 @@ type cubicState struct {
 
 // newCubicCC returns a partially initialized cubic state with the constants
 // beta and c set and t set to current time.
+//
+// +checklocks:s.ep.mu
 func newCubicCC(s *sender) *cubicState {
 	now := s.ep.stack.Clock().NowMonotonic()
 	return &cubicState{
-		TCPCubicState: stack.TCPCubicState{
+		TCPCubicState: TCPCubicState{
 			T:    now,
 			Beta: 0.7,
 			C:    0.4,
 			// By this point, the sender has initialized it's initial sequence
 			// number.
-			EndSeq:     s.SndNxt,
-			LastRTT:    effectivelyInfinity,
-			CurrRTT:    effectivelyInfinity,
+			EndSeq:  s.SndNxt,
+			LastRTT: effectivelyInfinity,
+			CurrRTT: effectivelyInfinity,
+			// LastAck/RoundStart are seeded here from processing time, but the
+			// HyStart ACK-train comparator that reads them is gated on
+			// LastRTT < effectivelyInfinity, which only becomes true after the
+			// first beginHyStartRound re-seeds both from an ACK's ingress time.
+			// So this initial processing-time seed is never compared.
 			LastAck:    now,
 			RoundStart: now,
 		},
@@ -95,6 +100,8 @@ func newCubicCC(s *sender) *cubicState {
 // previously lowered ssThresh without experiencing packet loss.
 //
 // Refer: https://tools.ietf.org/html/rfc8312#section-4.8
+//
+// +checklocks:c.s.ep.mu
 func (c *cubicState) enterCongestionAvoidance() {
 	// See: https://tools.ietf.org/html/rfc8312#section-4.7 &
 	// https://tools.ietf.org/html/rfc8312#section-4.8
@@ -118,12 +125,21 @@ func (c *cubicState) enterCongestionAvoidance() {
 // increase').  The RFC version includes only the latter algorithm and adds an
 // intermediate phase called Conservative Slow Start, which is not implemented
 // here.
-func (c *cubicState) updateHyStart(rtt time.Duration) {
+//
+// +checklocks:c.s.ep.mu
+func (c *cubicState) updateHyStart(rtt time.Duration, ackTime tcpip.MonotonicTime) {
 	if rtt < 0 {
 		// negative indicates unknown
 		return
 	}
-	now := c.s.ep.stack.Clock().NowMonotonic()
+	// Use the ACK's ingress time (ackTime) rather than the current clock for
+	// HyStart's ACK-train timing. The ACK-train detector compares inter-ACK
+	// spacing against ackDelta (2ms) and the round duration against LastRTT/2;
+	// if ACKs are delayed and processed in a burst inside the stack (e.g.
+	// queued while the application held the endpoint lock during a Write), the
+	// processing clock would make distinct ACKs appear to arrive together,
+	// distorting both comparisons and potentially exiting slow start early.
+	now := ackTime
 	if c.EndSeq.LessThan(c.s.SndUna) {
 		c.beginHyStartRound(now)
 	}
@@ -137,14 +153,14 @@ func (c *cubicState) updateHyStart(rtt time.Duration) {
 	}
 
 	// Delay increase
-	c.CurrRTT = common.Min(c.CurrRTT, rtt)
+	c.CurrRTT = min(c.CurrRTT, rtt)
 	c.SampleCount++
 
 	if c.SampleCount >= nRTTSample && c.LastRTT < effectivelyInfinity {
 		// i.e. LastRTT/minRTTDivisor, but clamped to minRTTThresh & maxRTTThresh
-		thresh := common.Max(
+		thresh := max(
 			minRTTThresh,
-			common.Min(maxRTTThresh, c.LastRTT/minRTTDivisor),
+			min(maxRTTThresh, c.LastRTT/minRTTDivisor),
 		)
 		if c.CurrRTT >= (c.LastRTT + thresh) {
 			// Triggered HyStart safe exit threshold
@@ -153,6 +169,7 @@ func (c *cubicState) updateHyStart(rtt time.Duration) {
 	}
 }
 
+// +checklocks:c.s.ep.mu
 func (c *cubicState) beginHyStartRound(now tcpip.MonotonicTime) {
 	c.EndSeq = c.s.SndNxt
 	c.SampleCount = 0
@@ -166,6 +183,8 @@ func (c *cubicState) beginHyStartRound(now tcpip.MonotonicTime) {
 // algorithm used by NewReno. If after adjusting the congestion window we cross
 // the ssThresh then it will return the number of packets that must be consumed
 // in congestion avoidance mode.
+//
+// +checklocks:c.s.ep.mu
 func (c *cubicState) updateSlowStart(packetsAcked int) int {
 	// Don't let the congestion window cross into the congestion
 	// avoidance range.
@@ -188,9 +207,11 @@ func (c *cubicState) updateSlowStart(packetsAcked int) int {
 // Update updates cubic's internal state variables. It must be called on every
 // ACK received.
 // Refer: https://tools.ietf.org/html/rfc8312#section-4
-func (c *cubicState) Update(packetsAcked int, rtt time.Duration) {
+//
+// +checklocks:c.s.ep.mu
+func (c *cubicState) Update(packetsAcked int, rtt time.Duration, ackTime tcpip.MonotonicTime) {
 	if c.s.Ssthresh == InitialSsthresh && c.s.SndCwnd < c.s.Ssthresh {
-		c.updateHyStart(rtt)
+		c.updateHyStart(rtt, ackTime)
 	}
 	if c.s.SndCwnd < c.s.Ssthresh {
 		packetsAcked = c.updateSlowStart(packetsAcked)
@@ -248,6 +269,8 @@ func (c *cubicState) getCwnd(packetsAcked, sndCwnd int, srtt time.Duration) int 
 }
 
 // HandleLossDetected implements congestionControl.HandleLossDetected.
+//
+// +checklocks:c.s.ep.mu
 func (c *cubicState) HandleLossDetected() {
 	// See: https://tools.ietf.org/html/rfc8312#section-4.5
 	c.numCongestionEvents++
@@ -260,6 +283,8 @@ func (c *cubicState) HandleLossDetected() {
 }
 
 // HandleRTOExpired implements congestionContrl.HandleRTOExpired.
+//
+// +checklocks:c.s.ep.mu
 func (c *cubicState) HandleRTOExpired() {
 	// See: https://tools.ietf.org/html/rfc8312#section-4.6
 	c.T = c.s.ep.stack.Clock().NowMonotonic()
@@ -298,6 +323,8 @@ func (c *cubicState) PostRecovery() {
 
 // reduceSlowStartThreshold returns new SsThresh as described in
 // https://tools.ietf.org/html/rfc8312#section-4.7.
+//
+// +checklocks:c.s.ep.mu
 func (c *cubicState) reduceSlowStartThreshold() {
 	c.s.Ssthresh = int(math.Max(float64(c.s.SndCwnd)*c.Beta, 2.0))
 }

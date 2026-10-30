@@ -15,7 +15,6 @@
 package tcp
 
 import (
-	"github.com/sagernet/gvisor/pkg/sync"
 	"github.com/sagernet/gvisor/pkg/tcpip"
 	"github.com/sagernet/gvisor/pkg/tcpip/header"
 	"github.com/sagernet/gvisor/pkg/tcpip/seqnum"
@@ -35,7 +34,7 @@ type Forwarder struct {
 	maxInFlight int
 	handler     func(*ForwarderRequest)
 
-	mu       sync.Mutex
+	mu       forwarderMutex
 	inFlight map[stack.TransportEndpointID]struct{}
 	listen   *listenContext
 }
@@ -108,7 +107,7 @@ func (f *Forwarder) HandlePacket(id stack.TransportEndpointID, pkt *stack.Packet
 // and passed to the client. Clients must eventually call Complete() on it, and
 // may optionally create an endpoint to represent it via CreateEndpoint.
 type ForwarderRequest struct {
-	mu         sync.Mutex
+	mu         forwarderRequestMutex
 	forwarder  *Forwarder
 	segment    *segment
 	synOptions header.TCPSynOptions
@@ -171,6 +170,11 @@ func (r *ForwarderRequest) CreateEndpoint(queue *waiter.Queue) (tcpip.Endpoint, 
 	return ep, nil
 }
 
-func (r *ForwarderRequest) Packet() *stack.PacketBuffer {
-	return r.segment.pkt
+// ForwardedPacketExperimentOption returns the experiment option value from the
+// forwarded packet and a bool indicating whether an experiment option value was
+// found.
+func (r *ForwarderRequest) ForwardedPacketExperimentOption() (uint16, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.segment.pkt.ExperimentOptionValue()
 }

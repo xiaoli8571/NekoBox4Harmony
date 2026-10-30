@@ -197,6 +197,15 @@ EOF
 fi
 echo "==> vendor prepared for go1.24 toolchain"
 
+# ---- A2.5 gVisor fstat 容错(OHOS 的 VPN TUN fd 不允许 fstat) ----
+# 真机实测: gvisor fdbased.IsSocketFD() 对系统注入的 TUN fd 做 fstat 被 SELinux
+# 拒绝,sing-box 报 "starting tun stack: unix.Fstat(61,...) failed: permission denied",
+# VPN 连上 0.3s 后被回滚。补丁器幂等 + fail-closed。
+python "$ROOT/scripts/patch-gvisor-ohos-fstat.py" "$WRAPPER" || { echo "ERROR: gvisor OHOS fstat patch failed"; exit 1; }
+grep -q 'OHOS-FSTAT-TOLERANT' "$WRAPPER/vendor/github.com/sagernet/gvisor/pkg/tcpip/link/fdbased/endpoint.go" \
+  || { echo "ERROR: gvisor fstat tolerance missing after patch"; exit 1; }
+echo "==> gvisor fstat tolerance applied"
+
 # ---- B. 交叉编译 openharmony c-shared ----
 SDK_NATIVE=""
 for cand in \
@@ -275,7 +284,9 @@ if [ -f "$VENDOR_URLTEST" ]; then
   grep -q "func URLTestWithOptions" "$VENDOR_URLTEST" \
     || { echo "ERROR: vendored urltest is stale (no URLTestWithOptions) — re-run 'go mod vendor' in core/libsingbox14"; exit 1; }
 fi
-BUILD_TAGS="with_utls,with_clash_api,with_quic"
+# with_gvisor 必须存在:App 侧 ConfigBuilder.TUN_STACK 固定为 gvisor(见 ConfigBuilder.ets),
+# 缺这个 tag 会编出 gVisor 桩实现,运行时 start inbound/tun 直接失败。
+BUILD_TAGS="with_utls,with_clash_api,with_quic,with_gvisor"
 echo "==> build tags: $BUILD_TAGS"
 rm -f "$OUT_DIR/libsingbox.so"
 CGO_ENABLED=1 GOOS=openharmony GOARCH=arm64 \

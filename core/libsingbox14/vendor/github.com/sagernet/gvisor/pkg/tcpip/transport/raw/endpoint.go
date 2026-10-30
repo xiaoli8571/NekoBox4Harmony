@@ -73,7 +73,7 @@ type endpoint struct {
 
 	// The following fields are initialized at creation time and are
 	// immutable.
-	stack       *stack.Stack `state:"manual"`
+	stack       *stack.Stack
 	transProto  tcpip.TransportProtocolNumber
 	waiterQueue *waiter.Queue
 	associated  bool
@@ -692,7 +692,7 @@ func (e *endpoint) HandlePacket(pkt *stack.PacketBuffer) {
 			pktBuf := pkt.Data().ToBuffer()
 			combinedBuf.Merge(&pktBuf)
 		case header.IPv6ProtocolNumber:
-			if e.transProto == header.ICMPv6ProtocolNumber {
+			/*if e.transProto == header.ICMPv6ProtocolNumber {
 				if len(transportHeader) < header.ICMPv6MinimumSize {
 					return false
 				}
@@ -719,7 +719,14 @@ func (e *endpoint) HandlePacket(pkt *stack.PacketBuffer) {
 					// Invalid checksum.
 					return false
 				}
-			}
+			}*/
+			networkHeader := pkt.NetworkHeader().Slice()
+			headers := buffer.NewView(len(networkHeader) + len(transportHeader))
+			headers.Write(networkHeader)
+			headers.Write(transportHeader)
+			combinedBuf = buffer.MakeWithView(headers)
+			pktBuf := pkt.Data().ToBuffer()
+			combinedBuf.Merge(&pktBuf)
 		default:
 			panic(fmt.Sprintf("unrecognized protocol number = %d", info.NetProto))
 		}

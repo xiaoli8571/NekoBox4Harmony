@@ -23,15 +23,13 @@ import (
 	"github.com/sagernet/gvisor/pkg/tcpip"
 )
 
-var (
-	// IGMPv3RoutersAddress is the address to send IGMPv3 reports to.
-	//
-	// As per RFC 3376 section 4.2.14,
-	//
-	//   Version 3 Reports are sent with an IP destination address of
-	//   224.0.0.22, to which all IGMPv3-capable multicast routers listen.
-	IGMPv3RoutersAddress = tcpip.AddrFrom4([4]byte{0xe0, 0x00, 0x00, 0x16})
-)
+// IGMPv3RoutersAddress is the address to send IGMPv3 reports to.
+//
+// As per RFC 3376 section 4.2.14,
+//
+//	Version 3 Reports are sent with an IP destination address of
+//	224.0.0.22, to which all IGMPv3-capable multicast routers listen.
+var IGMPv3RoutersAddress = tcpip.AddrFrom4([4]byte{0xe0, 0x00, 0x00, 0x16})
 
 const (
 	// IGMPv3QueryMinimumSize is the mimum size of a valid IGMPv3 query,

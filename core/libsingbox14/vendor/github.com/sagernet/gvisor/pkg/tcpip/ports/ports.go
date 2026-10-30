@@ -29,9 +29,7 @@ const (
 	firstEphemeral = 16000
 )
 
-var (
-	anyIPAddress = tcpip.Address{}
-)
+var anyIPAddress = tcpip.Address{}
 
 // Reservation describes a port reservation.
 type Reservation struct {

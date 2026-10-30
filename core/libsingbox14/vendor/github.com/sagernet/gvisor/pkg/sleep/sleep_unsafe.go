@@ -81,11 +81,9 @@ const (
 	preparingG = 1
 )
 
-var (
-	// assertedSleeper is a sentinel sleeper. A pointer to it is stored in
-	// wakers that are asserted.
-	assertedSleeper Sleeper
-)
+// assertedSleeper is a sentinel sleeper. A pointer to it is stored in
+// wakers that are asserted.
+var assertedSleeper Sleeper
 
 // Sleeper allows a goroutine to sleep and receive wake up notifications from
 // Wakers in an efficient way.

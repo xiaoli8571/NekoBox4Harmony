@@ -43,17 +43,15 @@ const (
 	mldv2QuerySourcesOffset = 24
 )
 
-var (
-	// MLDv2RoutersAddress is the address to send MLDv2 reports to.
-	//
-	// As per RFC 3810 section 5.2.14,
-	//
-	//   Version 2 Multicast Listener Reports are sent with an IP destination
-	//   address of FF02:0:0:0:0:0:0:16, to which all MLDv2-capable multicast
-	//   routers listen (see section 11 for IANA considerations related to
-	//   this special destination address).
-	MLDv2RoutersAddress = tcpip.AddrFrom16([16]byte{0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16})
-)
+// MLDv2RoutersAddress is the address to send MLDv2 reports to.
+//
+// As per RFC 3810 section 5.2.14,
+//
+//	Version 2 Multicast Listener Reports are sent with an IP destination
+//	address of FF02:0:0:0:0:0:0:16, to which all MLDv2-capable multicast
+//	routers listen (see section 11 for IANA considerations related to
+//	this special destination address).
+var MLDv2RoutersAddress = tcpip.AddrFrom16([16]byte{0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16})
 
 // MLDv2Query is a Multicast Listener Discovery Version 2 Query message in an
 // ICMPv6 packet.

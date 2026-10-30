@@ -14,16 +14,12 @@
 
 package tcp
 
-import (
-	"github.com/sagernet/gvisor/pkg/sync"
-)
-
 // segmentQueue is a bounded, thread-safe queue of TCP segments.
 //
 // +stateify savable
 type segmentQueue struct {
-	mu     sync.Mutex  `state:"nosave"`
-	list   segmentList `state:"wait"`
+	mu     segmentQueueMutex `state:"nosave"`
+	list   segmentList       `state:"wait"`
 	ep     *Endpoint
 	frozen bool
 }

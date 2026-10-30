@@ -5,14 +5,6 @@ github.com/ajg/form
 ## explicit; go 1.13
 github.com/andybalholm/brotli
 github.com/andybalholm/brotli/matchfinder
-# github.com/anytls/sing-anytls v0.0.11
-## explicit; go 1.23.1
-github.com/anytls/sing-anytls
-github.com/anytls/sing-anytls/padding
-github.com/anytls/sing-anytls/pipe
-github.com/anytls/sing-anytls/session
-github.com/anytls/sing-anytls/skiplist
-github.com/anytls/sing-anytls/util
 # github.com/caddyserver/certmagic v0.25.3-0.20260421143802-60d9d8b415d6
 ## explicit; go 1.24
 github.com/caddyserver/certmagic
@@ -181,7 +173,7 @@ github.com/pierrec/lz4/v4/internal/xxh32
 # github.com/quic-go/qpack v0.6.0
 ## explicit; go 1.24
 github.com/quic-go/qpack
-# github.com/sagernet/bbolt v0.0.0-20260823094646-e24805439c9c
+# github.com/sagernet/bbolt v0.0.0-20260915102804-500ee1e84832
 ## explicit; go 1.24
 github.com/sagernet/bbolt
 github.com/sagernet/bbolt/errors
@@ -193,8 +185,8 @@ github.com/sagernet/cors
 # github.com/sagernet/fswatch v0.1.2
 ## explicit; go 1.20
 github.com/sagernet/fswatch
-# github.com/sagernet/gvisor v0.0.0-20241123041152-536d05261cff
-## explicit; go 1.20
+# github.com/sagernet/gvisor v0.0.0-20260727.0-sing-box-mod.1
+## explicit; go 1.24
 github.com/sagernet/gvisor/pkg/atomicbitops
 github.com/sagernet/gvisor/pkg/bits
 github.com/sagernet/gvisor/pkg/buffer
@@ -221,6 +213,7 @@ github.com/sagernet/gvisor/pkg/tcpip/header/parse
 github.com/sagernet/gvisor/pkg/tcpip/internal/tcp
 github.com/sagernet/gvisor/pkg/tcpip/link/channel
 github.com/sagernet/gvisor/pkg/tcpip/link/fdbased
+github.com/sagernet/gvisor/pkg/tcpip/link/qdisc
 github.com/sagernet/gvisor/pkg/tcpip/link/qdisc/fifo
 github.com/sagernet/gvisor/pkg/tcpip/link/stopfd
 github.com/sagernet/gvisor/pkg/tcpip/network/hash
@@ -256,7 +249,7 @@ github.com/sagernet/nftables/expr
 github.com/sagernet/nftables/internal/parseexprfunc
 github.com/sagernet/nftables/userdata
 github.com/sagernet/nftables/xt
-# github.com/sagernet/quic-go v0.61.0-sing-box-mod.7
+# github.com/sagernet/quic-go v0.61.0-sing-box-mod.12
 ## explicit; go 1.24
 github.com/sagernet/quic-go
 github.com/sagernet/quic-go/congestion
@@ -278,7 +271,7 @@ github.com/sagernet/quic-go/qlog
 github.com/sagernet/quic-go/qlogwriter
 github.com/sagernet/quic-go/qlogwriter/jsontext
 github.com/sagernet/quic-go/quicvarint
-# github.com/sagernet/sing v0.9.2
+# github.com/sagernet/sing v0.9.7-0.20261023115510-03a6cce64bf7
 ## explicit; go 1.24
 github.com/sagernet/sing/common
 github.com/sagernet/sing/common/abx
@@ -334,14 +327,16 @@ github.com/sagernet/sing/common/x/linkedhashmap
 github.com/sagernet/sing/common/x/list
 github.com/sagernet/sing/contrab/freelru
 github.com/sagernet/sing/contrab/maphash
-github.com/sagernet/sing/protocol/http
 github.com/sagernet/sing/protocol/socks
 github.com/sagernet/sing/protocol/socks/socks4
 github.com/sagernet/sing/protocol/socks/socks5
 github.com/sagernet/sing/service
 github.com/sagernet/sing/service/filemanager
 github.com/sagernet/sing/service/pause
-# github.com/sagernet/sing-box v1.14.0 => C:/Users/xiaoli/Downloads/Agent-WorkerSpaces/NekoBox4Harmony/core/sing-box-1.14
+# github.com/sagernet/sing-anytls v0.0.0-20260928104022-580984e4d8cb
+## explicit; go 1.24
+github.com/sagernet/sing-anytls
+# github.com/sagernet/sing-box v1.14.0 => C:/Worker/NekoBox4Harmony/core/sing-box-1.15
 ## explicit; go 1.24
 github.com/sagernet/sing-box
 github.com/sagernet/sing-box/adapter
@@ -350,6 +345,7 @@ github.com/sagernet/sing-box/adapter/endpoint
 github.com/sagernet/sing-box/adapter/inbound
 github.com/sagernet/sing-box/adapter/outbound
 github.com/sagernet/sing-box/adapter/service
+github.com/sagernet/sing-box/common/badhttp
 github.com/sagernet/sing-box/common/badtls
 github.com/sagernet/sing-box/common/badversion
 github.com/sagernet/sing-box/common/certificate
@@ -358,8 +354,10 @@ github.com/sagernet/sing-box/common/dialer
 github.com/sagernet/sing-box/common/httpclient
 github.com/sagernet/sing-box/common/interrupt
 github.com/sagernet/sing-box/common/iponly
+github.com/sagernet/sing-box/common/ipset
 github.com/sagernet/sing-box/common/ja3
 github.com/sagernet/sing-box/common/jni
+github.com/sagernet/sing-box/common/kernelports
 github.com/sagernet/sing-box/common/ktls
 github.com/sagernet/sing-box/common/listener
 github.com/sagernet/sing-box/common/mux
@@ -395,6 +393,7 @@ github.com/sagernet/sing-box/dns/transport/quic
 github.com/sagernet/sing-box/experimental
 github.com/sagernet/sing-box/experimental/cachefile
 github.com/sagernet/sing-box/experimental/clashapi
+github.com/sagernet/sing-box/experimental/clashmode
 github.com/sagernet/sing-box/experimental/deprecated
 github.com/sagernet/sing-box/experimental/locale
 github.com/sagernet/sing-box/log
@@ -421,8 +420,9 @@ github.com/sagernet/sing-box/protocol/wireguard
 github.com/sagernet/sing-box/route
 github.com/sagernet/sing-box/route/rule
 github.com/sagernet/sing-box/schema
+github.com/sagernet/sing-box/service/oomkiller
 github.com/sagernet/sing-box/service/powerreport
-github.com/sagernet/sing-box/service/resolved
+github.com/sagernet/sing-box/transport/http
 github.com/sagernet/sing-box/transport/simple-obfs
 github.com/sagernet/sing-box/transport/sip003
 github.com/sagernet/sing-box/transport/trojan
@@ -435,10 +435,10 @@ github.com/sagernet/sing-box/transport/v2rayhttpupgrade
 github.com/sagernet/sing-box/transport/v2rayquic
 github.com/sagernet/sing-box/transport/v2raywebsocket
 github.com/sagernet/sing-box/transport/wireguard
-# github.com/sagernet/sing-mux v0.3.5
-## explicit; go 1.18
+# github.com/sagernet/sing-mux v0.3.10-0.20260929204512-caf09fe32475
+## explicit; go 1.24
 github.com/sagernet/sing-mux
-# github.com/sagernet/sing-quic v0.7.0-beta.4
+# github.com/sagernet/sing-quic v0.7.2-0.20261020082049-7e0a5869a5f4
 ## explicit; go 1.24
 github.com/sagernet/sing-quic
 github.com/sagernet/sing-quic/congestion_meta1
@@ -450,12 +450,12 @@ github.com/sagernet/sing-quic/hysteria2/internal/protocol
 github.com/sagernet/sing-quic/hysteria2/internal/stun
 github.com/sagernet/sing-quic/hysteria2/realm
 github.com/sagernet/sing-quic/tuic
-# github.com/sagernet/sing-shadowsocks v0.2.8
+# github.com/sagernet/sing-shadowsocks v0.2.9-0.20260929204512-65740e0f0e3e
 ## explicit; go 1.18
 github.com/sagernet/sing-shadowsocks
 github.com/sagernet/sing-shadowsocks/shadowaead
 github.com/sagernet/sing-shadowsocks/shadowaead_2022
-# github.com/sagernet/sing-shadowsocks2 v0.2.1
+# github.com/sagernet/sing-shadowsocks2 v0.2.2-0.20260929152114-a69d1086332b
 ## explicit; go 1.18
 github.com/sagernet/sing-shadowsocks2
 github.com/sagernet/sing-shadowsocks2/cipher
@@ -464,23 +464,25 @@ github.com/sagernet/sing-shadowsocks2/internal/shadowio
 github.com/sagernet/sing-shadowsocks2/shadowaead
 github.com/sagernet/sing-shadowsocks2/shadowaead_2022
 github.com/sagernet/sing-shadowsocks2/shadowstream
-# github.com/sagernet/sing-shadowtls v0.2.1
+# github.com/sagernet/sing-shadowtls v0.2.2-0.20260928201441-a9c0127d5c99
 ## explicit; go 1.20
 github.com/sagernet/sing-shadowtls
-# github.com/sagernet/sing-snell v0.0.0-20260829071736-20f2eaec77c3
+# github.com/sagernet/sing-snell v0.0.0-20260904135315-bc5a12ac736f
 ## explicit; go 1.24
 github.com/sagernet/sing-snell
 github.com/sagernet/sing-snell/internal/reuse
 github.com/sagernet/sing-snell/snellv4
 github.com/sagernet/sing-snell/snellv5
 github.com/sagernet/sing-snell/snellv6
-# github.com/sagernet/sing-tun v0.9.0-beta.4 => C:/Users/xiaoli/Downloads/Agent-WorkerSpaces/NekoBox4Harmony/core/build/libsingbox-ohos/sing-tun-patched
+# github.com/sagernet/sing-tun v0.9.7-0.20261023115453-611d83b7a57b => C:/Worker/NekoBox4Harmony/core/build/libsingbox-ohos/sing-tun-patched
 ## explicit; go 1.24
 github.com/sagernet/sing-tun
+github.com/sagernet/sing-tun/dnsinfo
 github.com/sagernet/sing-tun/gtcpip
 github.com/sagernet/sing-tun/gtcpip/checksum
 github.com/sagernet/sing-tun/gtcpip/header
 github.com/sagernet/sing-tun/gtcpip/seqnum
+github.com/sagernet/sing-tun/internal/afd
 github.com/sagernet/sing-tun/internal/fdbased_darwin
 github.com/sagernet/sing-tun/internal/rawfile_darwin
 github.com/sagernet/sing-tun/internal/stopfd_darwin
@@ -499,7 +501,7 @@ github.com/sagernet/sing-usbip/internal/usbipvhci
 github.com/sagernet/sing-usbip/internal/vboxusb
 github.com/sagernet/sing-usbip/internal/wincfgmgr32
 github.com/sagernet/sing-usbip/internal/winsetupapi
-# github.com/sagernet/sing-vmess v0.2.8-0.20250909125414-3aed155119a1
+# github.com/sagernet/sing-vmess v0.2.9-0.20261019223527-a0c58542bd9d
 ## explicit; go 1.20
 github.com/sagernet/sing-vmess
 github.com/sagernet/sing-vmess/packetaddr
@@ -507,7 +509,7 @@ github.com/sagernet/sing-vmess/vless
 # github.com/sagernet/smux v1.5.50-sing-box-mod.1
 ## explicit; go 1.18
 github.com/sagernet/smux
-# github.com/sagernet/wireguard-go v0.0.5-0.20260823125007-8bd032a91a30
+# github.com/sagernet/wireguard-go v0.0.8-0.20261022215849-fdf0ad046586
 ## explicit; go 1.24
 github.com/sagernet/wireguard-go/conn
 github.com/sagernet/wireguard-go/conn/winrio
@@ -760,5 +762,9 @@ google.golang.org/protobuf/types/known/timestamppb
 lukechampine.com/blake3
 lukechampine.com/blake3/bao
 lukechampine.com/blake3/guts
-# github.com/sagernet/sing-box => C:/Users/xiaoli/Downloads/Agent-WorkerSpaces/NekoBox4Harmony/core/sing-box-1.14
-# github.com/sagernet/sing-tun => C:/Users/xiaoli/Downloads/Agent-WorkerSpaces/NekoBox4Harmony/core/build/libsingbox-ohos/sing-tun-patched
+# nekobox/sessionstate v0.0.0 => ./sessionstate
+## explicit; go 1.24
+nekobox/sessionstate
+# github.com/sagernet/sing-box => C:/Worker/NekoBox4Harmony/core/sing-box-1.15
+# nekobox/sessionstate => ./sessionstate
+# github.com/sagernet/sing-tun => C:/Worker/NekoBox4Harmony/core/build/libsingbox-ohos/sing-tun-patched

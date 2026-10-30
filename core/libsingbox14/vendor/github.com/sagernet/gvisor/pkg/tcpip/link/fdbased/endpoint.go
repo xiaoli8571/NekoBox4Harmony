@@ -42,10 +42,8 @@ package fdbased
 
 import (
 	"fmt"
-	"github.com/sagernet/sing/common"
 	"runtime"
 
-	"golang.org/x/sys/unix"
 	"github.com/sagernet/gvisor/pkg/atomicbitops"
 	"github.com/sagernet/gvisor/pkg/buffer"
 	"github.com/sagernet/gvisor/pkg/rawfile"
@@ -53,6 +51,7 @@ import (
 	"github.com/sagernet/gvisor/pkg/tcpip"
 	"github.com/sagernet/gvisor/pkg/tcpip/header"
 	"github.com/sagernet/gvisor/pkg/tcpip/stack"
+	"golang.org/x/sys/unix"
 )
 
 // linkDispatcher reads packets from the link FD and dispatches them to the
@@ -105,8 +104,10 @@ func (p PacketDispatchMode) String() string {
 	}
 }
 
-var _ stack.LinkEndpoint = (*endpoint)(nil)
-var _ stack.GSOEndpoint = (*endpoint)(nil)
+var (
+	_ stack.LinkEndpoint = (*endpoint)(nil)
+	_ stack.GSOEndpoint  = (*endpoint)(nil)
+)
 
 // +stateify savable
 type fdInfo struct {
@@ -134,7 +135,7 @@ type endpoint struct {
 
 	inboundDispatchers []linkDispatcher
 
-	mu sync.RWMutex `state:"nosave"`
+	mu endpointRWMutex `state:"nosave"`
 	// +checklocks:mu
 	dispatcher stack.NetworkDispatcher
 
@@ -202,10 +203,6 @@ type Options struct {
 	// include CapabilitySaveRestore
 	SaveRestore bool
 
-	// DisconnectOk if true, indicates that this NIC capability set should
-	// include CapabilityDisconnectOk.
-	DisconnectOk bool
-
 	// GSOMaxSize is the maximum GSO packet size. It is zero if GSO is
 	// disabled.
 	GSOMaxSize uint32
@@ -239,19 +236,21 @@ type Options struct {
 	// ProcessorsPerChannel is the number of goroutines used to handle packets
 	// from each FD.
 	ProcessorsPerChannel int
+
+	// IsPacketSocket indicates whether each FD is a packet socket.
+	// If nil, getsockname will be called.
+	IsPacketSocket []bool
+
+	// PreConfigured indicates that socket setup (getsockname, setsockopt)
+	// has already been performed on the host.
+	PreConfigured bool
 }
 
-// fanoutID is used for AF_PACKET based endpoints to enable PACKET_FANOUT
-// support in the host kernel. This allows us to use multiple FD's to receive
-// from the same underlying NIC. The fanoutID needs to be the same for a given
-// set of FD's that point to the same NIC. Trying to set the PACKET_FANOUT
-// option for an FD with a fanoutID already in use by another FD for a different
-// NIC will return an EINVAL.
-//
-// Since fanoutID must be unique within the network namespace, we start with
-// the PID to avoid collisions. The only way to be sure of avoiding collisions
-// is to run in a new network namespace.
-var fanoutID atomicbitops.Int32 = atomicbitops.FromInt32(int32(unix.Getpid()))
+// fallbackFanoutID is used only when PACKET_FANOUT_FLAG_UNIQUEID is not
+// supported by the host kernel. It preserves the PID-seeded best-effort behavior:
+// seed from unix.Getpid() and increment per endpoint. This is not
+// collision-free across sentries that share a network namespace.
+var fallbackFanoutID atomicbitops.Int32 = atomicbitops.FromInt32(int32(unix.Getpid()))
 
 // New creates a new fd-based endpoint.
 //
@@ -278,10 +277,6 @@ func New(opts *Options) (stack.LinkEndpoint, error) {
 		caps |= stack.CapabilitySaveRestore
 	}
 
-	if opts.DisconnectOk {
-		caps |= stack.CapabilityDisconnectOk
-	}
-
 	if len(opts.FDs) == 0 {
 		return nil, fmt.Errorf("opts.FD is empty, at least one FD must be specified")
 	}
@@ -306,17 +301,18 @@ func New(opts *Options) (stack.LinkEndpoint, error) {
 		}
 	}
 
-	// Increment fanoutID to ensure that we don't re-use the same fanoutID
-	// for the next endpoint.
-	fid := fanoutID.Add(1)
+	// Fanout id allocated by the kernel for this endpoint. All AF_PACKET FDs
+	// belonging to this endpoint must use the same id. -1 means no AF_PACKET
+	// FD has allocated an id yet; 0 is a valid fanout id.
+	fid := int32(-1)
 
 	// Create per channel dispatchers.
-	for _, fd := range opts.FDs {
+	for i, fd := range opts.FDs {
 		if err := unix.SetNonblock(fd, true); err != nil {
 			return nil, fmt.Errorf("unix.SetNonblock(%v) failed: %v", fd, err)
 		}
 
-		isSocket, err := isSocketFD(fd)
+		isSocket, err := IsSocketFD(fd)
 		if err != nil {
 			return nil, err
 		}
@@ -330,10 +326,37 @@ func New(opts *Options) (stack.LinkEndpoint, error) {
 			e.gsoMaxSize = opts.GSOMaxSize
 		}
 		if opts.ProcessorsPerChannel == 0 {
-			opts.ProcessorsPerChannel = common.Max(1, runtime.GOMAXPROCS(0)/len(opts.FDs))
+			opts.ProcessorsPerChannel = max(1, runtime.GOMAXPROCS(0)/len(opts.FDs))
 		}
 
-		inboundDispatcher, err := createInboundDispatcher(e, fd, isSocket, fid, opts)
+		var isPacket bool
+		if opts.PreConfigured {
+			if opts.IsPacketSocket != nil && i < len(opts.IsPacketSocket) {
+				isPacket = opts.IsPacketSocket[i]
+			} else {
+				return nil, fmt.Errorf("PreConfigured is true but IsPacketSocket is missing or too short (index %d, len %d)", i, len(opts.IsPacketSocket))
+			}
+		} else {
+			var err error
+			isPacket, err = IsPacketSocket(fd, isSocket)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		if isPacket && !opts.PreConfigured {
+			var err error
+			if fid < 0 {
+				fid, err = CreatePacketFanoutGroup(fd)
+			} else {
+				err = JoinPacketFanoutGroup(fd, fid)
+			}
+			if err != nil {
+				return nil, fmt.Errorf("failed to enable PACKET_FANOUT option: %v", err)
+			}
+		}
+
+		inboundDispatcher, err := createInboundDispatcher(e, fd, isSocket, opts)
 		if err != nil {
 			return nil, fmt.Errorf("createInboundDispatcher(...) = %v", err)
 		}
@@ -343,7 +366,7 @@ func New(opts *Options) (stack.LinkEndpoint, error) {
 	return e, nil
 }
 
-func createInboundDispatcher(e *endpoint, fd int, isSocket bool, fID int32, opts *Options) (linkDispatcher, error) {
+func createInboundDispatcher(e *endpoint, fd int, isSocket bool, opts *Options) (linkDispatcher, error) {
 	// By default use the readv() dispatcher as it works with all kinds of
 	// FDs (tap/tun/unix domain sockets and af_packet).
 	inboundDispatcher, err := newReadVDispatcher(fd, e, opts)
@@ -352,38 +375,6 @@ func createInboundDispatcher(e *endpoint, fd int, isSocket bool, fID int32, opts
 	}
 
 	if isSocket {
-		sa, err := unix.Getsockname(fd)
-		if err != nil {
-			return nil, fmt.Errorf("unix.Getsockname(%d) = %v", fd, err)
-		}
-		switch sa.(type) {
-		case *unix.SockaddrLinklayer:
-			// Enable PACKET_FANOUT mode if the underlying socket is of type
-			// AF_PACKET. We do not enable PACKET_FANOUT_FLAG_DEFRAG as that will
-			// prevent gvisor from receiving fragmented packets and the host does the
-			// reassembly on our behalf before delivering the fragments. This makes it
-			// hard to test fragmentation reassembly code in Netstack.
-			//
-			// See: include/uapi/linux/if_packet.h (struct fanout_args).
-			//
-			// NOTE: We are using SetSockOptInt here even though the underlying
-			// option is actually a struct. The code follows the example in the
-			// kernel documentation as described at the link below:
-			//
-			// See: https://www.kernel.org/doc/Documentation/networking/packet_mmap.txt
-			//
-			// This works out because the actual implementation for the option zero
-			// initializes the structure and will initialize the max_members field
-			// to a proper value if zero.
-			//
-			// See: https://github.com/torvalds/linux/blob/7acac4b3196caee5e21fb5ea53f8bc124e6a16fc/net/packet/af_packet.c#L3881
-			const fanoutType = unix.PACKET_FANOUT_HASH
-			fanoutArg := (int(fID) & 0xffff) | fanoutType<<16
-			if err := unix.SetsockoptInt(fd, unix.SOL_PACKET, unix.PACKET_FANOUT, fanoutArg); err != nil {
-				return nil, fmt.Errorf("failed to enable PACKET_FANOUT option: %v", err)
-			}
-		}
-
 		switch e.packetDispatchMode {
 		case PacketMMap:
 			inboundDispatcher, err = newPacketMMapDispatcher(fd, e, opts)
@@ -406,10 +397,88 @@ func createInboundDispatcher(e *endpoint, fd int, isSocket bool, fID int32, opts
 	return inboundDispatcher, nil
 }
 
-func isSocketFD(fd int) (bool, error) {
+// IsPacketSocket checks if the FD is an AF_PACKET socket.
+func IsPacketSocket(fd int, isSocket bool) (bool, error) {
+	if !isSocket {
+		return false, nil
+	}
+	sa, err := unix.Getsockname(fd)
+	if err != nil {
+		return false, fmt.Errorf("unix.Getsockname(%d) = %v", fd, err)
+	}
+	_, ok := sa.(*unix.SockaddrLinklayer)
+	return ok, nil
+}
+
+// CreatePacketFanoutGroup enables PACKET_FANOUT for the first AF_PACKET socket
+// in an endpoint and returns the fanout id the group joined.
+//
+// All AF_PACKET FDs that back the same endpoint must join the same fanout
+// group so the host kernel consistently hashes packets for a flow to one FD.
+// Fanout ids are unique within the Linux network namespace that owns the
+// sockets; reusing an id for a different NIC in that namespace fails with
+// EINVAL.
+//
+// We ask the kernel to allocate the id via PACKET_FANOUT_FLAG_UNIQUEID so the
+// id is guaranteed unique within the namespace even when multiple sentries
+// share it. If that setsockopt fails (e.g. the host kernel predates
+// PACKET_FANOUT_FLAG_UNIQUEID), we fall back to the PID-seeded
+// fallbackFanoutID, which is best-effort and not collision-free across
+// sentries that share a network namespace.
+//
+// We do not enable PACKET_FANOUT_FLAG_DEFRAG as that will prevent gvisor from
+// receiving fragmented packets and the host does the reassembly on our behalf
+// before delivering the fragments. This makes it hard to test fragmentation
+// reassembly code in Netstack.
+//
+// See: include/uapi/linux/if_packet.h (struct fanout_args).
+//
+// NOTE: We are using SetSockOptInt here even though the underlying option is
+// actually a struct. The code follows the example in the kernel documentation
+// as described at the link below:
+//
+// See: https://www.kernel.org/doc/Documentation/networking/packet_mmap.txt
+//
+// This works out because the actual implementation for the option zero
+// initializes the structure and will initialize the max_members field to a
+// proper value if zero.
+//
+// See: https://github.com/torvalds/linux/blob/7acac4b3196caee5e21fb5ea53f8bc124e6a16fc/net/packet/af_packet.c#L3881
+func CreatePacketFanoutGroup(fd int) (int32, error) {
+	const fanoutType = unix.PACKET_FANOUT_HASH
+	fanoutArg := (fanoutType | unix.PACKET_FANOUT_FLAG_UNIQUEID) << 16
+	if err := unix.SetsockoptInt(fd, unix.SOL_PACKET, unix.PACKET_FANOUT, fanoutArg); err != nil {
+		uniqueIDErr := err
+		fallbackID := fallbackFanoutID.Add(1)
+		fanoutArg = (int(fallbackID) & 0xffff) | fanoutType<<16
+		if err := unix.SetsockoptInt(fd, unix.SOL_PACKET, unix.PACKET_FANOUT, fanoutArg); err != nil {
+			return 0, fmt.Errorf("UNIQUEID failed (%v); fallback fanout id %d also failed: %v", uniqueIDErr, fanoutArg&0xffff, err)
+		}
+		return int32(fanoutArg & 0xffff), nil
+	}
+
+	fanoutArg, err := unix.GetsockoptInt(fd, unix.SOL_PACKET, unix.PACKET_FANOUT)
+	if err != nil {
+		return 0, fmt.Errorf("getsockopt(PACKET_FANOUT) failed: %v", err)
+	}
+	return int32(fanoutArg & 0xffff), nil
+}
+
+// JoinPacketFanoutGroup joins the FD to the specified fanout group.
+func JoinPacketFanoutGroup(fd int, fID int32) error {
+	const fanoutType = unix.PACKET_FANOUT_HASH
+	fanoutArg := (int(fID) & 0xffff) | fanoutType<<16
+	return unix.SetsockoptInt(fd, unix.SOL_PACKET, unix.PACKET_FANOUT, fanoutArg)
+}
+
+// IsSocketFD checks if the FD is a socket.
+func IsSocketFD(fd int) (bool, error) {
 	var stat unix.Stat_t
 	if err := unix.Fstat(fd, &stat); err != nil {
-		return false, fmt.Errorf("unix.Fstat(%v,...) failed: %v", fd, err)
+		// [OHOS-FSTAT-TOLERANT] HarmonyOS 的 VPN 扩展 TUN fd 由系统注入,SELinux
+		// 拒绝对它 fstat(EPERM)。该探测只用于区分 AF_PACKET socket 与 TUN 设备;
+		// 失败时按"非 socket"继续,fdbased 走 TUN 路径,避免整栈启动被误判失败。
+		return false, nil
 	}
 	return (stat.Mode & unix.S_IFSOCK) == unix.S_IFSOCK, nil
 }
@@ -421,17 +490,19 @@ func isSocketFD(fd int) (bool, error) {
 // Attach implements stack.LinkEndpoint.Attach.
 func (e *endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 
 	// nil means the NIC is being removed.
 	if dispatcher == nil && e.dispatcher != nil {
 		for _, dispatcher := range e.inboundDispatchers {
 			dispatcher.Stop()
 		}
-		e.Wait()
 		e.dispatcher = nil
+		// NOTE(gvisor.dev/issue/11456): Unlock e.mu before e.Wait().
+		e.mu.Unlock()
+		e.Wait()
 		return
 	}
+	defer e.mu.Unlock()
 	if dispatcher != nil && e.dispatcher == nil {
 		e.dispatcher = dispatcher
 		// Link endpoints are not savable. When transportation endpoints are
@@ -862,7 +933,7 @@ func (*endpoint) SetOnCloseAction(func()) {}
 type InjectableEndpoint struct {
 	endpoint
 
-	mu sync.RWMutex `state:"nosave"`
+	mu injectableEndpointRWMutex `state:"nosave"`
 	// +checklocks:mu
 	dispatcher stack.NetworkDispatcher
 }
@@ -889,7 +960,7 @@ func (e *InjectableEndpoint) InjectInbound(protocol tcpip.NetworkProtocolNumber,
 // NewInjectable creates a new fd-based InjectableEndpoint.
 func NewInjectable(fd int, mtu uint32, capabilities stack.LinkEndpointCapabilities) (*InjectableEndpoint, error) {
 	unix.SetNonblock(fd, true)
-	isSocket, err := isSocketFD(fd)
+	isSocket, err := IsSocketFD(fd)
 	if err != nil {
 		return nil, err
 	}

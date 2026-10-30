@@ -112,7 +112,6 @@ func (o *Options) StateFields() []string {
 		"ClosedFunc",
 		"Address",
 		"SaveRestore",
-		"DisconnectOk",
 		"GSOMaxSize",
 		"GVisorGSOEnabled",
 		"PacketDispatchMode",
@@ -122,6 +121,8 @@ func (o *Options) StateFields() []string {
 		"InterfaceIndex",
 		"GRO",
 		"ProcessorsPerChannel",
+		"IsPacketSocket",
+		"PreConfigured",
 	}
 }
 
@@ -136,16 +137,17 @@ func (o *Options) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(3, &o.ClosedFunc)
 	stateSinkObject.Save(4, &o.Address)
 	stateSinkObject.Save(5, &o.SaveRestore)
-	stateSinkObject.Save(6, &o.DisconnectOk)
-	stateSinkObject.Save(7, &o.GSOMaxSize)
-	stateSinkObject.Save(8, &o.GVisorGSOEnabled)
-	stateSinkObject.Save(9, &o.PacketDispatchMode)
-	stateSinkObject.Save(10, &o.TXChecksumOffload)
-	stateSinkObject.Save(11, &o.RXChecksumOffload)
-	stateSinkObject.Save(12, &o.MaxSyscallHeaderBytes)
-	stateSinkObject.Save(13, &o.InterfaceIndex)
-	stateSinkObject.Save(14, &o.GRO)
-	stateSinkObject.Save(15, &o.ProcessorsPerChannel)
+	stateSinkObject.Save(6, &o.GSOMaxSize)
+	stateSinkObject.Save(7, &o.GVisorGSOEnabled)
+	stateSinkObject.Save(8, &o.PacketDispatchMode)
+	stateSinkObject.Save(9, &o.TXChecksumOffload)
+	stateSinkObject.Save(10, &o.RXChecksumOffload)
+	stateSinkObject.Save(11, &o.MaxSyscallHeaderBytes)
+	stateSinkObject.Save(12, &o.InterfaceIndex)
+	stateSinkObject.Save(13, &o.GRO)
+	stateSinkObject.Save(14, &o.ProcessorsPerChannel)
+	stateSinkObject.Save(15, &o.IsPacketSocket)
+	stateSinkObject.Save(16, &o.PreConfigured)
 }
 
 func (o *Options) afterLoad(context.Context) {}
@@ -158,16 +160,17 @@ func (o *Options) StateLoad(ctx context.Context, stateSourceObject state.Source)
 	stateSourceObject.Load(3, &o.ClosedFunc)
 	stateSourceObject.Load(4, &o.Address)
 	stateSourceObject.Load(5, &o.SaveRestore)
-	stateSourceObject.Load(6, &o.DisconnectOk)
-	stateSourceObject.Load(7, &o.GSOMaxSize)
-	stateSourceObject.Load(8, &o.GVisorGSOEnabled)
-	stateSourceObject.Load(9, &o.PacketDispatchMode)
-	stateSourceObject.Load(10, &o.TXChecksumOffload)
-	stateSourceObject.Load(11, &o.RXChecksumOffload)
-	stateSourceObject.Load(12, &o.MaxSyscallHeaderBytes)
-	stateSourceObject.Load(13, &o.InterfaceIndex)
-	stateSourceObject.Load(14, &o.GRO)
-	stateSourceObject.Load(15, &o.ProcessorsPerChannel)
+	stateSourceObject.Load(6, &o.GSOMaxSize)
+	stateSourceObject.Load(7, &o.GVisorGSOEnabled)
+	stateSourceObject.Load(8, &o.PacketDispatchMode)
+	stateSourceObject.Load(9, &o.TXChecksumOffload)
+	stateSourceObject.Load(10, &o.RXChecksumOffload)
+	stateSourceObject.Load(11, &o.MaxSyscallHeaderBytes)
+	stateSourceObject.Load(12, &o.InterfaceIndex)
+	stateSourceObject.Load(13, &o.GRO)
+	stateSourceObject.Load(14, &o.ProcessorsPerChannel)
+	stateSourceObject.Load(15, &o.IsPacketSocket)
+	stateSourceObject.Load(16, &o.PreConfigured)
 }
 
 func (e *InjectableEndpoint) StateTypeName() string {
@@ -415,14 +418,13 @@ func (m *processorManager) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(3, &m.ready)
 }
 
-func (m *processorManager) afterLoad(context.Context) {}
-
 // +checklocksignore
 func (m *processorManager) StateLoad(ctx context.Context, stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &m.processors)
 	stateSourceObject.Load(1, &m.seed)
 	stateSourceObject.Load(2, &m.e)
 	stateSourceObject.Load(3, &m.ready)
+	stateSourceObject.AfterLoad(func() { m.afterLoad(ctx) })
 }
 
 func init() {

@@ -20,12 +20,12 @@ package fdbased
 import (
 	"encoding/binary"
 
-	"golang.org/x/sys/unix"
 	"github.com/sagernet/gvisor/pkg/buffer"
 	"github.com/sagernet/gvisor/pkg/rawfile"
 	"github.com/sagernet/gvisor/pkg/tcpip"
 	"github.com/sagernet/gvisor/pkg/tcpip/link/stopfd"
 	"github.com/sagernet/gvisor/pkg/tcpip/stack"
+	"golang.org/x/sys/unix"
 )
 
 const (

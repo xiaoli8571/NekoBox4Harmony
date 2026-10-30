@@ -1,6 +1,6 @@
 # NekoBox for Harmony — Agent 交接说明
 
-> **当前阶段(2026-09-08)先看这里**:正式版 **1.9.0(versionCode 1001926)** 已发布(GitHub Releases),内核升级为 **sing-box v1.14.0**(OHOS 补丁扩至 5 组 + 新增 URL 测速 CGo 导出,见「内核」节)。开发工作区可能在远程服务器 `/worker/NekoBox4Harmony`(**root 凭据一律存 ZCode 持久记忆 `dev-credentials.md`,禁止写入仓库文档**——旧版本文档曾把明文密码公开在 GitHub main,已要求轮换服务器密码)。接手开发的 agent 先读根目录 `HANDOFF.md`(完整交接指令)与 `DEVPLAN.md`(任务与验收),F 阶段 F1~F7 已全部交付(勿重做)。本文件其余内容为架构与构建说明,继续有效。
+> **当前阶段(2026-09-08)先看这里**:正式版 **1.9.0(versionCode 1001926)** 已发布(GitHub Releases),内核升级为 **sing-box 1.15.0-alpha.13**(OHOS 补丁扩至 5 组 + 新增 URL 测速 CGo 导出,见「内核」节)。开发工作区可能在远程服务器 `/worker/NekoBox4Harmony`(**root 凭据一律存 ZCode 持久记忆 `dev-credentials.md`,禁止写入仓库文档**——旧版本文档曾把明文密码公开在 GitHub main,已要求轮换服务器密码)。接手开发的 agent 先读根目录 `HANDOFF.md`(完整交接指令)与 `DEVPLAN.md`(任务与验收),F 阶段 F1~F7 已全部交付(勿重做)。本文件其余内容为架构与构建说明,继续有效。
 
 任何 AI Agent 接手本项目前必读。git 仓库克隆自 https://github.com/xiaoli8571/NekoBox4Harmony (main 分支)。
 
@@ -8,7 +8,7 @@
 
 ## 项目是什么
 
-HarmonyOS NEXT 原生 VPN 客户端,参考 [NekoBoxForAndroid](https://github.com/MatsuriDayo/NekoBoxForAndroid),内核为 **sing-box v1.14.0**(支持 Hysteria2/TUIC v5),以 **c-shared .so 进程内 dlopen** 方式运行(沙箱禁止 exec)。
+HarmonyOS NEXT 原生 VPN 客户端,参考 [NekoBoxForAndroid](https://github.com/MatsuriDayo/NekoBoxForAndroid),内核为 **sing-box 1.15.0-alpha.13**(支持 Hysteria2/TUIC v5),以 **c-shared .so 进程内 dlopen** 方式运行(沙箱禁止 exec)。
 
 - GitHub: https://github.com/xiaoli8571/NekoBox4Harmony (推送: `git push origin main`;若直连失败用 `git -c http.proxy=http://127.0.0.1:7897 push`)
 - Notion 开发文档(架构/踩坑/迭代计划): 页面 "NekoBox for Harmony 开发文档",页面 id `3cb716a2-385f-8033-98c6-cf1777bbb876`
@@ -17,7 +17,7 @@ HarmonyOS NEXT 原生 VPN 客户端,参考 [NekoBoxForAndroid](https://github.co
 
 ## 当前状态(v1.9.0,2026-09-08)
 
-- **内核已从 sing-box 1.11.9 升级到 1.14.0(2026-09-08),本轮开发基调不再是内核冻结**,但 CGo 既有 4 个导出契约保持稳定,新增测速导出见「内核」节。
+- **内核已从 sing-box 1.11.9 → 1.14.0 → 1.15.0-alpha.13(2026-10-30,与 OwnBoxForAndroid 对齐),本轮开发基调不再是内核冻结**,但 CGo 既有 4 个导出契约保持稳定,新增测速导出见「内核」节。
 - **后台保活口径(2026-10-23 定稿,依据 `docs/REA-FLCLASH-KEEPALIVE.md`)**:申请目标是"个人开发者能过 AGC"的权限组合,
   **不要照抄 FlClash 的 `TASK_KEEPING`** —— 该模式在 phone/tablet 上必需受限 ACL `KEEP_BACKGROUND_RUNNING_SYSTEM`
   (system_basic,个人开发者拿不到)。现行设计:VPN 会话不申请长时任务(存活靠 VpnExtensionAbility 系统托管 + 常驻通知
@@ -75,7 +75,8 @@ HarmonyOS NEXT 原生 VPN 客户端,参考 [NekoBoxForAndroid](https://github.co
   `AppScope/app.json5` = `2200000` / `2.2.0`,`oh-package.json5`(根与 entry)= `2.2.0`,
   `pack.info` 由构建自动写入;关于页动态读 bundleManager,无硬编码。版本号编码规则
   `major*1000000 + minor*100000 + patch`(如 2.1.18 → 2100018,2.2.0 → 2200000)。
-  ⚠️ 内核版本字符串 `1.14.0-ohos-inproc`(`core/libsingbox14`)是 **sing-box 版本**,不随应用版本变。
+  ⚠️ 内核版本字符串 `1.15.0-alpha.13-ohos-inproc`(`core/libsingbox14`)是 **sing-box 版本**,不随应用版本变。
+  该串与 `AboutPage.CORE_VERSION`、`ToolsPage` 诊断字段由 `tests/kernel-version.cjs` 强制同源(格式差异除外)。
 - 历史:1.5.6v(内核 1.11.9)及更早状态见 git log;`stateEffect` 坑、UI 回退事件等记录保留在 git 历史与 Notion。
 
 ## 构建方法(命令行,勿开 DevEco GUI)
@@ -148,7 +149,7 @@ SIGN_P12_PASS='<密钥库密码>' bash scripts/build-and-sign.sh
   7. `common/urltest/urltest.go`:**URL Test 状态码校验 + HEAD→GET 回退**。上游 `urlTest` 拿到 HTTP 响应就返回耗时、从不看 `StatusCode`,探测网址返回 403/404/500(CDN 劫持 / GFW 污染)时节点会被判成"可用",击穿"绿=真可用";同时上游固定用 HEAD,站点对 HEAD 回 405 会让整组假红。新增 `URLTestOptions{Expect2xx, AllowGetFallback}` 与 `URLTestWithOptions`,`URLTest()` 保持原签名并走默认严格选项。构建脚本 fail-closed 校验 `unexpected HTTP status` 标记。
 - 另有两处 1.14 专属工具链兜底:`sync.WaitGroup.Go` 回植(fork `src/sync/waitgroup_go125api.go`,模板见 `core/patches/`),以及 quic-go `quic_event_go124_ohos.go` shim(`!go1.25`,对应 fork 上游保守分支)。
 - 实际防回环机制:`route.default_interface`(设置页实验选项,ConfigBuilder 写入配置)+ 补丁 2。
-- `core/libsingbox14/` — Go 包装层。导出 `CGoStartSingBox / CGoStopSingBox / CGoSetTunFd / CGoSingBoxVersion`(既有契约)+ **`CGoTestStartSingBox / CGoTestProxySingBox / CGoTestStopSingBox`**(URL 测速:UI 进程内起独立临时 box 做真连接测速,`testStart` 强制清空 inbounds/endpoints/experimental 双保险,与 VPN 主实例互不影响)+ **`CGoCheckConfigV1 / CGoValidateSRSFileV1`**(2026-10-24 W05/K1:无副作用纯解析——配置 schema 校验、本地 .srs 内容校验;不调 `box.New`/`Start`、不碰环境变量、不写文件;NAPI `checkConfigNative/validateSrsNative`,dlsym 缺失回退 `"unsupported"`,ArkTS 包装 `CoreManager.checkConfig()/validateSrs()`;源码级守卫测试 `tests/hostprobe/k1_validate_test.go`。.so 现 **16 导出**,sha256 `9b05c0bf…`;W09/K2 再加 `CGoTestStartSingBoxV3 / CGoTestProxySingBoxV3 / CGoTestStopSingBoxV3 / CGoTestSessionInfoV3 / CGoTestActiveSessionsV3`(会话隔离:stop 返回前必须已关闭、启动期间被 stop 的迟到实例立即关闭并写墓碑;NAPI `testStartNativeV3/testProxyNativeV3/testStopNativeV3/testSessionInfoNativeV3/testActiveSessionsNative`,`testCapsNative` 回报 `v3|v2|legacy`;hostprobe `k2_session_test.go` 12 用例))。版本字符串硬编码 "1.14.0-ohos-inproc"。
+- `core/libsingbox14/` — Go 包装层。导出 `CGoStartSingBox / CGoStopSingBox / CGoSetTunFd / CGoSingBoxVersion`(既有契约)+ **`CGoTestStartSingBox / CGoTestProxySingBox / CGoTestStopSingBox`**(URL 测速:UI 进程内起独立临时 box 做真连接测速,`testStart` 强制清空 inbounds/endpoints/experimental 双保险,与 VPN 主实例互不影响)+ **`CGoCheckConfigV1 / CGoValidateSRSFileV1`**(2026-10-24 W05/K1:无副作用纯解析——配置 schema 校验、本地 .srs 内容校验;不调 `box.New`/`Start`、不碰环境变量、不写文件;NAPI `checkConfigNative/validateSrsNative`,dlsym 缺失回退 `"unsupported"`,ArkTS 包装 `CoreManager.checkConfig()/validateSrs()`;源码级守卫测试 `tests/hostprobe/k1_validate_test.go`。.so 现 **16 导出**,sha256 `9b05c0bf…`;W09/K2 再加 `CGoTestStartSingBoxV3 / CGoTestProxySingBoxV3 / CGoTestStopSingBoxV3 / CGoTestSessionInfoV3 / CGoTestActiveSessionsV3`(会话隔离:stop 返回前必须已关闭、启动期间被 stop 的迟到实例立即关闭并写墓碑;NAPI `testStartNativeV3/testProxyNativeV3/testStopNativeV3/testSessionInfoNativeV3/testActiveSessionsNative`,`testCapsNative` 回报 `v3|v2|legacy`;hostprobe `k2_session_test.go` 12 用例))。版本字符串硬编码 "1.15.0-alpha.13-ohos-inproc"(由 `tests/kernel-version.cjs` 与界面展示串、构建标签交叉校验)。
   > ⚠️ **测速导出的版本化约定(V2 / legacy,2026-09 那轮整改引入)**
   >
   > `libsingbox.so` 是随仓库分发的**冻结产物**,而这轮要给它加"响应状态判定"和

@@ -1,4 +1,4 @@
-// Copyright 2023 The gVisor Authors.
+// Copyright 2018 The gVisor Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,10 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package sync
+//go:build amd64
 
-// TraceBlockReason constants, from Go's src/runtime/trace2runtime.go.
-const (
-	TraceBlockSelect TraceBlockReason = 3 // +checkconst runtime traceBlockSelect
-	TraceBlockSync   TraceBlockReason = 5 // +checkconst runtime traceBlockSync
-)
+#include "textflag.h"
+
+#define NMSPINNING_OFFSET 116
+
+TEXT ·addrOfSpinning(SB),NOSPLIT|NOFRAME,$0-8
+	LEAQ runtime·sched(SB), AX
+	ADDQ $NMSPINNING_OFFSET, AX
+	MOVQ AX, ret+0(FP)
+	RET

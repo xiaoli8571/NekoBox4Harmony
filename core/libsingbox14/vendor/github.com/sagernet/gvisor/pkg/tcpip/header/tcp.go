@@ -17,7 +17,6 @@ package header
 import (
 	"encoding/binary"
 
-	"github.com/google/btree"
 	"github.com/sagernet/gvisor/pkg/tcpip"
 	"github.com/sagernet/gvisor/pkg/tcpip/checksum"
 	"github.com/sagernet/gvisor/pkg/tcpip/seqnum"
@@ -175,11 +174,6 @@ type SACKBlock struct {
 	End seqnum.Value
 }
 
-// Less returns true if r.Start < b.Start.
-func (r SACKBlock) Less(b btree.Item) bool {
-	return r.Start.LessThan(b.(SACKBlock).Start)
-}
-
 // Contains returns true if b is completely contained in r.
 func (r SACKBlock) Contains(b SACKBlock) bool {
 	return r.Start.LessThanEq(b.Start) && b.End.LessThanEq(r.End)
@@ -219,9 +213,8 @@ const (
 	// TCPTotalHeaderMaximumSize is the maximum size of headers from all layers in
 	// a TCP packet. It analogous to MAX_TCP_HEADER in Linux.
 	//
-	// TODO(b/319936470): Investigate why this needs to be at least 140 bytes. In
-	// Linux this value is at least 160, but in theory we should be able to use
-	// 138. In practice anything less than 140 starts to break GSO on gVNIC
+	// Note: In Linux this value is at least 160, but in theory we should be able
+	// to use 138. In practice anything less than 140 starts to break GSO on gVNIC
 	// hardware.
 	TCPTotalHeaderMaximumSize = 160
 
@@ -350,14 +343,18 @@ func (b TCP) SetUrgentPointer(urgentPointer uint16) {
 // and the checksum of the segment data.
 func (b TCP) CalculateChecksum(partialChecksum uint16) uint16 {
 	// Calculate the rest of the checksum.
-	return checksum.Checksum(b[:b.DataOffset()], partialChecksum)
+	// return checksum.Checksum(b[:b.DataOffset()], partialChecksum)
+	xsum := checksum.Checksum(b[:TCPChecksumOffset], partialChecksum)
+	xsum = checksum.Checksum(b[TCPChecksumOffset+2:b.DataOffset()], xsum)
+	return xsum
 }
 
 // IsChecksumValid returns true iff the TCP header's checksum is valid.
 func (b TCP) IsChecksumValid(src, dst tcpip.Address, payloadChecksum, payloadLength uint16) bool {
 	xsum := PseudoHeaderChecksum(TCPProtocolNumber, src, dst, uint16(b.DataOffset())+payloadLength)
 	xsum = checksum.Combine(xsum, payloadChecksum)
-	return b.CalculateChecksum(xsum) == 0xffff
+	// return b.CalculateChecksum(xsum) == 0xffff
+	return checksum.Checksum(b[:b.DataOffset()], xsum) == 0xffff
 }
 
 // Options returns a slice that holds the unparsed TCP options in the segment.

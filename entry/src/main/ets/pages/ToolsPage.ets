@@ -266,7 +266,7 @@ export struct ToolsPage {
         // 版本读取失败:保持「未知」
       }
       input.sdkApiLevel = deviceInfo.sdkApiVersion ?? 0;
-      input.kernelVersion = 'sing-box 1.14.0 (OHOS c-shared)';
+      input.kernelVersion = 'sing-box 1.15.0-alpha.13 (OHOS c-shared)';
       input.kernelCapability = RuleSetRepository.describeCapability();
       input.savedRevision = ConfigRepository.getActiveRevision();
       input.runningRevision = AppStorage.get<number>('vpnAppliedRevision') ?? 0;

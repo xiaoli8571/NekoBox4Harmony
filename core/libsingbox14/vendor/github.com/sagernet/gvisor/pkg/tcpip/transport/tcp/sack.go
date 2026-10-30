@@ -43,7 +43,7 @@ func UpdateSACKBlocks(sack *SACKInfo, segStart seqnum.Value, segEnd seqnum.Value
 		sack.NumBlocks = 1
 		return
 	}
-	var n = 0
+	n := 0
 	for i := 0; i < sack.NumBlocks; i++ {
 		start, end := sack.Blocks[i].Start, sack.Blocks[i].End
 		if end.LessThanEq(rcvNxt) {

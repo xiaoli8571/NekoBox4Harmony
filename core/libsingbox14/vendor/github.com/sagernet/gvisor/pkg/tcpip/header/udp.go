@@ -114,14 +114,18 @@ func (b UDP) SetLength(length uint16) {
 // checksum of the network-layer pseudo-header and the checksum of the payload.
 func (b UDP) CalculateChecksum(partialChecksum uint16) uint16 {
 	// Calculate the rest of the checksum.
-	return checksum.Checksum(b[:UDPMinimumSize], partialChecksum)
+	// return checksum.Checksum(b[:UDPMinimumSize], partialChecksum)
+	xsum := checksum.Checksum(b[:udpChecksum], partialChecksum)
+	xsum = checksum.Checksum(b[udpChecksum+2:UDPMinimumSize], xsum)
+	return xsum
 }
 
 // IsChecksumValid returns true iff the UDP header's checksum is valid.
 func (b UDP) IsChecksumValid(src, dst tcpip.Address, payloadChecksum uint16) bool {
 	xsum := PseudoHeaderChecksum(UDPProtocolNumber, dst, src, b.Length())
 	xsum = checksum.Combine(xsum, payloadChecksum)
-	return b.CalculateChecksum(xsum) == 0xffff
+	// return b.CalculateChecksum(xsum) == 0xffff
+	return checksum.Checksum(b[:UDPMinimumSize], xsum) == 0xffff
 }
 
 // Encode encodes all the fields of the UDP header.
@@ -134,20 +138,33 @@ func (b UDP) Encode(u *UDPFields) {
 
 // SetSourcePortWithChecksumUpdate implements ChecksummableTransport.
 func (b UDP) SetSourcePortWithChecksumUpdate(new uint16) {
+	if b.Checksum() == 0 {
+		b.SetSourcePort(new)
+		return
+	}
 	old := b.SourcePort()
 	b.SetSourcePort(new)
-	b.SetChecksum(^checksumUpdate2ByteAlignedUint16(^b.Checksum(), old, new))
+	xsum := ^checksumUpdate2ByteAlignedUint16(^b.Checksum(), old, new)
+	b.SetChecksum(normalizeChecksum(xsum))
 }
 
 // SetDestinationPortWithChecksumUpdate implements ChecksummableTransport.
 func (b UDP) SetDestinationPortWithChecksumUpdate(new uint16) {
+	if b.Checksum() == 0 {
+		b.SetDestinationPort(new)
+		return
+	}
 	old := b.DestinationPort()
 	b.SetDestinationPort(new)
-	b.SetChecksum(^checksumUpdate2ByteAlignedUint16(^b.Checksum(), old, new))
+	xsum := ^checksumUpdate2ByteAlignedUint16(^b.Checksum(), old, new)
+	b.SetChecksum(normalizeChecksum(xsum))
 }
 
 // UpdateChecksumPseudoHeaderAddress implements ChecksummableTransport.
 func (b UDP) UpdateChecksumPseudoHeaderAddress(old, new tcpip.Address, fullChecksum bool) {
+	if fullChecksum && b.Checksum() == 0 {
+		return
+	}
 	xsum := b.Checksum()
 	if fullChecksum {
 		xsum = ^xsum
@@ -155,7 +172,7 @@ func (b UDP) UpdateChecksumPseudoHeaderAddress(old, new tcpip.Address, fullCheck
 
 	xsum = checksumUpdate2ByteAlignedAddress(xsum, old, new)
 	if fullChecksum {
-		xsum = ^xsum
+		xsum = normalizeChecksum(^xsum)
 	}
 
 	b.SetChecksum(xsum)
@@ -192,4 +209,15 @@ func UDPValid(hdr UDP, payloadChecksum func() uint16, payloadSize uint16, netPro
 	}
 
 	return true, hdr.IsChecksumValid(srcAddr, dstAddr, payloadChecksum())
+}
+
+func normalizeChecksum(xsum uint16) uint16 {
+	// RFC 768:
+	// If the computed UDP checksum is zero, it is transmitted as all ones.
+	// An all zero transmitted checksum value means that
+	// the transmitter generated no checksum.
+	if xsum == 0 {
+		return 0xFFFF
+	}
+	return xsum
 }

@@ -20,7 +20,6 @@ package channel
 import (
 	"context"
 
-	"github.com/sagernet/gvisor/pkg/sync"
 	"github.com/sagernet/gvisor/pkg/tcpip"
 	"github.com/sagernet/gvisor/pkg/tcpip/header"
 	"github.com/sagernet/gvisor/pkg/tcpip/stack"
@@ -44,7 +43,7 @@ type NotificationHandle struct {
 type queue struct {
 	// c is the outbound packet channel.
 	c  chan *stack.PacketBuffer
-	mu sync.RWMutex
+	mu queueRWMutex
 	// +checklocks:mu
 	notify []*NotificationHandle
 	// +checklocks:mu
@@ -87,11 +86,12 @@ func (q *queue) Write(pkt *stack.PacketBuffer) tcpip.Error {
 	}
 
 	wrote := false
+	p := pkt.Clone()
 	select {
-	case q.c <- pkt.IncRef():
+	case q.c <- p:
 		wrote = true
 	default:
-		pkt.DecRef()
+		p.DecRef()
 	}
 	notify := q.notify
 	q.mu.RUnlock()
@@ -131,8 +131,10 @@ func (q *queue) RemoveNotify(handle *NotificationHandle) {
 	q.notify = notify
 }
 
-var _ stack.LinkEndpoint = (*Endpoint)(nil)
-var _ stack.GSOEndpoint = (*Endpoint)(nil)
+var (
+	_ stack.LinkEndpoint = (*Endpoint)(nil)
+	_ stack.GSOEndpoint  = (*Endpoint)(nil)
+)
 
 // Endpoint is link layer endpoint that stores outbound packets in a channel
 // and allows injection of inbound packets.
@@ -142,7 +144,7 @@ type Endpoint struct {
 	LinkEPCapabilities stack.LinkEndpointCapabilities
 	SupportedGSOKind   stack.SupportedGSO
 
-	mu sync.RWMutex `state:"nosave"`
+	mu endpointRWMutex `state:"nosave"`
 	// +checklocks:mu
 	dispatcher stack.NetworkDispatcher
 	// +checklocks:mu

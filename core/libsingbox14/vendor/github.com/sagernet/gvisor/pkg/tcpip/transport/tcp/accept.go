@@ -23,7 +23,6 @@ import (
 	"io"
 	"time"
 
-	"github.com/sagernet/gvisor/pkg/sync"
 	"github.com/sagernet/gvisor/pkg/tcpip"
 	"github.com/sagernet/gvisor/pkg/tcpip/header"
 	"github.com/sagernet/gvisor/pkg/tcpip/ports"
@@ -51,11 +50,9 @@ const (
 	maxTSDiff = 2
 )
 
-var (
-	// mssTable is a slice containing the possible MSS values that we
-	// encode in the SYN cookie with two bits.
-	mssTable = []uint16{536, 1300, 1440, 1460}
-)
+// mssTable is a slice containing the possible MSS values that we
+// encode in the SYN cookie with two bits.
+var mssTable = []uint16{536, 1300, 1440, 1460}
 
 func encodeMSS(mss uint16) uint32 {
 	for i := len(mssTable) - 1; i > 0; i-- {
@@ -88,7 +85,7 @@ type listenContext struct {
 	listenEP *Endpoint
 
 	// hasherMu protects hasher.
-	hasherMu sync.Mutex
+	hasherMu hasherMutex
 	// hasher is the hash function used to generate a SYN cookie.
 	hasher hash.Hash
 
@@ -130,7 +127,6 @@ func newListenContext(stk *stack.Stack, protocol *protocol, listenEP *Endpoint, 
 // cookieHash calculates the cookieHash for the given id, timestamp and nonce
 // index. The hash is used to create and validate cookies.
 func (l *listenContext) cookieHash(id stack.TransportEndpointID, ts uint32, nonceIndex int) uint32 {
-
 	// Initialize block with fixed-size data: local ports and v.
 	var payload [8]byte
 	binary.BigEndian.PutUint16(payload[0:], id.LocalPort)
@@ -259,7 +255,7 @@ func (l *listenContext) startHandshake(s *segment, opts header.TCPSynOptions, qu
 
 		// Propagate any inheritable options from the listening endpoint
 		// to the newly created endpoint.
-		l.listenEP.propagateInheritableOptionsLocked(ep) // +checklocksforce
+		l.listenEP.propagateInheritableOptionsLocked(ep) // +checklocksforce:ep.mu
 
 		if !ep.reserveTupleLocked() {
 			ep.mu.Unlock()
@@ -363,6 +359,7 @@ func (e *Endpoint) propagateInheritableOptionsLocked(n *Endpoint) {
 	n.boundBindToDevice = e.boundBindToDevice
 	n.boundPortFlags = e.boundPortFlags
 	n.userMSS = e.userMSS
+	n.ops.SetMark(e.ops.GetMark())
 }
 
 // reserveTupleLocked reserves an accepted endpoint's tuple.
@@ -526,13 +523,15 @@ func (e *Endpoint) handleListenSegment(ctx *listenContext, s *segment) tcpip.Err
 		}
 		cookie := ctx.createCookie(s.id, s.sequenceNumber, encodeMSS(opts.MSS))
 		fields := tcpFields{
-			id:     s.id,
-			ttl:    calculateTTL(route, e.ipv4TTL, e.ipv6HopLimit),
-			tos:    e.sendTOS,
-			flags:  header.TCPFlagSyn | header.TCPFlagAck,
-			seq:    cookie,
-			ack:    s.sequenceNumber + 1,
-			rcvWnd: ctx.rcvWnd,
+			id:        s.id,
+			ttl:       calculateTTL(route, e.ipv4TTL, e.ipv6HopLimit),
+			tos:       e.sendTOS,
+			flags:     header.TCPFlagSyn | header.TCPFlagAck,
+			seq:       cookie,
+			ack:       s.sequenceNumber + 1,
+			rcvWnd:    ctx.rcvWnd,
+			df:        e.pmtud == tcpip.PMTUDiscoveryWant || e.pmtud == tcpip.PMTUDiscoveryDo || e.pmtud == tcpip.PMTUDiscoveryProbe,
+			expOptVal: e.getExperimentOptionValue(route),
 		}
 		if err := e.sendSynTCP(route, fields, synOpts); err != nil {
 			return err

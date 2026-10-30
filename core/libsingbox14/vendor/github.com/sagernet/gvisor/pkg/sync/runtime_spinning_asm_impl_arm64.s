@@ -12,11 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package sync
+//go:build !amd64
 
-// Values for the reason argument to gopark, from Go's src/runtime/runtime2.go.
-const (
-	WaitReasonSelect      uint8 = 9  // +checkconst runtime waitReasonSelect
-	WaitReasonChanReceive uint8 = 14 // +checkconst runtime waitReasonChanReceive
-	WaitReasonSemacquire  uint8 = 18 // +checkconst runtime waitReasonSemacquire
-)
+// This file is intentionally left blank. arm64 doesn't use
+// addrOfSpinning, but we still need an input to the nogo template rule.

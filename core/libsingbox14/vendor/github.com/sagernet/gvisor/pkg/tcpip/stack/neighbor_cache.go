@@ -16,7 +16,6 @@ package stack
 
 import (
 	"fmt"
-	"github.com/sagernet/sing/common"
 
 	"github.com/sagernet/gvisor/pkg/tcpip"
 )
@@ -255,7 +254,7 @@ func (n *neighborCache) clear() {
 	}
 
 	n.mu.dynamic.lru = neighborEntryList{}
-	common.ClearMap(n.mu.cache)
+	clear(n.mu.cache)
 	n.mu.dynamic.count = 0
 }
 

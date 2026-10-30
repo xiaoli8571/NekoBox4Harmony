@@ -1,12 +1,12 @@
 // Copyright 2020 The gVisor Authors.
 //
 // Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// license that can be found in the LICENSE file or at
+// https://developers.google.com/open-source/licenses/bsd.
 
 package sync
 
 import (
-	"github.com/sagernet/sing/common"
 	"sync"
 )
 
@@ -38,15 +38,15 @@ func NewCond(l Locker) *Cond {
 
 // OnceFunc is a wrapper around sync.OnceFunc.
 func OnceFunc(f func()) func() {
-	return common.OnceFunc(f)
+	return sync.OnceFunc(f)
 }
 
 // OnceValue is a wrapper around sync.OnceValue.
 func OnceValue[T any](f func() T) func() T {
-	return common.OnceValue(f)
+	return sync.OnceValue(f)
 }
 
 // OnceValues is a wrapper around sync.OnceValues.
 func OnceValues[T1, T2 any](f func() (T1, T2)) func() (T1, T2) {
-	return common.OnceValues(f)
+	return sync.OnceValues(f)
 }

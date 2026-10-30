@@ -20,3 +20,9 @@ l2.json
 *.p12
 *.p7b
 *.csr
+
+# AGC 凭证与签名材料(含私钥/密码),严禁入库
+.env
+.certs/
+*.cer
+connect-api-cli-token.json

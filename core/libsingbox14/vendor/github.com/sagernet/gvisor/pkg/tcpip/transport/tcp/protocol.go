@@ -23,7 +23,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sagernet/gvisor/pkg/sync"
 	"github.com/sagernet/gvisor/pkg/tcpip"
 	"github.com/sagernet/gvisor/pkg/tcpip/header"
 	"github.com/sagernet/gvisor/pkg/tcpip/header/parse"
@@ -90,7 +89,7 @@ const (
 type protocol struct {
 	stack *stack.Stack
 
-	mu                         sync.RWMutex `state:"nosave"`
+	mu                         protocolRWMutex `state:"nosave"`
 	sackEnabled                bool
 	recovery                   tcpip.TCPRecovery
 	delayEnabled               bool
@@ -109,9 +108,17 @@ type protocol struct {
 	synRetries                 uint8
 	dispatcher                 dispatcher
 
-	// The following secrets are initialized once and stay unchanged after.
-	seqnumSecret   [16]byte
-	tsOffsetSecret [16]byte
+	// probe, if not nil, will be invoked any time an endpoint receives a
+	// TCP segment.
+	//
+	// This is immutable after creation.
+	probe TCPProbeFunc `state:"nosave"`
+
+	// The following secrets are used for ISN and timestamp-offset
+	// generation. They are not serialized into checkpoint state and are
+	// freshly drawn from the secure RNG on restore.
+	seqnumSecret   [16]byte `state:"nosave"`
+	tsOffsetSecret [16]byte `state:"nosave"`
 }
 
 // Number returns the tcp protocol number.
@@ -197,6 +204,7 @@ func (p *protocol) tsOffset(src, dst tcpip.Address) tcp.TSOffset {
 // then the route's default TTL will be used.
 func replyWithReset(st *stack.Stack, s *segment, tos, ipv4TTL uint8, ipv6HopLimit int16) tcpip.Error {
 	net := s.pkt.Network()
+	// TODO: b/528377510 - Verify if passing the NICID is correct.
 	route, err := st.FindRoute(s.pkt.NICID, net.DestinationAddress(), net.SourceAddress(), s.pkt.NetworkProtocolNumber, false /* multicastLoop */)
 	if err != nil {
 		return err
@@ -227,16 +235,26 @@ func replyWithReset(st *stack.Stack, s *segment, tos, ipv4TTL uint8, ipv6HopLimi
 		ack = s.sequenceNumber.Add(s.logicalLen())
 	}
 
-	p := stack.NewPacketBuffer(stack.PacketBufferOptions{ReserveHeaderBytes: header.TCPMinimumSize + int(route.MaxHeaderLength())})
+	var expOptVal uint16
+	if s.ep != nil {
+		expOptVal = s.ep.getExperimentOptionValue(route)
+	}
+	hdrSize := header.TCPMinimumSize + int(route.MaxHeaderLength())
+	if route.NetProto() == header.IPv6ProtocolNumber && expOptVal != 0 {
+		hdrSize += header.IPv6ExperimentHdrLength
+	}
+	p := stack.NewPacketBuffer(stack.PacketBufferOptions{ReserveHeaderBytes: hdrSize})
 	defer p.DecRef()
+
 	return sendTCP(route, tcpFields{
-		id:     s.id,
-		ttl:    ttl,
-		tos:    tos,
-		flags:  flags,
-		seq:    seq,
-		ack:    ack,
-		rcvWnd: 0,
+		id:        s.id,
+		ttl:       ttl,
+		tos:       tos,
+		flags:     flags,
+		seq:       seq,
+		ack:       ack,
+		rcvWnd:    0,
+		expOptVal: expOptVal,
 	}, p, stack.GSO{}, nil /* PacketOwner */)
 }
 
@@ -508,6 +526,11 @@ func (p *protocol) Resume() {
 	p.dispatcher.resume()
 }
 
+// Restore implements stack.TransportProtocol.Restore.
+func (p *protocol) Restore() {
+	p.dispatcher.start()
+}
+
 // Parse implements stack.TransportProtocol.Parse.
 func (*protocol) Parse(pkt *stack.PacketBuffer) bool {
 	return parse.TCP(pkt)
@@ -515,7 +538,19 @@ func (*protocol) Parse(pkt *stack.PacketBuffer) bool {
 
 // NewProtocol returns a TCP transport protocol with Reno congestion control.
 func NewProtocol(s *stack.Stack) stack.TransportProtocol {
-	return newProtocol(s, ccReno)
+	return newProtocol(s, ccReno, nil)
+}
+
+// NewProtocolProbe returns a TCP transport protocol with Reno congestion
+// control and the given probe.
+//
+// The probe will be invoked on every segment received by TCP endpoints. The
+// probe function is passed a copy of the TCP endpoint state before and after
+// processing of the segment.
+func NewProtocolProbe(probe TCPProbeFunc) func(*stack.Stack) stack.TransportProtocol {
+	return func(s *stack.Stack) stack.TransportProtocol {
+		return newProtocol(s, ccReno, probe)
+	}
 }
 
 // NewProtocolCUBIC returns a TCP transport protocol with CUBIC congestion
@@ -523,10 +558,10 @@ func NewProtocol(s *stack.Stack) stack.TransportProtocol {
 //
 // TODO(b/345835636): Remove this and make CUBIC the default across the board.
 func NewProtocolCUBIC(s *stack.Stack) stack.TransportProtocol {
-	return newProtocol(s, ccCubic)
+	return newProtocol(s, ccCubic, nil)
 }
 
-func newProtocol(s *stack.Stack, cc string) stack.TransportProtocol {
+func newProtocol(s *stack.Stack, cc string, probe TCPProbeFunc) stack.TransportProtocol {
 	rng := s.SecureRNG()
 	var seqnumSecret [16]byte
 	var tsOffsetSecret [16]byte
@@ -562,6 +597,7 @@ func newProtocol(s *stack.Stack, cc string) stack.TransportProtocol {
 		recovery:                   tcpip.TCPRACKLossDetection,
 		seqnumSecret:               seqnumSecret,
 		tsOffsetSecret:             tsOffsetSecret,
+		probe:                      probe,
 	}
 	p.dispatcher.init(s.InsecureRNG(), runtime.GOMAXPROCS(0))
 	return &p

@@ -37,9 +37,7 @@ const (
 	_ndpOptionIdentifier_name_3 = "ndpDNSSearchListOptionType"
 )
 
-var (
-	_ndpOptionIdentifier_index_0 = [...]uint8{0, 35, 70, 94}
-)
+var _ndpOptionIdentifier_index_0 = [...]uint8{0, 35, 70, 94}
 
 func (i ndpOptionIdentifier) String() string {
 	switch {

@@ -47,6 +47,7 @@ func (*ErrAborted) isError() {}
 func (*ErrAborted) IgnoreStats() bool {
 	return false
 }
+
 func (*ErrAborted) String() string {
 	return "operation aborted"
 }
@@ -63,6 +64,7 @@ func (*ErrAddressFamilyNotSupported) isError() {}
 func (*ErrAddressFamilyNotSupported) IgnoreStats() bool {
 	return false
 }
+
 func (*ErrAddressFamilyNotSupported) String() string {
 	return "address family not supported by protocol"
 }
@@ -619,5 +621,23 @@ func (*ErrMulticastInputCannotBeOutput) IgnoreStats() bool {
 	return true
 }
 func (*ErrMulticastInputCannotBeOutput) String() string { return "output cannot contain input" }
+
+// ErrEndpointBusy indicates that the operation cannot be completed because the
+// endpoint is busy.
+//
+// +stateify savable
+type ErrEndpointBusy struct{}
+
+// isError implements Error.
+func (*ErrEndpointBusy) isError() {}
+
+// IgnoreStats implements Error.
+func (*ErrEndpointBusy) IgnoreStats() bool {
+	return true
+}
+
+func (*ErrEndpointBusy) String() string {
+	return "operation cannot be completed because the endpoint is busy"
+}
 
 // LINT.ThenChange(../syserr/netstack.go)

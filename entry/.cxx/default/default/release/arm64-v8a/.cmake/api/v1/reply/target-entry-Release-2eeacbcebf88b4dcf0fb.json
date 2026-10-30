@@ -20,7 +20,7 @@
 		[
 			"CMakeLists.txt",
 			"C:/Program Files/Huawei/DevEco Studio/sdk/default/hms/native/build/cmake/hmos.toolchain.cmake",
-			"C:/Program Files/Huawei/DevEco Studio/sdk/default/openharmony/native/build-tools/cmake/share/cmake-3.28/Modules/CMakeDetermineSystem.cmake"
+			"C:/Worker/NekoBox4Harmony/entry/.cxx/default/default/release/arm64-v8a/CMakeFiles/3.28.2/CMakeSystem.cmake"
 		],
 		"nodes" : 
 		[
@@ -52,7 +52,7 @@
 			{
 				"command" : 3,
 				"file" : 2,
-				"line" : 170,
+				"line" : 6,
 				"parent" : 4
 			},
 			{
