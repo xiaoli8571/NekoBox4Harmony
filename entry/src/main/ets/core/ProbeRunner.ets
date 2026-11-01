@@ -271,8 +271,8 @@ function parseProbeResponse(raw: string): ProbeAttempt {
       lower.indexOf('超时') >= 0;
     return out;
   }
-  const n = parseInt(text);
-  if (isNaN(n) || n < 0) {
+  const n = Number(text);
+  if (!/^[0-9]+$/.test(text) || !Number.isFinite(n) || n < 0) {
     out.ok = false;
     out.error = `unexpected probe result: ${raw}`;
     out.timedOut = false;
@@ -286,6 +286,10 @@ function parseProbeResponse(raw: string): ProbeAttempt {
 // ---------------- 运行器 ----------------
 
 export class ProbeRunner {
+  // The native test registry is process-wide, not coordinator-instance-wide.
+  // Hold ownership through capability discovery and persistence as well as probing.
+  private static activeOwner: ProbeRunner | null = null;
+  private static runSequence: number = 0;
   private coord: ProbeCoordinator;
   private deps: ProbeRunnerDeps;
 
@@ -314,6 +318,21 @@ export class ProbeRunner {
   /** 执行一轮检测。 */
   async runProbeRound(targets: Array<ProbeTarget>, env: ProbeEnv,
     opts: ProbeRoundOptions): Promise<ProbeRoundOutcome> {
+    if (ProbeRunner.activeOwner !== null) {
+      const busy = new ProbeRoundOutcome();
+      busy.error = PROBE_BUSY_ERROR;
+      return busy;
+    }
+    ProbeRunner.activeOwner = this;
+    try {
+      return await this.runOwnedRound(targets, env, opts);
+    } finally {
+      ProbeRunner.activeOwner = null;
+    }
+  }
+
+  private async runOwnedRound(targets: Array<ProbeTarget>, env: ProbeEnv,
+    opts: ProbeRoundOptions): Promise<ProbeRoundOutcome> {
     const out = new ProbeRoundOutcome();
     const startedAt = this.now();
     out.runId = this.newRunId(startedAt);
@@ -323,17 +342,24 @@ export class ProbeRunner {
       out.error = 'probe_bridge_missing';
       return out;
     }
-    // 能力探测(如实写进 ProbeResult.coreCapability,§6.2)
-    const capsRaw = await this.withTimeout<string>(bridge.caps(), CAPS_TIMEOUT_MS, '');
-    out.capability = this.capabilityOf(capsRaw);
+    // Freeze and reserve before the first await: cancellation during caps must survive.
     if (!this.coord.begin(out.runId, targets, env, out.capability, startedAt)) {
-      // 同一时刻只允许一轮(§6.5);并发请求明确拒绝,不排队、不覆盖
       out.error = PROBE_BUSY_ERROR;
       return out;
     }
+    targets = this.coord.getTargets();
+    env = this.coord.getEnv();
     out.generation = this.coord.getGeneration();
+    const capsRaw = await this.withTimeout<string>(bridge.caps(), CAPS_TIMEOUT_MS, '');
+    out.capability = this.capabilityOf(capsRaw);
     // 由 coordinator 记账的节点(取消/预算/环境失败)也要带上本轮元数据
     this.stageCoordinatorResults(out, opts);
+    if (this.coord.isCancelled() || (opts.isCancelled !== null && opts.isCancelled())) {
+      this.coord.cancel(this.now());
+      this.finishRound(out);
+      await this.saveRound(out);
+      return out;
+    }
     // 环境前提(整轮一次,§6.4-1):能力/目录可写/URL 合法/方式受支持
     const capabilityOk = out.capability === PROBE_CAP_NATIVE_V3 || out.capability === PROBE_CAP_NATIVE_V2;
     const methodSupported = env.method === PROBE_METHOD_HTTP;
@@ -375,7 +401,14 @@ export class ProbeRunner {
     ctx.maxStarts = opts.maxStarts > 0 ? opts.maxStarts : ProbeCoordinator.attemptsBudget(targets.length);
     if (ctx.useV3) {
       // 串行语义兜底:上一轮崩溃残留的其它会话必须清掉,否则 startV3 一直被拒
-      await this.cleanupStaleSessions(ctx);
+      const cleaned = await this.cleanupStaleSessions(ctx);
+      if (!cleaned) {
+        this.markUnfinished(ctx, targets.map((t: ProbeTarget): string => t.profileId), [],
+          PROBE_REASON_SESSION_UNCONFIRMED);
+        this.finishRound(out);
+        await this.saveRound(out);
+        return out;
+      }
     }
     await this.runIsolationLoop(ctx);
     this.finishRound(out);
@@ -478,8 +511,18 @@ export class ProbeRunner {
       const preErr = await this.withTimeout<string>(bridge.stop(), ctx.opts.stopTimeoutMs,
         'err:test stop bridge timeout');
       if (preErr.length > 0) {
-        this.log(`[probe] 开测前清理旧会话报错(忽略): ${preErr}`);
+        this.log(`[probe] 开测前清理旧会话未确认: ${preErr}`);
+        attempt.kind = 'stop_unconfirmed';
+        return attempt;
       }
+    }
+    if (this.isCancelled(ctx)) {
+      this.coord.cancel(this.now());
+      return attempt;
+    }
+    // Each stopped V3 id is permanently tombstoned. Never reuse it for a split batch.
+    if (ctx.useV3 && ctx.startsUsed > 0) {
+      ctx.sessionId = `${ctx.runId}-batch-${ctx.startsUsed + 1}`;
     }
     // 3. 启动
     ctx.startsUsed = ctx.startsUsed + 1;
@@ -499,11 +542,15 @@ export class ProbeRunner {
       }
       return attempt;
     }
-    // 5. 探测批内节点(批内并发 = env.concurrency)
-    await this.probeBatch(ctx, batch, cfg.tags);
+    // 5. Cleanup is mandatory even if a dependency/callback throws while probing.
     ctx.out.sessionStarted = true;
+    let confirmed = false;
+    try {
+      await this.probeBatch(ctx, batch, cfg.tags);
+    } finally {
+      confirmed = await this.stopAndConfirm(ctx);
+    }
     // 6. stop 确认成功后才允许下一批(§6.5:超时≠已停止)
-    const confirmed = await this.stopAndConfirm(ctx);
     if (!confirmed) {
       attempt.kind = 'stop_unconfirmed';
       attempt.error = '测速会话停止未确认';
@@ -589,7 +636,11 @@ export class ProbeRunner {
     const result = this.buildResult(ctx, target);
     result.startedAt = startedAt;
     result.completedAt = this.now();
-    result.samples = attempts > 0 ? attempts : 1;
+    result.samples = attempts;
+    if (attempts === 0 && this.isCancelled(ctx)) {
+      this.coord.cancel(this.now());
+      return; // No probe was issued: finish() records cancellation, not a false failure.
+    }
     if (ok.length > 0) {
       result.state = PROBE_STATE_SUCCESS;
       result.latencyMs = averageOf(ok);
@@ -605,7 +656,7 @@ export class ProbeRunner {
     // 且只对失败节点;成功节点保持 methodActual='http'。回退来源永久标明。
     const tcpPingFn = this.deps.tcpPing;
     if (result.state === PROBE_STATE_FAILED && ctx.opts.allowTcpFallbackPerNode &&
-      tcpPingFn !== null) {
+      !this.isCancelled(ctx) && tcpPingFn !== null) {
       const tcp = await tcpPingFn(target.profileId);
       result.methodActual = PROBE_METHOD_TCPING;
       result.degradedReason = PROBE_DEGRADED_HTTP_FALLBACK_TCPING;
@@ -763,7 +814,7 @@ export class ProbeRunner {
       return true; // 已无该会话
     }
     // K2 快照:state=closed 视为已确认;starting/active/stopping 或 'unsupported' 一律不可确认
-    if (info.indexOf('"closed"') >= 0) {
+    if (this.isSessionClosed(info)) {
       return true;
     }
     this.log(`[probe] 会话仍可能存在(${info}),禁止开始下一批(内核检测任务正在收尾)`);
@@ -775,14 +826,15 @@ export class ProbeRunner {
    * ("another test session ... is active"),不清理会让本轮永远起不来。
    * 只停**其它** id,绝不触碰本轮自己的 sessionId。
    */
-  private async cleanupStaleSessions(ctx: ProbeRunContext): Promise<void> {
+  private async cleanupStaleSessions(ctx: ProbeRunContext): Promise<boolean> {
     const bridge = ctx.bridge;
     if (bridge === null) {
-      return;
+      return false;
     }
-    const raw = await this.withTimeout<string>(bridge.activeSessions(), SESSION_INFO_TIMEOUT_MS, '');
-    if (raw.length === 0) {
-      return;
+    const raw = await this.withTimeout<string>(bridge.activeSessions(), SESSION_INFO_TIMEOUT_MS,
+      'err:active sessions timeout');
+    if (raw.startsWith('err:')) {
+      return false;
     }
     const ids = raw.split(',');
     for (let i = 0; i < ids.length; i++) {
@@ -791,7 +843,25 @@ export class ProbeRunner {
         continue;
       }
       this.log(`[probe] 清理上一轮残留测速会话: ${id}`);
-      await this.withTimeout<string>(bridge.stopV3(id), CLOSE_SESSION_TIMEOUT_MS, '');
+      const err = await this.withTimeout<string>(bridge.stopV3(id), CLOSE_SESSION_TIMEOUT_MS,
+        'err:stale stop timeout');
+      if (err.length > 0) {
+        const info = await this.withTimeout<string>(bridge.sessionInfoV3(id), SESSION_INFO_TIMEOUT_MS,
+          'err:session info timeout');
+        if (info.length > 0 && !this.isSessionClosed(info)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  private isSessionClosed(info: string): boolean {
+    try {
+      const parsed = JSON.parse(info) as Record<string, Object>;
+      return parsed !== null && !Array.isArray(parsed) && parsed['state'] === 'closed';
+    } catch (e) {
+      return false;
     }
   }
 
@@ -866,6 +936,7 @@ export class ProbeRunner {
     }
     // 不假装已保存:内存里也标 unsaved,并把标记同步给存储层
     this.coord.markUnsaved();
+    out.summary = this.coord.summary();
     out.results = this.coord.getResults();
     out.tested = this.countTested(out.results);
     const markFn = this.deps.markUnsaved;
@@ -958,14 +1029,19 @@ export class ProbeRunner {
   }
 
   private newRunId(nowMs: number): string {
+    ProbeRunner.runSequence++;
     const rand = Math.floor(Math.random() * 1000000);
-    return `probe-${nowMs}-${rand}`;
+    return `probe-${nowMs}-${rand}-${ProbeRunner.runSequence}`;
   }
 
   private emit(ctx: ProbeRunContext, result: ProbeResult): void {
     const cb = ctx.opts.onResult;
     if (cb !== null) {
-      cb(result);
+      try {
+        cb(result);
+      } catch (e) {
+        this.log(`[probe] 结果回调异常(忽略): ${this.errorText(e)}`);
+      }
     }
   }
 

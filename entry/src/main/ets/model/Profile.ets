@@ -242,7 +242,6 @@ export class AppSettings {
   appearance: string = 'system';       // system / light / dark
   profileSortMode: string = 'manual';  // manual / latency / name
   navLayout: string = 'bottom';        // bottom / side
-  showBottomBar: boolean = false;      // Android: retain StatsBar/FAB outside configuration
   ipv6Mode: string = '';               // Android IPv6Mode: ''(legacy)=由ipv6布尔推导 / disable/enable/prefer/only
   clashApiEnabled: boolean = true;
   // Clash API 端口:9090 改为 19290(2.0.2 共存修复)。9090 是 Clash/mihomo 系应用
@@ -257,8 +256,6 @@ export class AppSettings {
   // netAvailable/netCapabilitiesChange 回调,默认开启会与共存的其他 Clash 系应用
   // 反复抢占唯一的 VPN 会话槽位,形成互踢环(真机 2026-09-18 实证)。
   networkChangeResetConnections: boolean = false;
-  // 应用回到前台时重置连接,对齐安卓 wakeResetConnections(安卓默认 false)
-  wakeResetConnections: boolean = false;
   // 每节点流量统计并持久化,对齐安卓 profileTrafficStatistics(安卓默认 true)
   profileTrafficStatistics: boolean = true;
   liquidGlass: boolean = true;
@@ -274,7 +271,6 @@ export class AppSettings {
   // 落盘;此后不再重复迁移,用户在设置页重新打开的开关一律保留。
   coexistFix202609Applied: boolean = false;
   /** 开机自启(对齐 OwnBox BootReceiver):配合 staticSubscriber 扩展,重启后自动建隧道 */
-  autoStartOnBoot: boolean = false;
   /** 局域网共享鉴权(对齐 OwnBox LAN 共享 user/password):仅 allowAccess 打开时下发 */
   lanAuthUser: string = '';
   lanAuthPass: string = '';

@@ -21,13 +21,14 @@ export struct LogPanel {
   @State litKey: string = '';
   onOpenDrawer: () => void = () => {};
   private scroller: Scroller = new Scroller();
-  private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+  private context!: common.UIAbilityContext;
   private fileOffset: number = 0;
   private fileTimer: number = -1;
   /** W20:清除标记(偏移+文件身份)—— 页面重建后旧日志不重现,新日志仍可见 */
   private clearMarker: LogClearMarker | null = null;
 
   aboutToAppear(): void {
+    this.context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     this.lines = LogStore.getLines().slice();
     const event: emitter.InnerEvent = { eventId: LOG_EVENT_ID };
     emitter.on(event, (data: emitter.EventData) => {
@@ -78,7 +79,6 @@ export struct LogPanel {
   /**
    * W20:导出默认脱敏(URL 凭据/订阅 token/密码/密钥),导出前预览;
    * 「导出原文」是显式次要动作(红色,用户主动选择)。
-   * P6/W21:文案资源化;message 需要 string,经 getStringSync 现取(占位符手动替换)。
    */
   private confirmExportLogs(): void {
     const content = this.filteredLines().join('\n');

@@ -1,6 +1,6 @@
 # 需求追踪矩阵（REQ-01 — REQ-24）
 
-依据 `docs/REDESIGN-PLAN-2026-10-23.md` §2（需求表）、§24.2-1（每条需求要有实现 + 证据）、§24.3。状态口径：**✅ 已实现且有主机证据** / **⚠️ 部分实现**（缺口写在备注） / **⏳ 未开始**；所有**真机项一律「待验」**，不计入 ✅。最后更新：2026-10-24（P6 完成：i18n 收口/双栏/热区/无障碍/等宽；P7 文档轮进行中）。
+依据 `docs/REDESIGN-PLAN-2026-10-23.md` §2（需求表）、§24.2-1（每条需求要有实现 + 证据）、§24.3。状态口径：**✅ 已实现且有主机证据** / **⚠️ 部分实现**（缺口写在备注） / **⏳ 未开始**；所有**真机项一律「待验」**，不计入 ✅。最后更新：2026-10-31（2.6.0 发布基线；修正已移除页面的引用）。
 
 | REQ | 需求 | 计划阶段 | 状态 | 实现位置 | 证据 | 备注 / 缺口 |
 |---|---|---|---|---|---|---|
@@ -15,7 +15,7 @@
 | REQ-09 | 进度、成功失败计数、取消、仅看可用、重测失败 | P2/P3 | ✅ 主机 | `ProbeCoordinator.summary`、`ProbeFilters.summarize/shouldShowRetest`、`Index` 检测进度 | `tests/probe-coordinator.cjs`、`probe-filters.cjs` | — |
 | REQ-10 | 坏节点隔离、绑定回退可见、不静默假绿 | P2 | ✅ 主机 | `ProbeCoordinator.onBatchStartFailed`（split/isolated/exhausted）、`ProbeRunner` 逐节点降级 | `tests/probe-coordinator.cjs`、`probe-runner.cjs`、`parity-latency.cjs` | 真机探测结论待设备 |
 | REQ-11 | 分流摘要列表 + 独立基础/高级编辑 | P4 | ✅ 主机 / 待验 真机 | `model/RoutingRules.ets`、`model/RuleEditor.ets`、`pages/RouteRulesPage.ets`、`pages/RuleEditPage.ets` | `tests/routing-rules.cjs`、`rule-editor.cjs`、`route-rules-ui.cjs` | 编译顺序编号/来源标注/条件计数已落；真机交互待验 |
-| REQ-12 | 真实连接展示目标、规则、策略组、最终节点 | P5 | ✅ 主机 / 待验 真机 | `model/ConnectionView.ets`、`pages/ConnectionsPage.ets` | `tests/connection-view.cjs`（4 组）；P5 报告 | rulePayload 不伪造、规则名链接按方案留 K3；真机证据卡待验 |
+| REQ-12 | 真实连接展示目标、规则、策略组、最终节点 | P5 | ✅ 主机 / 待验 真机 | `model/ConnectionView.ets`（连接列表页已在 2.4 移除，模型与解析保留，按需恢复 UI） | `tests/connection-view.cjs`（4 组）；P5 报告 | rulePayload 不伪造、规则名链接按方案留 K3；真机证据卡待验 |
 | REQ-13 | 分应用三模式、有效数量、待应用状态、空名单门控 | P1/P4/P6 | ✅ 主机 / 待验 真机 | `model/PerApp.ets`、`model/PerAppPolicy.ets`、`VpnExtAbility`（启动前同一纯函数）、**分流页 PerAppManager（2026-10-24 自设置页整体迁入,保存即走应用事务）** | `tests/per-app-policy.cjs`（8 组）、`tests/functional-audit.cjs`；真机装机 | UI 缺口已关闭;真机 include/exclude 实测待验 |
 | REQ-14 | 不支持包名指定出站入口收口与旧数据保护 | P1/P4 | ✅ 主机 | `RoutingRules`（`unsupportedOnPlatform`、`legacyRow`、`legacyHandlingOptions`） | `tests/routing-rules.cjs`、`tests/migration-v5.cjs` | 旧规则区三动作 + 编辑器移除控件已落（convert 不自动推导）；真机待验 |
 | REQ-15 | 策略组手动/自动管理、真实选中项、热切换 | P4 | ⚠️ | `core/ClashApi.ets`、`model/PolicyGroups.ets`、ConfigBuilder 多组稳定 tag 下发、分流页策略组 tab | `tests/clash-api.cjs`、`policy-groups.cjs`、`outbound-graph.cjs` | 切换 UI 目前仅覆盖运行图 `proxy` 组；urltest 组如实不给切换；真机热切换待验 |
@@ -23,7 +23,7 @@
 | REQ-17 | 更新事务、缓存、差异、用户覆盖与冲突处理 | P1/P5 | ✅ 主机 / 待验 真机 | `model/SubscriptionLayers.ets`、`core/SubscriptionRepository.ets`、`core/SubscriptionSourceStore.ets` | `tests/subscription-layers.cjs`（12 组）、`tests/subscription-repository.cjs`（8 组）；P5 报告 | 三层模型+两级身份合并+墓碑/复活+304 只推进时间+基线漂移重算；覆盖层唯一写入口=commit（防漂移断言）；真机待验 |
 | REQ-18 | 设置即时/下次/重连分类，统一待应用机制 | P4 | ✅ 主机 / 待验 真机 | `model/SettingsSchema.ets`、设置页待应用条、`ApplyCoordinator`、扩展 `handleApplyCommand` | `tests/settings-schema.cjs`（25 组）；`docs/p4-design/apply-transaction.md` | 真机切换中恢复/杀进程待验 |
 | REQ-19 | 规则集真实下载状态、已验证缓存、首次失败策略 | P1/P4 | ✅ 主机 / 待验 真机 | `core/RuleSetRepository.ets`、K1 `CGoValidateSRSFileV1`、分流页规则集子页（真实时间戳,未验证不标） | `tests/ruleset-repository.cjs`（17 组）、`tests/route-rules-ui.cjs`、`tests/hostprobe/k1_validate_test.go`；P4 报告 §6 | 真机下载/断网首连待验 |
-| REQ-20 | 日志/流量清除真实生效、诊断错误可读 | P5 | ✅ 主机 / 待验 真机 | `model/LogView.ets`、`model/TrafficBaseline.ets`、`core/Diagnostics.ets`、`pages/LogPage.ets`、`pages/ToolsPage.ets`、`Index` 轮询、`VpnExtAbility` 通知基准 | `tests/log-view.cjs`（4 组）、`tests/diagnostics.cjs`（3 组）；P5 报告 | 清除记偏移+身份（跨页面重建不重现）/导出默认脱敏可预览/流量基准修复轮询写回/诊断包不含密钥与 URL；通知基准会话级同步为已知降级；真机待验 |
+| REQ-20 | 日志/流量清除真实生效、诊断错误可读 | P5 | ✅ 主机 / 待验 真机 | `model/LogView.ets`、`model/TrafficBaseline.ets`、`model/TrafficMeter.ets`、`vpnext/TrafficStream.ets`、`core/Diagnostics.ets`、`pages/LogPage.ets`、`pages/ToolsPage.ets`、`common/components/StatsBar.ets`、`VpnExtAbility` 通知基准 | `tests/log-view.cjs`（4 组）、`tests/diagnostics.cjs`（3 组）、`tests/traffic-meter.cjs`（3 组）；P5 报告 | 清除记偏移+身份（跨页面重建不重现）/导出默认脱敏可预览/诊断包不含密钥与 URL；P1 起 `:vpn` 扩展是唯一流量生产者（内核 `/traffic` 1s 增量 → 累计口径），UI 不再轮询 `/connections`，清除基准经命令通道即时同步；通知基准会话级同步为已知降级；真机待验 |
 | REQ-21 | 深浅色、间距字体、模糊、数字对齐统一 | P3/P6 | ✅ 主机 / 待验 真机 | `UiSpec` + 资源 835 键（base/en 对称）、延迟/速率/流量等宽、底栏半透明+backdropBlur 保持 | `tests/p6-ui-static.cjs` 组 1/4、`tests/i18n-keys.cjs`；P6 报告 | 浅/深色视觉与字体档位实测待真机 |
 | REQ-22 | 手机/平板、字体缩放、可访问标签与输入焦点 | P6 | ⚠️ | 44×44 热区、顶栏 a11y 名称/禁用原因已落（P6）；**断点双栏 2026-10-24 真机用户反馈撤回**（不要侧边节点详情栏），节点页保持单列,宽屏形态需用户再确认 | `tests/p6-ui-static.cjs` 组 2/3/5 + 真机装机取证 | 字体 100%/130%/最大档、读屏/键盘走查待真机;双栏撤回后本条回退为部分实现 |
 | REQ-23 | 空态、引导、错误恢复、危险操作保护 | P3/P5 | ⚠️ | `HomeView.emptyStateFor`、订阅页空态/二次确认、`connectGate` | `tests/home-view.cjs` | 两处空态分支（`import_done`/`auth_denied`）当前不可达，待改节点页横幅 |

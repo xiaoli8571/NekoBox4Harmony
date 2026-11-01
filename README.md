@@ -1,15 +1,15 @@
 # NekoBox for Harmony(HarmonyOS 原生 VPN 客户端)    
 欢迎加入交流群：https://t.me/+x9D290Stp9NhYWU9 邀测链接会在群内发送
 
-参考 [NekoBoxForAndroid](https://github.com/MatsuriDayo/NekoBoxForAndroid) 架构思路、基于 **sing-box v1.11.9**(含 OHOS 补丁)内核的 HarmonyOS NEXT(Stage 模型)VPN 客户端。内核以 **c-shared .so 进程内 dlopen** 方式运行(沙箱禁止 exec 二进制),支持 Hysteria2 / TUIC v5 等协议。
+参考 [NekoBoxForAndroid](https://github.com/MatsuriDayo/NekoBoxForAndroid) 架构思路、基于 **sing-box 1.15.0-alpha.13**(含 OHOS 补丁)内核的 HarmonyOS NEXT(Stage 模型)VPN 客户端。内核以 **c-shared .so 进程内 dlopen** 方式运行(沙箱禁止 exec 二进制),支持 Hysteria2 / TUIC v5 等协议。
 
 > ✅ **克隆即可构建**:成品内核 `entry/libs/arm64-v8a/libsingbox.so` 随仓库分发,`build-profile.json5` 为无签名配置(`signingConfigs: []`),克隆后直接构建即得未签名 HAP,零额外步骤。`hvigorw.js` 已内置补丁,修复 Node ≥ 18.20 下 `.cmd` 子进程 EINVAL 问题。
 
 ## 下载
 
-前往 [Releases](https://github.com/xiaoli8571/NekoBox4Harmony/releases) 下载未签名 HAP(如 `NekoBox4Harmony-1.5.8-unsigned.hap`),在 DevEco Studio 中签名后安装(签名由用户自理)。
+前往 [Releases](https://github.com/xiaoli8571/NekoBox4Harmony/releases) 下载未签名 HAP(如 `NekoBox4Harmony-2.7.0-unsigned.hap`),在 DevEco Studio 中签名后安装(签名由用户自理)。
 
-## 功能特性(v1.5.8)
+## 功能特性(v2.7.0)
 
 - **协议**:ss / vmess / vless / trojan / **hysteria2** / **tuic v5**;分享链接导入、HTTP(S) 订阅、Clash YAML 订阅兼容
 - **节点**:分组管理与首页分组显示、批量延迟测试(结果保存并按延迟着色)、编辑页实时校验(服务器/端口/UUID/凭据/REALITY)
@@ -21,7 +21,7 @@
 - **日志**:独立日志页,固定终端配色(深底浅字 + ERROR/WARN 高亮),内核日志实时可见
 - **DNS / 路由安全**:DNS 劫持防泄漏、防路由回环排除路由(见技术要点)
 
-F 阶段(F1~F7)已全部交付;后续规划(G 阶段:节点置顶/分组测速汇总/分享二维码/远程规则集/连接统计)见 `DEVPLAN.md`。
+P0–P7 改造已全部交付;2.7.0 完成一轮性能/可靠性整改(P0+P1:签名卫生、启动串行化、订阅更新去重、单流量生产者、节点列表缓存、分应用防抖、Store 解析缓存、StatsBar 抽离),2.6.0 修复了 2.5.0 的 gVisor `fstat` EPERM 启动回归(真机验证通过)。后续优化与发布记录见 `DEVPLAN.md`、`CHANGES.md`。
 
 ## 从源码构建
 
@@ -63,7 +63,7 @@ UI 进程 EntryAbility / Index / VpnService(操作串行化)
 | NekoBoxForAndroid | 本项目 |
 |---|---|
 | VpnService / VpnService.Builder | `@ohos.net.vpnExtension`(VpnExtAbility) |
-| sing-box / libbox 内核插件 | sing-box 1.11.9 c-shared .so(进程内 dlopen) |
+| sing-box / libbox 内核插件 | sing-box 1.15.0-alpha.13 c-shared .so(进程内 dlopen) |
 | 插件进程 fd / protect 处理 | TUN fd 经 CGo 注入 + `protectProcessNet()` |
 | Protocol / Profile 配置层 | `ets/model/Profile.ets` + `ets/core/ConfigBuilder.ets` |
 | 分享链接 / 订阅导入 | `ets/utils/LinkParser.ets`(ss/vmess/vless/trojan/hysteria2/tuic/订阅) |

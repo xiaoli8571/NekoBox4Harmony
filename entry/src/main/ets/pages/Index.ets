@@ -24,6 +24,7 @@ import { addMessage } from '../model/MessageStore';
 import { statusBarTopVp } from '../common/PageTopInset';
 import { illuminatedEffect, pressLightEffect } from '../common/Effects';
 import { GlowIconButton } from '../common/components/GlowIconButton';
+import { StatsBar } from '../common/components/StatsBar';
 import { HdsMenu, MenuItemData } from '../common/components/FlowMenu';
 import { HAND_SIDE_KEY, handedness } from '../common/Handedness';
 import { SettingsPage } from './SettingsPage';
@@ -60,12 +61,11 @@ import { fetchSubscriptionWithInfo, looksLikeClashYaml, parseClashProxies, looks
 import { testProfiles, urlTestProfiles, canTCPing, genFriendlyMsg, TestError, TestResult,
   CONNECTION_TEST_TIMEOUT_MS } from '../utils/LatencyTester';
 import { SubscriptionRepository } from '../core/SubscriptionRepository';
-import { TrafficBaseline, parseBaseline, baselineToJson, buildBaseline,
-  displayTotals, baselineStale } from '../model/TrafficBaseline';
+import { baselineToJson, buildBaseline } from '../model/TrafficBaseline';
 import { SubInfo, listSubs, upsertSub, needAutoUpdate, updateSubscription, setAppContext, subNameOf, markSubSuccess, markSubFailure,
   removeSub,
   SubUpdateResult, subUpdateHasChanges, needDirectUpdateConfirm } from '../core/Subscriptions';
-import { fetchTrafficTotals, formatSpeed } from '../utils/TrafficStats';
+import { fetchTrafficTotals } from '../utils/TrafficStats';
 import { fetchCurrentProxyDelay } from '../utils/ClashApi';
 import { exportProfileLink } from '../utils/LinkExporter';
 import { buildOutboundJson } from '../core/ConfigBuilder';
@@ -152,6 +152,15 @@ struct Index {
    * 只是渲染量分页,点击后再追加。
    */
   @State nodeRenderLimit: number = 120;
+  /** P1:节点列表缓存(输入版本 key + profiles/probeResults 引用身份) */
+  private nodeListCacheKey: string = '';
+  private nodeListCacheProfiles: Array<Profile> | null = null;
+  private nodeListCacheProbeResults: Array<ProbeResult> | null = null;
+  private nodeListCache: Array<Profile> = [];
+  /** P1:分页切片缓存(同一份可见列表 + 同一 limit 只 slice 一次) */
+  private pagedNodeCacheSource: Array<Profile> | null = null;
+  private pagedNodeCacheLimit: number = -1;
+  private pagedNodeCache: Array<Profile> = [];
   @State uiUptime: number = 0;
   @State nodeSearch: string = '';
   @State searchVisible: boolean = false;
@@ -247,6 +256,9 @@ struct Index {
   /** 本次 apply 发起时刻(用于「applying 自愈」:回执丢失时不能永远挂横条) */
   private applyStartedAtMs: number = 0;
   private modeApplyTimer: number = -1;
+  /** P1:分应用连续勾选合并应用(700ms 窗口),避免每勾一个应用就重启一次内核 */
+  private perAppApplyTimer: number = -1;
+  private perAppApplyPending: boolean = false;
   /** 扩展回执(AppStorage 键由 EntryAbility.subscribeApplyResults 写入;@Watch 驱动,不轮询) */
   @StorageLink('vpnApplyOperationId') @Watch('onApplyResultWatch') applyResultOperationId: string = '';
   @State appVersion: string = '';
@@ -255,23 +267,17 @@ struct Index {
   @StorageProp('themeAccentHex') accentHex: string = '';
   @StorageLink('vpnRunning') @Watch('onRunningChange') isRunning: boolean = false;
   @StorageLink('vpnStatus') @Watch('onVpnStatusWatch') statusText: string = 'disconnected';
-  @StorageLink('vpnUpSpeed') upSpeed: number = 0;
-  @StorageLink('vpnDownSpeed') downSpeed: number = 0;
   @StorageLink('vpnTotalUp') totalUp: number = 0;
   @StorageLink('vpnTotalDown') totalDown: number = 0;
+  /** 内核累计口径(P1:扩展是唯一流量生产者,UI 不再轮询 /connections) */
+  @StorageLink('vpnRawTotalUp') rawTotalUp: number = 0;
+  @StorageLink('vpnRawTotalDown') rawTotalDown: number = 0;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   private switching: boolean = false;
-  private speedTimer: number = -1;
-  private speedPollGeneration: number = 0;
-  private lastUp: number = 0;
-  private lastDown: number = 0;
-  private trafficBaselineLoaded: boolean = false;
-  /** W20:显示累计流量基准(重置时记录;显示=当前-基准,轮询不再写回旧值) */
-  private trafficBaseline: TrafficBaseline | null = null;
-  private rawTotalUp: number = 0;
-  private rawTotalDown: number = 0;
-  private lastTrafficAt: number = 0;
   private uptimeTimer: number = -1;
+  /** 冷启动串行初始化只跑一次(aboutToAppear 可能因页面重建再次进入) */
+  private bootstrapped: boolean = false;
+  private bootstrapPromise: Promise<void> | null = null;
 
   aboutToAppear(): void {
     setAppContext(this.context);
@@ -283,7 +289,6 @@ struct Index {
        一旦服务未就绪会卡死在开屏页(真机踩过)。Handler 内部还会再 defer 一次(setTimeout 0)。 */
     handedness.start();
     this.computeInsets();
-    this.refresh();
     /* 浏览记忆恢复(§3.4):冷启动/进程重建时恢复上次的搜索词与滚动位置;
        ⚠️ 只在启动这条路径清一次运行态筛选(resetRuntimeDependent),切页不要调 */
     this.restoreBrowsingMemory();
@@ -291,16 +296,41 @@ struct Index {
     void this.refreshProbeResults();
     /* P3②:网络可用性(空态 offline 分支)+ 授权拒绝标记的状态回传钩子已在 @Watch 上 */
     this.startNetworkWatch();
-    this.autoUpdateSubs();
-    this.autoConnect();
-    this.maybeRecoverAfterKill();
+    /* ⚠️ 启动顺序:必须等 refresh() 把 settings 读进内存,再做自动连接/恢复决策。
+       旧实现 refresh() 不 await,autoConnect 读到默认 autoConnect=false 会直接跳过;
+       maybeRecoverAfterKill 也会用错误的 autoConnect 做恢复判断。 */
+    void this.bootstrap();
     if (this.isRunning) {
-      this.startSpeedPoller();
       this.startUptimeTimer();
     }
     /* 冷启动路径:@Watch 只在**变化**时触发,而快捷方式的 want 在 Index 挂载前就
        写进 AppStorage 了,这里主动消费一次(热启动靠 @Watch)。 */
     this.onShortcutChanged();
+  }
+
+  /** 冷启动串行初始化:settings/profiles 就绪 → 被杀恢复 → 自动更新(后台) → 自动连接。 */
+  private bootstrap(): Promise<void> {
+    if (this.bootstrapPromise !== null) {
+      return this.bootstrapPromise;
+    }
+    if (this.bootstrapped) {
+      return Promise.resolve();
+    }
+    this.bootstrapped = true;
+    this.bootstrapPromise = (async (): Promise<void> => {
+      await this.refresh();
+      const recovered: boolean = await this.maybeRecoverAfterKill();
+      /* 订阅更新不阻塞连接(网络慢时自动连接不该被拖住);in-flight 去重在 repository 层 */
+      void this.autoUpdateSubs();
+      if (!recovered) {
+        await this.autoConnect();
+      }
+    })().catch((e: Object) => {
+      LogStore.addLog(`[app] 启动初始化失败: ${e}`);
+    }).finally(() => {
+      this.bootstrapPromise = null;
+    });
+    return this.bootstrapPromise;
   }
 
   /**
@@ -393,7 +423,14 @@ struct Index {
   /** 列表渲染用的分页切片(只影响绘制;测速/操作仍用 visibleNodeList 全量) */
   private pagedNodeList(): Array<Profile> {
     const all = this.visibleNodeList();
-    return all.length > this.nodeRenderLimit ? all.slice(0, this.nodeRenderLimit) : all;
+    if (this.pagedNodeCacheSource === all && this.pagedNodeCacheLimit === this.nodeRenderLimit) {
+      return this.pagedNodeCache;
+    }
+    const paged = all.length > this.nodeRenderLimit ? all.slice(0, this.nodeRenderLimit) : all;
+    this.pagedNodeCacheSource = all;
+    this.pagedNodeCacheLimit = this.nodeRenderLimit;
+    this.pagedNodeCache = paged;
+    return paged;
   }
 
   /** 当前页面 id(§3.2:内部仍是旧 activeTab 0..6 数值,id 由契约映射,显示名/动作按 id 取) */
@@ -407,6 +444,8 @@ struct Index {
    */
   private switchTab(tab: number): void {
     const from = this.currentPageId();
+    /* P1:离页前把挂起的分应用变更应用掉,避免切页后内核还停在旧名单 */
+    this.flushPerAppApply();
     this.navMemory.setSearch(from, this.nodeSearch);
     try {
       this.navMemory.setScroll(from, Math.max(0, Math.round(this.configScroller.currentOffset().yOffset)));
@@ -416,6 +455,7 @@ struct Index {
     this.cancelSearchFilterTimer();
     this.searchVisible = false;
     this.nodeSearch = this.navMemory.getSearch(pageByLegacyTab(tab).id);
+    this.resetNodeRenderLimit();
     this.activeTab = tab;
     this.logSkippedActions(pageByLegacyTab(tab).id);
     this.restoreScrollFor(pageByLegacyTab(tab).id);
@@ -465,6 +505,7 @@ struct Index {
     this.searchDebounceTimer = setTimeout(() => {
       this.searchDebounceTimer = -1;
       this.nodeSearch = v;
+      this.resetNodeRenderLimit();
     }, 250);
   }
 
@@ -480,11 +521,12 @@ struct Index {
     this.cancelSearchFilterTimer();
     this.nodeSearch = '';
     this.searchVisible = false;
+    this.resetNodeRenderLimit();
   }
 
   aboutToDisappear(): void {
     this.cancelSearchFilterTimer();
-    this.stopSpeedPoller();
+    this.flushPerAppApply();
     this.stopNetworkWatch();
     if (this.uptimeTimer >= 0) {
       clearInterval(this.uptimeTimer);
@@ -530,7 +572,6 @@ struct Index {
 
   onRunningChange(): void {
     if (this.isRunning) {
-      this.startSpeedPoller();
       this.startUptimeTimer();
       // 被杀自愈:真实运行态落盘"活着"(进程被杀后 Preferences 仍在,下次启动据此恢复)
       CrashGuard.markVpnStarted(AppStorage.get<string>('vpnRunningProfileId') ?? '')
@@ -538,7 +579,6 @@ struct Index {
           LogStore.addLog(`[app] 被杀标记写入异常(忽略): ${e}`);
         });
     } else {
-      this.stopSpeedPoller();
       this.stopUptimeTimer();
       CrashGuard.markVpnStopped().catch((e: Object) => {
         LogStore.addLog(`[app] 干净退出标记写入异常(忽略): ${e}`);
@@ -551,18 +591,18 @@ struct Index {
    * 被杀自愈(FlClash 同款,零权限):上次运行带着开着的 VPN 被系统/用户回收 →
    * 本次启动按"启动自动连接"设置直接重连或弹框询问。决策已在 CrashGuard.init 消费标记。
    */
-  private async maybeRecoverAfterKill(): Promise<void> {
+  private async maybeRecoverAfterKill(): Promise<boolean> {
     try {
       await CrashGuard.ensureLoaded();
       const decision = CrashGuard.recoveryDecision(this.isRunning, this.settings.autoConnect);
       if (decision.action === 'none') {
-        return;
+        return false;
       }
       if (decision.action === 'reconnect') {
         LogStore.addLog(`[app] 检测到上次运行被系统回收,自动恢复连接: ${decision.profileId}`);
         await VpnService.connect(this.context, decision.profileId);
         this.refresh();
-        return;
+        return true;
       }
       AlertDialog.show({
         title: $r('app.string.crash_recovery_title'),
@@ -578,35 +618,47 @@ struct Index {
           }
         }
       });
+      return true;
     } catch (e) {
       LogStore.addLog(`[app] 被杀自愈检查失败(忽略): ${e}`);
+      return false;
     }
   }
 
   async refresh(): Promise<void> {
     try {
       await initStore(this.context);
-      this.profiles = await loadProfiles();
-      this.groups = await loadGroups();
-      this.settings = await loadSettings();
-      this.subscriptions = await listSubs();
-      this.activeConfigUrl = await readPrefString('active_config_url', '');
+      /* P1:互不依赖的读取并发发起(节点/分组/设置/订阅/四个偏好键)。
+         以前 8 次串行 await;大订阅下 JSON.parse 与 Preferences 往返叠加,
+         会明显拖慢冷启动首屏。 */
+      const profilesP = loadProfiles();
+      const groupsP = loadGroups();
+      const settingsP = loadSettings();
+      const subsP = listSubs();
+      const activeConfigP = readPrefString('active_config_url', '');
+      const multiRawP = readPrefString(ACTIVE_SUBS_PREF, '');
+      const singleRawP = readPrefString(ACTIVE_SUB_PREF, '');
+      const savedNodeP = readPrefString('selected_profile_id', '');
+      this.profiles = await profilesP;
+      this.groups = await groupsP;
+      this.settings = await settingsP;
+      this.subscriptions = await subsP;
+      this.activeConfigUrl = await activeConfigP;
+      const multiRaw: string = await multiRawP;
+      const singleRaw: string = await singleRawP;
+      const savedNodeId: string = await savedNodeP;
       if (this.activeConfigUrl.length > 0 && !this.subscriptions.some((sub: SubInfo) => sub.url === this.activeConfigUrl)) {
         this.activeConfigUrl = '';
         await writePrefString('active_config_url', '');
       }
       /* 多选键优先;只有"从没设置过"(空串)才回落旧的单选键,迁移后立刻落到新键 */
-      const multiRaw: string = await readPrefString(ACTIVE_SUBS_PREF, '');
-      let selected: Array<string> = parseActiveSubs(multiRaw.length > 0
-        ? multiRaw
-        : await readPrefString(ACTIVE_SUB_PREF, ''));
+      let selected: Array<string> = parseActiveSubs(multiRaw.length > 0 ? multiRaw : singleRaw);
       selected = normalizeActiveSubs(selected, this.subscriptions);
       this.activeSubUrls = selected;
       const encoded: string = serializeActiveSubs(selected);
       if (multiRaw !== encoded) {
         await writePrefString(ACTIVE_SUBS_PREF, encoded);
       }
-      const savedNodeId = await readPrefString('selected_profile_id', '');
       if (savedNodeId.length > 0 && this.profiles.some((profile: Profile) => profile.id === savedNodeId)) {
         this.selectedId = savedNodeId;
       } else if (this.selectedId.length === 0 && this.profiles.length > 0) {
@@ -662,56 +714,10 @@ struct Index {
     }
   }
 
-  // ---------------------------------------------------------------- 速度/计时轮询
-
-  private startSpeedPoller(): void {
-    this.stopSpeedPoller();
-    if (!this.isRunning || !this.settings.clashApiEnabled) {
-      return;
-    }
-    this.lastUp = 0;
-    this.lastDown = 0;
-    this.lastTrafficAt = 0;
-    AppStorage.setOrCreate('vpnUpSpeed', 0);
-    AppStorage.setOrCreate('vpnDownSpeed', 0);
-    const generation = ++this.speedPollGeneration;
-    const poll = async (): Promise<void> => {
-      const startedAt = Date.now();
-      const t = await fetchTrafficTotals(this.settings.clashApiPort, this.settings.clashApiSecret);
-      if (generation !== this.speedPollGeneration || !this.isRunning || !this.settings.clashApiEnabled || t === null) {
-        return;
-      }
-      if (this.lastTrafficAt <= 0) {
-        this.lastUp = t.up;
-        this.lastDown = t.down;
-        this.lastTrafficAt = startedAt;
-        AppStorage.setOrCreate('vpnUpSpeed', 0);
-        AppStorage.setOrCreate('vpnDownSpeed', 0);
-      } else {
-        const elapsedSeconds = Math.max(0.001, (startedAt - this.lastTrafficAt) / 1000);
-        AppStorage.setOrCreate('vpnUpSpeed', Math.max(0, Math.round((t.up - this.lastUp) / elapsedSeconds)));
-        AppStorage.setOrCreate('vpnDownSpeed', Math.max(0, Math.round((t.down - this.lastDown) / elapsedSeconds)));
-        this.lastUp = t.up;
-        this.lastDown = t.down;
-        this.lastTrafficAt = startedAt;
-      }
-      if (!this.trafficBaselineLoaded) {
-        this.trafficBaselineLoaded = true;
-        await this.loadTrafficBaseline();
-      }
-      this.rawTotalUp = t.up;
-      this.rawTotalDown = t.down;
-      if (baselineStale(t.up, t.down, this.trafficBaseline)) {
-        /* 内核重启(计数器归零):基准过期,显示原始值 */
-        this.trafficBaseline = null;
-      }
-      const shown = displayTotals(t.up, t.down, this.trafficBaseline);
-      AppStorage.setOrCreate('vpnTotalUp', shown[0]);
-      AppStorage.setOrCreate('vpnTotalDown', shown[1]);
-    };
-    void poll();
-    this.speedTimer = setInterval(() => { void poll(); }, 1000);
-  }
+  // ---------------------------------------------------------------- 计时
+  /* 实时速率/累计流量不再由 UI 轮询(P1)::vpn 扩展用内核 /traffic 流作为唯一
+     生产者,经 CommonEvent 写 AppStorage(vpnUpSpeed/vpnDownSpeed/vpnTotalUp|Down/
+     vpnRawTotalUp|Down),本页只消费 @StorageLink。 */
 
   private startUptimeTimer(): void {
     this.stopUptimeTimer();
@@ -736,19 +742,6 @@ struct Index {
     AppStorage.setOrCreate('uiUptimeStart', 0);
   }
 
-  private stopSpeedPoller(): void {
-    this.speedPollGeneration++;
-    if (this.speedTimer >= 0) {
-      clearInterval(this.speedTimer);
-      this.speedTimer = -1;
-    }
-    this.lastUp = 0;
-    this.lastDown = 0;
-    this.lastTrafficAt = 0;
-    AppStorage.setOrCreate('vpnUpSpeed', 0);
-    AppStorage.setOrCreate('vpnDownSpeed', 0);
-  }
-
   // ---------------------------------------------------------------- 连接控制
 
   private uptimeText(): string {
@@ -757,38 +750,6 @@ struct Index {
     const seconds = this.uiUptime % 60;
     const pad = (value: number): string => value < 10 ? `0${value}` : `${value}`;
     return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-  }
-
-  statusDisplay(): ResourceStr {
-    const s = this.statusText;
-    if (s === 'connecting') {
-      return $r('app.string.status_connecting');
-    }
-    if (s === 'disconnecting') {
-      return $r('app.string.status_disconnecting');
-    }
-    if (s === 'disconnected') {
-      return $r('app.string.status_disconnected');
-    }
-    if (s === 'switching') {
-      return $r('app.string.status_switching');
-    }
-    if (s === 'start_timeout') {
-      return $r('app.string.status_start_timeout');
-    }
-    if (s === 'awaiting_auth') {
-      return $r('app.string.status_awaiting_auth');
-    }
-    if (s.startsWith('connected:')) {
-      return $r('app.string.status_connected_node', s.substring('connected:'.length));
-    }
-    if (s.startsWith('start_failed:')) {
-      return $r('app.string.status_start_failed', s.substring('start_failed:'.length));
-    }
-    if (s.startsWith('connect_failed:')) {
-      return $r('app.string.status_connect_failed', s.substring('connect_failed:'.length));
-    }
-    return s;
   }
 
   async connectTo(p: Profile): Promise<void> {
@@ -1162,6 +1123,7 @@ struct Index {
   async setSortMode(mode: string): Promise<void> {
     this.settings.profileSortMode = mode;
     this.navMemory.setSortMode(mode);
+    this.resetNodeRenderLimit();
     await saveSettings(this.settings);
     this.profiles = this.profiles.slice();
   }
@@ -1340,16 +1302,6 @@ struct Index {
     }
   }
 
-  /** W20:从 Preferences 恢复显示流量基准(UI 与扩展通知共用同一份)。 */
-  private async loadTrafficBaseline(): Promise<void> {
-    try {
-      const text = await readPrefString('traffic_display_baseline', '');
-      this.trafficBaseline = text.length > 0 ? parseBaseline(text) : null;
-    } catch (e) {
-      this.trafficBaseline = null;
-    }
-  }
-
   /** W18:清空某订阅的全部节点(订阅记录保留;页面已二次确认) */
   private async clearSubscriptionNodes(url: string): Promise<void> {
     try {
@@ -1364,19 +1316,27 @@ struct Index {
 
   /** 清除累计流量统计(对齐安卓 action_clear_traffic_statistics) */
   clearTrafficStatistics(): void {
-    this.lastUp = 0;
-    this.lastDown = 0;
-    this.lastTrafficAt = 0;
     /* W20(§10.4):重置 = 记录基准偏移(含会话 epoch);UI 与通知从同一基准计算,
-       轮询不再把旧显示值写回。节点历史流量(Profile.rx/tx)不受影响。 */
+       轮询不再把旧显示值写回。节点历史流量(Profile.rx/tx)不受影响。
+       P1:原始累计值来自扩展的 /traffic 流(@StorageLink vpnRawTotal*),
+       UI 不再自己轮询 /connections。 */
     if (this.isRunning && this.rawTotalUp >= 0 && this.rawTotalDown >= 0 &&
       (this.rawTotalUp > 0 || this.rawTotalDown > 0)) {
       const sessionId = AppStorage.get<string>('vpnSessionId') ?? '';
-      this.trafficBaseline = buildBaseline(this.rawTotalUp, this.rawTotalDown, sessionId, Date.now());
-      void writePrefString('traffic_display_baseline', baselineToJson(this.trafficBaseline));
+      const baseline = buildBaseline(this.rawTotalUp, this.rawTotalDown, sessionId, Date.now());
+      void writePrefString('traffic_display_baseline', baselineToJson(baseline));
+      /* 通知进程持有自己的内存副本:命令通道同步重置,立即生效 */
+      const command = new VpnCommand();
+      command.cmd = 'clearTraffic';
+      command.sessionId = sessionId;
+      command.extra = {
+        'rawUp': `${this.rawTotalUp}`,
+        'rawDown': `${this.rawTotalDown}`,
+        'sessionId': sessionId
+      };
+      publishVpnCommand(command);
       LogStore.addLog(`[ui] 重置显示累计流量: 基准 ↑${this.rawTotalUp} ↓${this.rawTotalDown}(会话 ${sessionId})`);
     } else {
-      this.trafficBaseline = null;
       void writePrefString('traffic_display_baseline', '');
     }
     AppStorage.setOrCreate('vpnTotalUp', 0);
@@ -2108,6 +2068,35 @@ struct Index {
   // ------------------------------------------------ P4/W16-B 应用事务(§12.3/§14.3)
 
   /**
+   * 分应用勾选:700ms 防抖,只提交/应用一次。
+   * 保存本身仍是每次勾选即时落盘(PerAppManager.persistPerApp 语义不变,functional-audit 守着),
+   * 这里合并的是「内核重启」这个昂贵动作。
+   */
+  private schedulePerAppApply(): void {
+    this.perAppApplyPending = true;
+    if (this.perAppApplyTimer >= 0) {
+      clearTimeout(this.perAppApplyTimer);
+    }
+    this.perAppApplyTimer = setTimeout(() => {
+      this.perAppApplyTimer = -1;
+      this.flushPerAppApply();
+    }, 700);
+  }
+
+  /** 立即应用挂起的分应用变更(切页/页面隐藏时调用)。 */
+  private flushPerAppApply(): void {
+    if (this.perAppApplyTimer >= 0) {
+      clearTimeout(this.perAppApplyTimer);
+      this.perAppApplyTimer = -1;
+    }
+    if (!this.perAppApplyPending) {
+      return;
+    }
+    this.perAppApplyPending = false;
+    void this.commitAndApplySettings('perapp');
+  }
+
+  /**
    * 提交一次设置变更并（必要时）应用:
    * ① `ConfigRepository.commit()` 把当前设置写进**新快照**(revision+1,不可变文件 + 双槽 manifest);
    * ② `ApplyCoordinator.markSaved()` 推进 savedRevision(**不推进 applied**,§14.3);
@@ -2457,25 +2446,53 @@ struct Index {
   // ---------------------------------------------------------------- P3/W12 节点工具条(筛选/排序)
 
   /** 工具条筛选后的可见节点:分组内 → filterNodes(搜索/收藏/仅看可用) → sortNodes(排序)。
-   *  **页面不再自己算排序**(§4.1);NavMemory 不是 @State,靠 filtersRev 触发重渲染。 */
+   *  **页面不再自己算排序**(§4.1);NavMemory 不是 @State,靠 filtersRev 触发重渲染。
+   *  P1:结果按输入版本缓存 —— nodeListPane 一次渲染会读它 4 次(列表/显示更多文案/总数),
+   *  没有缓存时每读一次都要全量过滤+排序。 */
   visibleNodeList(): Array<Profile> {
     if (this.filtersRev < 0) {
       return [];
     }
+    const onlyUsable = this.navMemory.isOnlyUsable();
+    /* 「仅看可用」依赖结果新鲜度:按秒失效,避免缓存把过期节点一直当可用 */
+    const timeBucket = onlyUsable ? Math.floor(Date.now() / 1000) : 0;
+    const onlyFavorites = this.navMemory.isOnlyFavorites();
+    const key = `${this.filtersRev}|${this.resultsRev}|${this.selectedGroupId}|${this.nodeSearch}|`
+      + `${this.settings.profileSortMode}|${onlyFavorites ? 1 : 0}|${onlyUsable ? 1 : 0}|`
+      + `${this.settings.latencyStaleMs}|${this.activeSubUrls.join(',')}|${timeBucket}`;
+    if (key === this.nodeListCacheKey && this.profiles === this.nodeListCacheProfiles
+      && this.probeResults === this.nodeListCacheProbeResults) {
+      return this.nodeListCache;
+    }
     const base = this.profilesInGroup(this.selectedGroupId);
-    const filtered = filterNodes(base, this.nodeSearch, this.navMemory.isOnlyFavorites(),
-      this.navMemory.isOnlyUsable(), this.probeResults, Date.now(), this.settings.latencyStaleMs,
-      (profileId: string) => this.isFavoriteNode(profileId));
-    return sortNodes(filtered, this.settings.profileSortMode, this.probeResults);
-  }
-
-  private isFavoriteNode(profileId: string): boolean {
-    const p = this.profiles.find((item: Profile) => item.id === profileId);
-    return p !== undefined && p.pinned;
+    /* 收藏判定用 Set:旧实现每个节点都 profiles.find ⇒ 收藏筛选下 O(n²) */
+    const pinnedIds = new Set<string>();
+    for (const item of this.profiles) {
+      if (item.pinned) {
+        pinnedIds.add(item.id);
+      }
+    }
+    const filtered = filterNodes(base, this.nodeSearch, onlyFavorites,
+      onlyUsable, this.probeResults, Date.now(), this.settings.latencyStaleMs,
+      (profileId: string) => pinnedIds.has(profileId));
+    const sorted = sortNodes(filtered, this.settings.profileSortMode, this.probeResults);
+    this.nodeListCacheKey = key;
+    this.nodeListCacheProfiles = this.profiles;
+    this.nodeListCacheProbeResults = this.probeResults;
+    this.nodeListCache = sorted;
+    return sorted;
   }
 
   private bumpFilters(): void {
     this.filtersRev = this.filtersRev + 1;
+    this.resetNodeRenderLimit();
+  }
+
+  /** 筛选/分组/搜索变化后「显示更多」回到首屏,避免停在很长的列表尾部 */
+  private resetNodeRenderLimit(): void {
+    if (this.nodeRenderLimit !== 120) {
+      this.nodeRenderLimit = 120;
+    }
   }
 
   private toggleOnlyFavorites(): void {
@@ -3742,6 +3759,7 @@ struct Index {
       /* 冷启动/进程恢复(§3.4):优先恢复上次浏览的展示组,其次第一个 */
       const remembered = this.navMemory.getSelectedGroupId();
       this.selectedGroupId = ids.includes(remembered) ? remembered : ids[0];
+      this.resetNodeRenderLimit();
     }
     this.navMemory.setSelectedGroupId(this.selectedGroupId);
   }
@@ -3787,6 +3805,7 @@ struct Index {
               } else if (event.type === TouchType.Up) {
                 this.litKey = '';
                 this.selectedGroupId = groupId;
+                this.resetNodeRenderLimit();
                 /* 展示组选择记入浏览记忆(§3.4):切页/进程恢复后保持 */
                 this.navMemory.setSelectedGroupId(groupId);
               } else if (event.type === TouchType.Cancel) {
@@ -3811,58 +3830,7 @@ struct Index {
     }
   }
 
-  // ---------------------------------------------------------------- 底部 StatsBar + FAB(对齐安卓)
-
-  @Builder
-  private statsBar() {
-    Row({ space: 12 }) {
-      Text(`↑ ${formatSpeed(this.upSpeed)}`)
-        .fontSize(12).fontColor($r('app.color.text_2'))
-        .fontFamily('monospace')
-      Text(`↓ ${formatSpeed(this.downSpeed)}`)
-        .fontSize(12).fontColor($r('app.color.text_2'))
-        .fontFamily('monospace')
-      Row({ space: 6 }) {
-        Circle()
-          .width(7).height(7)
-          .fill(this.isRunning ? $r('app.color.dot_live') : $r('app.color.text_3'))
-        Text(this.statusDisplay())
-          .fontSize(12).fontColor($r('app.color.text_2'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-      }
-      .layoutWeight(1)
-      .justifyContent(FlexAlign.End)
-    }
-    .width('100%')
-    .height(44)
-    .padding({ left: UiSpec.PAGE_PADDING, right: UiSpec.PAGE_PADDING })
-    .border({ width: { top: UiSpec.HAIRLINE_WIDTH }, color: $r('app.color.hairline') })
-    /* 节点列表挂着 .clip(false),滚动时卡片会画到本条底部边界之外 ⇒ 无背景时
-       速率文字和列表文字直接重叠。
-       观感定稿(2026-10-23 用户反馈两轮):**要半透明,不要全透明也不要全不透明** ——
-       ① 底色用资源控制的不透明度(#B8 ≈ 72%),深浅色各一份(base 白 / dark 深);
-       ② 模糊改用 `backdropBlur()`(纯背景模糊、不叠材质底色);
-          ⚠️ 不要用 `backgroundBlurStyle(BlurStyle.COMPONENT_THICK)`:COMPONENT_* 是"组件材质",
-          自带一层近乎不透明的填充色,叠加后半透明底色被吃掉 ⇒ 实际观感"完全不透"(用户实测)。
-       ③ 顶部 hairline 保留,给条状边界一个定义。 */
-    .backdropBlur(20)
-    .backgroundColor($r('app.color.statsbar_bg'))
-    .visualEffect(pressLightEffect(this.litKey === 'statsbar', false))
-    .onTouch((event: TouchEvent) => {
-      if (event.type === TouchType.Down) {
-        this.litKey = 'statsbar';
-      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.litKey = '';
-      }
-    })
-    .onClick(() => {
-      const target = this.selectedProfile();
-      if (target !== undefined && this.isRunning) {
-        this.runUrlTest(target);
-      }
-    })
-  }
+  // ---------------------------------------------------------------- 底部 FAB(StatsBar 已抽到 common/components/StatsBar.ets)
 
   /**
    * 连接/断开大按钮(对齐安卓 FAB)。
@@ -4570,9 +4538,10 @@ struct Index {
         onTabChange: (tab: string) => {
           this.navMemory.setRoutingTab(tab);
         },
-        /* 2026-10-24:分应用迁入分流页,保存即走应用事务(不再跳设置页) */
+        /* 2026-10-24:分应用迁入分流页,保存即走应用事务(不再跳设置页);
+           P1:连续勾选在 Index 侧防抖合并,只重启一次内核 */
         onApplyPerApp: () => {
-          void this.commitAndApplySettings('perapp');
+          this.schedulePerAppApply();
         },
         onOpenDrawer: () => {
           this.openDrawer();
@@ -4752,9 +4721,15 @@ struct Index {
              其它分区页用 titleOnlyInset(仅标题栏高)让位——tab0 的底栏(模式/分组条)
              只在节点页渲染,拿整栏 contentTopInset 垫会多出一条空带 */
           .padding({ top: this.activeTab === 0 ? 0 : this.titleOnlyInset })
-          if (this.isRunning && this.sectionVisible('bottombar')
-            && (this.activeTab === 0 || this.settings.showBottomBar)) {
-            this.statsBar()
+          if (this.isRunning && this.sectionVisible('bottombar') && this.activeTab === 0) {
+            StatsBar({
+              onTap: () => {
+                const target = this.selectedProfile();
+                if (target !== undefined && this.isRunning) {
+                  this.runUrlTest(target);
+                }
+              }
+            })
           }
         }
         .width(LayoutPolicy.matchParent)
@@ -4779,8 +4754,7 @@ struct Index {
 
       /* §4.5:无节点绝不显示必然失败的连接按钮(空态里有「导入订阅」等可执行引导);
          隐藏逻辑放在 fabLayer() 内部,保持 StatsBar/FAB 的既有条件不变 */
-      if (this.sectionVisible('bottombar')
-        && (this.activeTab === 0 || this.settings.showBottomBar)) {
+      if (this.sectionVisible('bottombar') && this.activeTab === 0) {
         this.fabLayer()
       }
 

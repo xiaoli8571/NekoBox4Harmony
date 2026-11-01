@@ -60,13 +60,11 @@ const SETTING_LABELS: Map<string, ResourceStr> = new Map<string, ResourceStr>([
   ['settings_always_show_address', $r('app.string.settings_always_show_address')],
   ['settings_notification_group', $r('app.string.settings_notification_group')],
   ['settings_notification_profile', $r('app.string.settings_notification_profile')],
-  ['settings_show_bottom_bar', $r('app.string.settings_show_bottom_bar')],
   ['settings_nav_layout', $r('app.string.settings_nav_layout')],
   ['settings_profile_sort', $r('app.string.settings_profile_sort')],
   ['settings_speed_interval', $r('app.string.settings_speed_interval')],
   ['settings_auto_connect', $r('app.string.settings_auto_connect')],
   ['settings_network_reset', $r('app.string.settings_network_reset')],
-  ['settings_wake_reset', $r('app.string.settings_wake_reset')],
   ['settings_profile_traffic', $r('app.string.settings_profile_traffic')],
   ['settings_mtu', $r('app.string.settings_mtu')],
   ['settings_stack', $r('app.string.settings_stack')],
@@ -78,7 +76,6 @@ const SETTING_LABELS: Map<string, ResourceStr> = new Map<string, ResourceStr>([
   ['settings_clash_secret', $r('app.string.settings_clash_secret')],
   ['settings_global_custom', $r('app.string.settings_global_custom')],
   ['settings_coexist_fix', $r('app.string.settings_coexist_fix')],
-  ['settings_auto_start_boot', $r('app.string.settings_auto_start_boot')],
   ['settings_lan_auth_user', $r('app.string.settings_lan_auth_user')],
   ['settings_lan_auth_pass', $r('app.string.settings_lan_auth_pass')],
   ['settings_theme_accent', $r('app.string.settings_theme_accent')],
@@ -146,10 +143,10 @@ export struct SettingsPage {
   @State applying: boolean = false;
   @State proxyExpanded: boolean = false;
   /* SETTINGS_HEADER_TYPO_V2 2026-10-26:用户要求默认全部展开(折叠只作为"收起长页面"的手段) */
-  @State generalExpanded: boolean = true;
-  @State appearanceExpanded: boolean = true;
-  @State networkExpanded: boolean = true;
-  @State advancedExpanded: boolean = true;
+  @State generalExpanded: boolean = false;
+  @State appearanceExpanded: boolean = false;
+  @State networkExpanded: boolean = false;
+  @State advancedExpanded: boolean = false;
   /**
    * HDS 点按光效的"当前光源 key":同一时刻只有一个宿主处于按下态。
    * 口径与 Index.ets 的 `litKey` 一致(按下写 key、抬起/取消清空),不挂常亮光源
@@ -647,7 +644,7 @@ export struct SettingsPage {
           .fontColor($r('app.color.text_1'))
           .letterSpacing(0.5)
           .layoutWeight(1)
-        SymbolGlyph(expanded ? $r('sys.symbol.chevron_up') : $r('sys.symbol.chevron_down'))
+        SymbolGlyph(expanded ? $r('sys.symbol.chevron_down') : $r('sys.symbol.chevron_up'))
           .fontSize(16)
           .fontColor([$r('app.color.text_2')])
       }
@@ -749,7 +746,10 @@ export struct SettingsPage {
 
   /** 分段按钮组(深浅色 / 节点排序 / 嗅探模式) */
   @Builder
-  private chipRow(values: Array<string>, labels: Array<ResourceStr>, current: string, keyPrefix: string,
+  /* currentOf 必须是「读 @State 的取值函数」,不能是按值传入的字符串副本:
+     ForEach 复用同 key 的列表项,只有 item 构建时真正读到的状态才登记为该 item 的依赖。
+     按值传 current 时选中项永远停在初始值(浅色 / 按延迟 / 流量嗅探点了都不高亮)。 */
+  private chipRow(values: Array<string>, labels: Array<ResourceStr>, currentOf: () => string, keyPrefix: string,
     onPick: (v: string) => void) {
     Row({ space: 8 }) {
       ForEach(values, (v: string, idx: number) => {
@@ -757,8 +757,9 @@ export struct SettingsPage {
           .layoutWeight(1)
           .height(CONTROL_HEIGHT)
           .fontSize(ROW_DESC_SIZE)
-          .backgroundColor(current === v ? $r('app.color.primary') : $r('app.color.surface'))
-          .fontColor(current === v ? $r('app.color.surface') : $r('app.color.text_1'))
+          .backgroundColor(currentOf() === v ? $r('app.color.primary') : $r('app.color.surface'))
+          .fontColor(currentOf() === v ? $r('app.color.surface') : $r('app.color.text_1'))
+          .fontWeight(currentOf() === v ? 600 : 400)
           .visualEffect(pressLightEffect(this.litKey === `${keyPrefix}:${v}`, true))
           .onTouch((event: TouchEvent) => {
             if (event.type === TouchType.Down) {
@@ -768,7 +769,7 @@ export struct SettingsPage {
             }
           })
           .onClick(() => onPick(v))
-      }, (v: string) => v)
+      }, (v: string) => `${keyPrefix}:${v}:${currentOf() === v ? 'on' : 'off'}`)
     }.width('100%').height(ROW_HEIGHT).alignItems(VerticalAlign.Center)
   }
 
@@ -899,19 +900,9 @@ export struct SettingsPage {
                 this.s.autoConnect = v;
                 this.markDirty();
               })
-            this.rowSwitchPlain($r('app.string.settings_auto_start_boot'), this.s.autoStartOnBoot,
-              (v: boolean) => {
-                this.s.autoStartOnBoot = v;
-                this.markDirty();
-              })
             this.rowSwitchPlain($r('app.string.settings_always_show_address'), this.s.alwaysShowAddress,
               (v: boolean) => {
                 this.s.alwaysShowAddress = v;
-                this.markDirty();
-              })
-            this.rowSwitchPlain($r('app.string.show_bottom_bar'), this.s.showBottomBar,
-              (v: boolean) => {
-                this.s.showBottomBar = v;
                 this.markDirty();
               })
           }
@@ -923,14 +914,14 @@ export struct SettingsPage {
           if (this.appearanceExpanded) {
             this.chipRow(['system', 'light', 'dark'],
               [$r('app.string.appearance_follow_system'), $r('app.string.appearance_light'), $r('app.string.appearance_dark')],
-              this.s.appearance, 'appearance', (v: string) => {
+              () => this.s.appearance, 'appearance', (v: string) => {
                 this.s.appearance = v;
                 this.applyAppearance();
                 this.markDirty();
               })
             this.chipRow(['manual', 'latency', 'name'],
               [$r('app.string.sort_manual'), $r('app.string.sort_latency'), $r('app.string.sort_name')],
-              this.s.profileSortMode, 'sort', (v: string) => {
+              () => this.s.profileSortMode, 'sort', (v: string) => {
                 this.s.profileSortMode = v;
                 this.markDirty();
               })
@@ -947,11 +938,6 @@ export struct SettingsPage {
             this.rowSwitchPlain($r('app.string.network_change_reset_connections'), this.s.networkChangeResetConnections,
               (v: boolean) => {
                 this.s.networkChangeResetConnections = v;
-                this.markDirty();
-              })
-            this.rowSwitchPlain($r('app.string.wake_reset_connections'), this.s.wakeResetConnections,
-              (v: boolean) => {
-                this.s.wakeResetConnections = v;
                 this.markDirty();
               })
             Text($r('app.string.settings_theme_note'))
@@ -1024,7 +1010,7 @@ export struct SettingsPage {
                 this.markDirty();
               })
             this.subLabel($r('app.string.settings_sniff'))
-            this.chipRow(SNIFF_MODES, SNIFF_LABELS, this.s.sniffMode, 'sniff', (v: string) => {
+            this.chipRow(SNIFF_MODES, SNIFF_LABELS, () => this.s.sniffMode, 'sniff', (v: string) => {
               this.s.sniffMode = v;
               this.markDirty();
             })

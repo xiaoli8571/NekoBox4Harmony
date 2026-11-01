@@ -9,6 +9,8 @@
 #include "napi/native_api.h"
 
 #include <atomic>
+#include <cmath>
+#include <limits>
 #include <cstdlib>
 #include <cstring>
 #include <dlfcn.h>
@@ -88,6 +90,11 @@ struct TsfData {
 static void CallJsString(napi_env env, napi_value jsCb, void * /*context*/, void *data)
 {
     TsfData *d = static_cast<TsfData *>(data);
+    // During environment shutdown N-API drains queued data with no JS environment.
+    if (env == nullptr || jsCb == nullptr) {
+        delete d;
+        return;
+    }
     napi_value argv[1];
     napi_create_string_utf8(env, d->text.c_str(), d->text.size(), &argv[0]);
     napi_value global;
@@ -110,14 +117,20 @@ static void EmitString(napi_threadsafe_function tsf, const std::string &text)
 
 static napi_threadsafe_function CreateResultTsf(napi_env env, napi_value callback)
 {
-    if (callback == nullptr) {
+    napi_valuetype type;
+    if (callback == nullptr || napi_typeof(env, callback, &type) != napi_ok || type != napi_function) {
+        napi_throw_type_error(env, nullptr, "onResult must be a function");
         return nullptr;
     }
     napi_threadsafe_function tsf = nullptr;
     napi_value resName;
-    napi_create_string_utf8(env, "coreResult", NAPI_AUTO_LENGTH, &resName);
-    napi_create_threadsafe_function(env, callback, nullptr, resName, 0, 4, nullptr, nullptr, nullptr,
-                                    CallJsString, &tsf);
+    // Exactly one producer owns each result TSFN and releases it once.
+    if (napi_create_string_utf8(env, "coreResult", NAPI_AUTO_LENGTH, &resName) != napi_ok ||
+        napi_create_threadsafe_function(env, callback, nullptr, resName, 0, 1, nullptr, nullptr, nullptr,
+                                        CallJsString, &tsf) != napi_ok) {
+        napi_throw_error(env, nullptr, "failed to create result callback");
+        return nullptr;
+    }
     return tsf;
 }
 
@@ -126,6 +139,8 @@ static void CompleteWaiters(const std::string &message)
     std::vector<napi_threadsafe_function> waiters;
     {
         std::lock_guard<std::mutex> lock(g_stateMutex);
+        // Publish Stopped and detach this generation's waiters atomically.
+        g_coreState.store(CoreState::Stopped);
         waiters.swap(g_stopWaiters);
     }
     for (auto tsf : waiters) {
@@ -166,7 +181,8 @@ static bool GetArgString(napi_env env, napi_callback_info info, size_t index, st
 static bool GetArgInt(napi_env env, napi_value value, int &out)
 {
     double v = 0;
-    if (napi_get_value_double(env, value, &v) != napi_ok) {
+    if (value == nullptr || napi_get_value_double(env, value, &v) != napi_ok || !std::isfinite(v) ||
+        std::trunc(v) != v || v < std::numeric_limits<int>::min() || v > std::numeric_limits<int>::max()) {
         return false;
     }
     out = static_cast<int>(v);
@@ -268,29 +284,28 @@ static napi_value StartCoreNative(napi_env env, napi_callback_info info)
     }
     std::string configPath;
     int tunFd = -1;
-    GetArgString(env, info, 0, configPath);
-    GetArgInt(env, argv[1], tunFd);
+    if (!GetArgString(env, info, 0, configPath) || configPath.empty() ||
+        !GetArgInt(env, argv[1], tunFd) || tunFd < 0) {
+        napi_throw_type_error(env, nullptr, "configPath must be nonempty and tunFd a nonnegative integer");
+        return nullptr;
+    }
     napi_value onResult = argv[2];
+    napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+    if (tsf == nullptr) {
+        return nullptr;
+    }
 
     uint64_t generation = 0;
     {
         std::lock_guard<std::mutex> lock(g_stateMutex);
         if (g_coreState.load() != CoreState::Stopped) {
-            napi_value global, arg;
-            napi_get_global(env, &global);
-            napi_create_string_utf8(env, "core is not stopped", NAPI_AUTO_LENGTH, &arg);
-            napi_call_function(env, global, onResult, 1, &arg, nullptr);
+            EmitString(tsf, "core is not stopped");
+            napi_release_threadsafe_function(tsf, napi_tsfn_release);
             return nullptr;
         }
         g_coreState.store(CoreState::Starting);
         generation = ++g_coreGeneration;
     }
-
-    napi_threadsafe_function tsf = nullptr;
-    napi_value resName;
-    napi_create_string_utf8(env, "coreResult", NAPI_AUTO_LENGTH, &resName);
-    napi_create_threadsafe_function(env, onResult, nullptr, resName, 0, 4, nullptr, nullptr, nullptr,
-                                    CallJsString, &tsf);
 
     std::thread([configPath, tunFd, tsf, generation]() {
         std::string message;
@@ -318,26 +333,26 @@ static napi_value StartCoreNative(napi_env env, napi_callback_info info)
         {
             std::lock_guard<std::mutex> lock(g_stateMutex);
             cancelled = generation <= g_cancelledGeneration;
+            // Cancellation and the Starting -> Running transition share one lock.
+            g_coreState.store(message.empty() && !cancelled ? CoreState::Running : CoreState::Stopping);
         }
         if (message.empty() && cancelled) {
-            g_coreState.store(CoreState::Stopping);
+            std::string stopMessage;
             if (g_stop != nullptr) {
                 char *stopError = g_stop();
                 if (stopError != nullptr && stopError[0] != '\0') {
-                    message = std::string(stopError);
+                    stopMessage = std::string(stopError);
                 }
                 FreeGoString(stopError);
             }
-            g_coreState.store(CoreState::Stopped);
-            CompleteWaiters(message);
-        } else if (message.empty()) {
-            g_coreState.store(CoreState::Running);
-        } else {
-            g_coreState.store(CoreState::Stopped);
-            CompleteWaiters(message);
+            // Stop callers are acknowledged only after native teardown has finished.
+            CompleteWaiters(stopMessage);
+            message = "core start cancelled";
+        } else if (!message.empty()) {
+            // A failed start has no running instance; pending stop still succeeds.
+            CompleteWaiters("");
         }
         EmitString(tsf, message);
-        usleep(200 * 1000);
         napi_release_threadsafe_function(tsf, napi_tsfn_release);
     }).detach();
 
@@ -357,6 +372,9 @@ static napi_value TestStartNative(napi_env env, napi_callback_info info)
     GetArgStringAt(env, argv[1], bindIfname);
     napi_value onResult = argc >= 3 ? argv[2] : nullptr;
     napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+    if (tsf == nullptr) {
+        return nullptr;
+    }
 
     std::thread([configPath, bindIfname, tsf]() {
         std::string message;
@@ -385,7 +403,6 @@ static napi_value TestStartNative(napi_env env, napi_callback_info info)
             FreeGoString(err);
         } while (false);
         EmitString(tsf, message);
-        usleep(200 * 1000);
         napi_release_threadsafe_function(tsf, napi_tsfn_release);
     }).detach();
     return nullptr;
@@ -409,6 +426,9 @@ static napi_value TestProxyNative(napi_env env, napi_callback_info info)
     GetArgStringAt(env, argv[3], expectStatus);
     napi_value onResult = argc >= 5 ? argv[4] : nullptr;
     napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+    if (tsf == nullptr) {
+        return nullptr;
+    }
 
     std::thread([tag, url, timeoutMs, expectStatus, tsf]() {
         std::string message = "err:test session not started";
@@ -438,7 +458,6 @@ static napi_value TestProxyNative(napi_env env, napi_callback_info info)
             FreeGoString(res);
         } while (false);
         EmitString(tsf, message);
-        usleep(200 * 1000);
         napi_release_threadsafe_function(tsf, napi_tsfn_release);
     }).detach();
     return nullptr;
@@ -454,6 +473,9 @@ static napi_value TestCapsNative(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
     napi_value onResult = argc >= 1 ? argv[0] : nullptr;
     napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+    if (tsf == nullptr) {
+        return nullptr;
+    }
 
     std::thread([tsf]() {
         std::string message;
@@ -466,7 +488,6 @@ static napi_value TestCapsNative(napi_env env, napi_callback_info info)
             }
         }
         EmitString(tsf, message);
-        usleep(200 * 1000);
         napi_release_threadsafe_function(tsf, napi_tsfn_release);
     }).detach();
     return nullptr;
@@ -484,6 +505,9 @@ static napi_value CheckConfigNative(napi_env env, napi_callback_info info)
     GetArgStringAt(env, argv[0], configPath);
     napi_value onResult = argc >= 2 ? argv[1] : nullptr;
     napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+    if (tsf == nullptr) {
+        return nullptr;
+    }
 
     std::thread([configPath, tsf]() {
         std::string message;
@@ -511,7 +535,6 @@ static napi_value CheckConfigNative(napi_env env, napi_callback_info info)
             FreeGoString(err);
         } while (false);
         EmitString(tsf, message);
-        usleep(200 * 1000);
         napi_release_threadsafe_function(tsf, napi_tsfn_release);
     }).detach();
     return nullptr;
@@ -528,6 +551,9 @@ static napi_value ValidateSrsNative(napi_env env, napi_callback_info info)
     GetArgStringAt(env, argv[0], path);
     napi_value onResult = argc >= 2 ? argv[1] : nullptr;
     napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+    if (tsf == nullptr) {
+        return nullptr;
+    }
 
     std::thread([path, tsf]() {
         std::string message;
@@ -554,7 +580,6 @@ static napi_value ValidateSrsNative(napi_env env, napi_callback_info info)
             FreeGoString(err);
         } while (false);
         EmitString(tsf, message);
-        usleep(200 * 1000);
         napi_release_threadsafe_function(tsf, napi_tsfn_release);
     }).detach();
     return nullptr;
@@ -576,6 +601,9 @@ static napi_value TestStartNativeV3(napi_env env, napi_callback_info info)
     GetArgStringAt(env, argv[2], bindIfname);
     napi_value onResult = argc >= 4 ? argv[3] : nullptr;
     napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+    if (tsf == nullptr) {
+        return nullptr;
+    }
 
     std::thread([sessionId, configPath, bindIfname, tsf]() {
         std::string message;
@@ -609,7 +637,6 @@ static napi_value TestStartNativeV3(napi_env env, napi_callback_info info)
             FreeGoString(err);
         } while (false);
         EmitString(tsf, message);
-        usleep(200 * 1000);
         napi_release_threadsafe_function(tsf, napi_tsfn_release);
     }).detach();
     return nullptr;
@@ -635,6 +662,9 @@ static napi_value TestProxyNativeV3(napi_env env, napi_callback_info info)
     GetArgStringAt(env, argv[4], expectStatus);
     napi_value onResult = argc >= 6 ? argv[5] : nullptr;
     napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+    if (tsf == nullptr) {
+        return nullptr;
+    }
 
     std::thread([sessionId, tag, url, timeoutMs, expectStatus, tsf]() {
         std::string message = "unsupported";
@@ -671,7 +701,6 @@ static napi_value TestProxyNativeV3(napi_env env, napi_callback_info info)
             FreeGoString(res);
         } while (false);
         EmitString(tsf, message);
-        usleep(200 * 1000);
         napi_release_threadsafe_function(tsf, napi_tsfn_release);
     }).detach();
     return nullptr;
@@ -688,6 +717,9 @@ static napi_value TestStopNativeV3(napi_env env, napi_callback_info info)
     GetArgStringAt(env, argv[0], sessionId);
     napi_value onResult = argc >= 2 ? argv[1] : nullptr;
     napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+    if (tsf == nullptr) {
+        return nullptr;
+    }
 
     std::thread([sessionId, tsf]() {
         std::string message;
@@ -714,7 +746,6 @@ static napi_value TestStopNativeV3(napi_env env, napi_callback_info info)
             FreeGoString(err);
         } while (false);
         EmitString(tsf, message);
-        usleep(200 * 1000);
         napi_release_threadsafe_function(tsf, napi_tsfn_release);
     }).detach();
     return nullptr;
@@ -731,6 +762,9 @@ static napi_value TestSessionInfoNativeV3(napi_env env, napi_callback_info info)
     GetArgStringAt(env, argv[0], sessionId);
     napi_value onResult = argc >= 2 ? argv[1] : nullptr;
     napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+    if (tsf == nullptr) {
+        return nullptr;
+    }
 
     std::thread([sessionId, tsf]() {
         std::string message = "unsupported";
@@ -757,7 +791,6 @@ static napi_value TestSessionInfoNativeV3(napi_env env, napi_callback_info info)
             FreeGoString(res);
         } while (false);
         EmitString(tsf, message);
-        usleep(200 * 1000);
         napi_release_threadsafe_function(tsf, napi_tsfn_release);
     }).detach();
     return nullptr;
@@ -772,6 +805,9 @@ static napi_value TestActiveSessionsNative(napi_env env, napi_callback_info info
     napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
     napi_value onResult = argc >= 1 ? argv[0] : nullptr;
     napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+    if (tsf == nullptr) {
+        return nullptr;
+    }
 
     std::thread([tsf]() {
         std::string message = "unsupported";
@@ -792,7 +828,6 @@ static napi_value TestActiveSessionsNative(napi_env env, napi_callback_info info
             FreeGoString(res);
         } while (false);
         EmitString(tsf, message);
-        usleep(200 * 1000);
         napi_release_threadsafe_function(tsf, napi_tsfn_release);
     }).detach();
     return nullptr;
@@ -806,6 +841,9 @@ static napi_value TestStopNative(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
     napi_value onResult = argc >= 1 ? argv[0] : nullptr;
     napi_threadsafe_function tsf = CreateResultTsf(env, onResult);
+    if (tsf == nullptr) {
+        return nullptr;
+    }
 
     std::thread([tsf]() {
         std::string message;
@@ -817,65 +855,49 @@ static napi_value TestStopNative(napi_env env, napi_callback_info info)
             FreeGoString(err);
         }
         EmitString(tsf, message);
-        usleep(200 * 1000);
         napi_release_threadsafe_function(tsf, napi_tsfn_release);
     }).detach();
     return nullptr;
 }
 
-// stopCoreNative(onResult)
-static napi_value StopCoreNative(napi_env env, napi_callback_info info){
+// stopCoreNative(onResult): concurrent callers join the same native teardown.
+static napi_value StopCoreNative(napi_env env, napi_callback_info info)
+{
     size_t argc = 8;
     napi_value argv[8] = {nullptr};
     napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
-    napi_value onResult = argc >= 1 ? argv[0] : nullptr;
-
-    CoreState expected = CoreState::Running;
-    if (!g_coreState.compare_exchange_strong(expected, CoreState::Stopping)) {
-        if (expected == CoreState::Starting) {
-            std::lock_guard<std::mutex> lock(g_stateMutex);
-            g_cancelledGeneration = g_coreGeneration;
-        }
-        if (onResult != nullptr) {
-            napi_threadsafe_function tsf = nullptr;
-            napi_value resName;
-            napi_create_string_utf8(env, "coreResult", NAPI_AUTO_LENGTH, &resName);
-            napi_create_threadsafe_function(env, onResult, nullptr, resName, 0, 2, nullptr, nullptr, nullptr,
-                                            CallJsString, &tsf);
-            EmitString(tsf, (expected == CoreState::Stopped || expected == CoreState::Starting) ? "" : "core is busy");
+    napi_threadsafe_function tsf = CreateResultTsf(env, argc >= 1 ? argv[0] : nullptr);
+    if (tsf == nullptr) {
+        return nullptr;
+    }
+    {
+        std::lock_guard<std::mutex> lock(g_stateMutex);
+        const CoreState state = g_coreState.load();
+        if (state == CoreState::Stopped) {
+            EmitString(tsf, "");
             napi_release_threadsafe_function(tsf, napi_tsfn_release);
+            return nullptr;
         }
-        return nullptr;
+        g_stopWaiters.push_back(tsf);
+        if (state == CoreState::Starting) {
+            g_cancelledGeneration = g_coreGeneration;
+            return nullptr; // The start worker will stop the late instance, then complete waiters.
+        }
+        if (state == CoreState::Stopping) {
+            return nullptr;
+        }
+        g_coreState.store(CoreState::Stopping);
     }
-
-    if (onResult == nullptr) {
-        std::thread([]() {
-            if (g_stop != nullptr) {
-                FreeGoString(g_stop());
-            }
-            g_coreState.store(CoreState::Stopped);
-        }).detach();
-        return nullptr;
-    }
-
-    napi_threadsafe_function tsf = nullptr;
-    napi_value resName;
-    napi_create_string_utf8(env, "coreResult", NAPI_AUTO_LENGTH, &resName);
-    napi_create_threadsafe_function(env, onResult, nullptr, resName, 0, 2, nullptr, nullptr, nullptr,
-                                    CallJsString, &tsf);
-    std::thread([tsf]() {
+    std::thread([]() {
         std::string message;
         if (g_stop != nullptr) {
             char *err = g_stop();
             if (err != nullptr) {
                 message = std::string(err);
-                FreeGoString(err);
             }
+            FreeGoString(err);
         }
-        g_coreState.store(CoreState::Stopped);
-        EmitString(tsf, message);
-        usleep(200 * 1000);
-        napi_release_threadsafe_function(tsf, napi_tsfn_release);
+        CompleteWaiters(message);
     }).detach();
     return nullptr;
 }

@@ -19,6 +19,36 @@ export const LOG_EVENT_ID: number = 1001;
 
 let prefInstance: dataPreferences.Preferences | null = null;
 let profileWriteQueue: Promise<void> = Promise.resolve();
+/** P1:并发 initStore 共用同一次 getPreferences(冷启动时多个页面同时初始化) */
+let initPromise: Promise<void> | null = null;
+/**
+ * P1:解析结果缓存 —— 同一份 Preferences 字符串在进程内只 JSON.parse 一次。
+ * 每次 load 仍返回**新的** Profile/ProfileGroup 实例(字段逐个拷贝),调用方原地
+ * 改 node.ping/status 不会污染缓存;任何写入口(save/reset/refreshStore)都会失效。
+ */
+let profileCacheRaw: string = '';
+let profileCacheRecords: Array<Record<string, Object>> = [];
+let profileCacheReady: boolean = false;
+let groupCacheRaw: string = '';
+let groupCacheRecords: Array<Record<string, Object>> = [];
+let groupCacheReady: boolean = false;
+
+function invalidateProfileCache(): void {
+  profileCacheRaw = '';
+  profileCacheRecords = [];
+  profileCacheReady = false;
+}
+
+function invalidateGroupCache(): void {
+  groupCacheRaw = '';
+  groupCacheRecords = [];
+  groupCacheReady = false;
+}
+
+function invalidateStoreCaches(): void {
+  invalidateProfileCache();
+  invalidateGroupCache();
+}
 
 /** 串行执行节点读改写，避免订阅更新、编辑和删除操作互相覆盖。 */
 export async function mutateProfiles(
@@ -41,7 +71,22 @@ export async function mutateProfiles(
 }
 
 export async function initStore(context: common.Context): Promise<void> {
-  prefInstance = await dataPreferences.getPreferences(context, PREF_NAME);
+  /* 幂等 + 并发去重:已经初始化过就直接返回;冷启动时多页同时 await 只开一次
+     getPreferences(旧实现每次调用都会重新拿句柄)。 */
+  if (prefInstance !== null) {
+    return;
+  }
+  if (initPromise !== null) {
+    await initPromise;
+    return;
+  }
+  const pending = dataPreferences.getPreferences(context, PREF_NAME).then((pref: dataPreferences.Preferences) => {
+    prefInstance = pref;
+  });
+  initPromise = pending.finally(() => {
+    initPromise = null;
+  });
+  await initPromise;
 }
 
 /**
@@ -54,6 +99,16 @@ export async function initStore(context: common.Context): Promise<void> {
  * profileId 早就因为同一个坑改走 Want 参数(VpnExtAbility 注释),这里是通用兜底。
  */
 export async function refreshStore(context: common.Context): Promise<void> {
+  /* 可能有一次 initStore 正在飞行:先让它落地,避免它在新句柄装好后把旧的写回来。 */
+  if (initPromise !== null) {
+    try {
+      await initPromise;
+    } catch (e) {
+      // 初始化失败无需吞掉后续重建
+    }
+  }
+  initPromise = null;
+  invalidateStoreCaches();
   prefInstance = null;
   try {
     await dataPreferences.removePreferencesFromCache(context, PREF_NAME);
@@ -77,16 +132,33 @@ export async function loadProfiles(): Promise<Array<Profile>> {
     // 先解析成"原始记录"再用 fillFrom 灌进 Profile:ArkTS 严格模式禁止把类实例
     // (Profile)断言成 Record<string, Object>(缺 string 索引签名),所以这里的元素
     // 类型必须是 Record,而不是 Array<Profile>。
-    const parsed: Array<Record<string, Object>> = JSON.parse(raw) as Array<Record<string, Object>>;
+    let parsed: Array<Record<string, Object>>;
+    if (profileCacheReady && raw === profileCacheRaw) {
+      parsed = profileCacheRecords;
+    } else {
+      parsed = JSON.parse(raw) as Array<Record<string, Object>>;
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      profileCacheRaw = raw;
+      profileCacheRecords = parsed;
+      profileCacheReady = true;
+    }
     const result: Array<Profile> = [];
     for (let i = 0; i < parsed.length; i++) {
+      if (parsed[i] === null || typeof parsed[i] !== 'object' || Array.isArray(parsed[i])) {
+        continue;
+      }
       const p = new Profile();
       fillFrom(p, parsed[i]);
       migrateProfileTestResult(p, parsed[i]);
+      /* 缓存里的数组字段不能与返回对象共享:调用方原地 push/splice 会污染下一次 load */
+      p.subGroupIds = p.subGroupIds.slice();
       result.push(p);
     }
     return result;
   } catch (e) {
+    invalidateProfileCache();
     return [];
   }
 }
@@ -128,6 +200,7 @@ function migrateProfileTestResult(p: Profile, raw: Record<string, Object>): void
 }
 
 export async function saveProfiles(list: Array<Profile>): Promise<void> {
+  invalidateProfileCache();
   const pref = await requirePref();
   await pref.put(KEY_PROFILES, JSON.stringify(list));
   await pref.flush();
@@ -137,20 +210,36 @@ export async function loadGroups(): Promise<Array<ProfileGroup>> {
   const pref = await requirePref();
   const raw: string = (await pref.get(KEY_GROUPS, '[]')) as string;
   try {
-    const parsed: Array<ProfileGroup> = JSON.parse(raw) as Array<ProfileGroup>;
+    let parsed: Array<Record<string, Object>>;
+    if (groupCacheReady && raw === groupCacheRaw) {
+      parsed = groupCacheRecords;
+    } else {
+      parsed = JSON.parse(raw) as Array<Record<string, Object>>;
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      groupCacheRaw = raw;
+      groupCacheRecords = parsed;
+      groupCacheReady = true;
+    }
     const result: Array<ProfileGroup> = [];
     for (let i = 0; i < parsed.length; i++) {
+      if (parsed[i] === null || typeof parsed[i] !== 'object' || Array.isArray(parsed[i])) {
+        continue;
+      }
       const group = new ProfileGroup();
       fillFrom(group, parsed[i]);
       result.push(group);
     }
     return result.sort((a: ProfileGroup, b: ProfileGroup) => a.sortOrder - b.sortOrder);
   } catch (e) {
+    invalidateGroupCache();
     return [];
   }
 }
 
 export async function saveGroups(list: Array<ProfileGroup>): Promise<void> {
+  invalidateGroupCache();
   const pref = await requirePref();
   await pref.put(KEY_GROUPS, JSON.stringify(list));
   await pref.flush();
@@ -222,8 +311,10 @@ export async function loadSettings(): Promise<AppSettings> {
   }
   // 并发数:默认 5 对齐 Android DataStore.connectionTestConcurrent(DataStore.kt:159)。
   // 2.1.8 曾把默认改成 10 并迁移 5→10;1:1 对齐后回退为 5,不再做那段迁移。
-  if (s.testConcurrent < 1 || s.testConcurrent > 32) {
+  if (!Number.isFinite(s.testConcurrent) || s.testConcurrent < 1 || s.testConcurrent > 32) {
     s.testConcurrent = 5;
+  } else {
+    s.testConcurrent = Math.floor(s.testConcurrent);
   }
   if (s.testUrl.trim().length === 0) {
     s.testUrl = 'http://cp.cloudflare.com/';
@@ -350,6 +441,7 @@ export async function saveSettings(s: AppSettings): Promise<void> {
 
 /** 恢复出厂:清空全部配置存储(节点/分组/设置/订阅/规则) */
 export async function resetAllData(): Promise<void> {
+  invalidateStoreCaches();
   const pref = await requirePref();
   await pref.clear();
   await pref.flush();
@@ -419,17 +511,33 @@ export async function clearPendingProfileId(): Promise<void> {
 
 /** 把解析出的 JSON 对象中已有值的字段填充到带默认值的类实例上。 */
 function fillFrom(target: Object, source: Object): void {
-  if (source === undefined || source === null) {
+  if (source === undefined || source === null || typeof source !== 'object' || Array.isArray(source)) {
     return;
   }
-  const keys: Array<string> = Object.keys(source);
+  // Model defaults define both the field allowlist and its runtime type.
+  // JSON.parse assertions do not validate persisted data or imported backups.
+  const keys: Array<string> = Object.keys(target);
   const rec: Record<string, Object> = target as Record<string, Object>;
   for (const k of keys) {
     const v: Object = (source as Record<string, Object>)[k];
-    if (v === undefined || v === null) {
+    const current: Object = rec[k];
+    if (v === undefined || v === null || typeof v !== typeof current) {
       continue;
     }
-    rec[k] = v;
+    if (Array.isArray(current)) {
+      if (!Array.isArray(v)) {
+        continue;
+      }
+      const strings: Array<string> = [];
+      for (const item of v as Array<Object>) {
+        if (typeof item === 'string') {
+          strings.push(item as string);
+        }
+      }
+      rec[k] = strings;
+    } else if (typeof v !== 'number' || Number.isFinite(v as number)) {
+      rec[k] = v;
+    }
   }
 }
 

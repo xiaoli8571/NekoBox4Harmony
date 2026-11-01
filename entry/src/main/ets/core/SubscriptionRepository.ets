@@ -60,6 +60,7 @@ export class ParsedPreparation {
 /** 快照提交的段更新(只刷本事务涉及的段,其余段保留活动快照原值)。 */
 class SectionUpdates {
   profiles: Array<Record<string, Object>> | null = null;
+  groups: Array<Record<string, Object>> | null = null;
   subscriptions: Array<Record<string, Object>> | null = null;
   userOverrides: Array<Record<string, Object>> | null = null;
 }
@@ -68,8 +69,31 @@ export class SubscriptionRepository {
   /** 订阅事务串行队列(更新/覆盖写入/304 推进互斥,§11.3「同一仓库串行提交」)。 */
   private static queue: Promise<Object | null> = Promise.resolve(null);
 
+  /**
+   * 同一 URL 的 in-flight 去重。
+   *
+   * EntryAbility.onCreate/onForeground 与 Index.aboutToAppear 都会触发一次
+   * “到期订阅自动更新”;队列只串行化提交,不会阻止两边各下载一遍(限速机场会 429)。
+   * 这里让第二个调用直接复用第一个的 Promise,完成后双方各自刷新 UI/落失败计数。
+   */
+  private static inflight: Map<string, Promise<SubUpdateResult>> = new Map<string, Promise<SubUpdateResult>>();
+
   /** W17 更新事务主入口(由 Subscriptions.updateSubscription 委托,initStore 已完成)。 */
   static async runUpdate(url: string): Promise<SubUpdateResult> {
+    const existing = SubscriptionRepository.inflight.get(url);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const task = SubscriptionRepository.runUpdateOnce(url);
+    SubscriptionRepository.inflight.set(url, task);
+    try {
+      return await task;
+    } finally {
+      SubscriptionRepository.inflight.delete(url);
+    }
+  }
+
+  private static async runUpdateOnce(url: string): Promise<SubUpdateResult> {
     const baselineRevision = ConfigRepository.hasActive()
       ? ConfigRepository.getActiveRevision() : 0;
     try {
@@ -238,6 +262,8 @@ export class SubscriptionRepository {
     const selectedId = await readPrefString('selected_profile_id', '');
     const owned = existing.filter((p: Profile) => p.subUrl === url);
     const now = Date.now();
+    // 合并会原地修改 Profile；保留解析输入供原始层落盘与身份校验。
+    const sourceProfiles = JSON.parse(JSON.stringify(prep.profiles)) as Array<Profile>;
     const merge = mergeParsedIntoOwned(prep.profiles, owned, overridesAll, url,
       subGroupId, stableProfileId, now);
     for (let i = 0; i < merge.conflicts.length; i++) {
@@ -289,13 +315,14 @@ export class SubscriptionRepository {
     }
     // 原始层:写不可变文件(当前 + 上一份,永不原地覆盖)
     SubscriptionRepository.ensureSourceStore();
-    SubscriptionRepository.saveSourceSnapshot(url, prep, now);
+    SubscriptionRepository.saveSourceSnapshot(url, prep, now, sourceProfiles);
     // 覆盖层:其他订阅覆盖原样 + 本订阅 nextOverrides → commit(唯一写入口)
     const subsFinal = await listSubs();
     const otherOverrides = overridesAll.filter((o: UserOverride) => o.subscriptionUrl !== url);
     const allOverrides = otherOverrides.concat(merge.nextOverrides);
     const sections = new SectionUpdates();
     sections.profiles = serializeProfiles(kept);
+    sections.groups = JSON.parse((await readPrefString('profile_groups', '[]')) || '[]') as Array<Record<string, Object>>;
     sections.subscriptions = serializeSubs(subsFinal);
     sections.userOverrides = serializeOverrides(allOverrides);
     await SubscriptionRepository.commitSections(sections, `订阅更新 ${url}`);
@@ -521,8 +548,26 @@ export class SubscriptionRepository {
       } catch (e) {
         // 前一次失败不阻断后一次
       }
+      const keys: Array<string> = ['profiles', 'profile_groups', 'subscriptions', 'selected_profile_id'];
+      const before: Array<string> = [];
       try {
-        return await task();
+        for (let i = 0; i < keys.length; i++) {
+          before.push(await readPrefString(keys[i], keys[i] === 'selected_profile_id' ? '' : '[]'));
+        }
+        try {
+          return await task();
+        } catch (e) {
+          // 快照提交前已写入的兼容态必须恢复，不能让失败更新留下新节点/校验器。
+          for (let i = 0; i < before.length; i++) {
+            try {
+              await writePrefString(keys[i], before[i]);
+            } catch (restoreError) {
+              LogStore.addLog(`[subtx] 回滚 ${keys[i]} 失败: ${restoreError}`);
+            }
+          }
+          // ArkTS 只允许抛出 Error:原始值/普通对象一律包装后再抛。
+          throw e instanceof Error ? e : new Error(`${e}`);
+        }
       } finally {
         release();
       }
@@ -532,32 +577,30 @@ export class SubscriptionRepository {
 
   /**
    * 快照段提交(只覆盖本事务涉及的段,其余保留活动快照)。
-   * 快照未初始化:如实记日志跳过(与 W16 同口径);提交失败:数据已在 Preferences,
-   * 日志留痕,不伪造 revision。
+   * 快照未初始化:如实记日志跳过(与 W16 同口径);提交失败向上传播，
+   * 由串行段恢复兼容 Preferences，调用方不得把失败显示成成功。
    */
   private static async commitSections(sections: SectionUpdates, reason: string): Promise<void> {
     if (!ConfigRepository.hasActive()) {
       LogStore.addLog(`[subtx] ${reason}: 配置快照未初始化,本次仅保存 Preferences`);
       return;
     }
-    try {
-      const snap = await ConfigRepository.commit((draft: SnapshotContent): SnapshotContent => {
-        if (sections.profiles !== null) {
-          draft.profiles = sections.profiles;
-        }
-        if (sections.subscriptions !== null) {
-          draft.subscriptions = sections.subscriptions;
-        }
-        if (sections.userOverrides !== null) {
-          draft.userOverrides = sections.userOverrides;
-        }
-        return draft;
-      });
-      LogStore.addLog(`[subtx] ${reason}: 快照提交 r${snap.revision}`);
-    } catch (e) {
-      LogStore.addLog(`[subtx] ${reason}: 快照提交失败(数据已存 Preferences,下次事务自愈): ` +
-        `${e instanceof Error ? e.message : `${e}`}`);
-    }
+    const snap = await ConfigRepository.commit((draft: SnapshotContent): SnapshotContent => {
+      if (sections.profiles !== null) {
+        draft.profiles = sections.profiles;
+      }
+      if (sections.groups !== null) {
+        draft.groups = sections.groups;
+      }
+      if (sections.subscriptions !== null) {
+        draft.subscriptions = sections.subscriptions;
+      }
+      if (sections.userOverrides !== null) {
+        draft.userOverrides = sections.userOverrides;
+      }
+      return draft;
+    });
+    LogStore.addLog(`[subtx] ${reason}: 快照提交 r${snap.revision}`);
   }
 
   private static ensureSourceStore(): void {
@@ -570,7 +613,8 @@ export class SubscriptionRepository {
     }
   }
 
-  private static saveSourceSnapshot(url: string, prep: ParsedPreparation, fetchedAt: number): void {
+  private static saveSourceSnapshot(url: string, prep: ParsedPreparation, fetchedAt: number,
+    sourceProfiles: Array<Profile>): void {
     if (!SubscriptionSourceStore.isInitialized()) {
       LogStore.addLog(`[subtx] ${url}: 原始层存储未初始化,本次不落原始快照`);
       return;
@@ -582,8 +626,8 @@ export class SubscriptionRepository {
     snap.etag = prep.etag;
     snap.lastModified = prep.lastModified;
     snap.contentHash = computeChecksum(prep.content);
-    for (let i = 0; i < prep.profiles.length; i++) {
-      const p = prep.profiles[i];
+    for (let i = 0; i < sourceProfiles.length; i++) {
+      const p = sourceProfiles[i];
       const node = sourceNodeOf(p);
       node.identityKey = identityKeyOf(url, p);
       snap.nodes.push(node);

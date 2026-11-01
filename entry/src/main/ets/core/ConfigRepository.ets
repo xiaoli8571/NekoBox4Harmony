@@ -65,9 +65,22 @@ export class ConfigRepository {
     return ConfigRepository.dir.length > 0;
   }
 
-  /** 当前活动快照(只读用；调用方不得原地修改 content)。 */
+  /** 返回独立副本，调用方的草稿不能绕过 commit 改写活动快照。 */
   static getActive(): ConfigSnapshot | null {
-    return ConfigRepository.active;
+    const active = ConfigRepository.active;
+    return active === null ? null : ConfigRepository.copySnapshot(active);
+  }
+
+  private static copySnapshot(source: ConfigSnapshot): ConfigSnapshot {
+    const copy = new ConfigSnapshot();
+    copy.schemaVersion = source.schemaVersion;
+    copy.revision = source.revision;
+    copy.parentRevision = source.parentRevision;
+    copy.createdAt = source.createdAt;
+    copy.checksum = source.checksum;
+    copy.resourceManifestId = source.resourceManifestId;
+    copy.content = cloneContent(source.content);
+    return copy;
   }
 
   static getActiveRevision(): number {
@@ -91,16 +104,16 @@ export class ConfigRepository {
     return ConfigRepository.enqueue(async (): Promise<ConfigSnapshot> => {
       const existing = ConfigRepository.active;
       if (existing !== null) {
-        return existing;
+        return ConfigRepository.copySnapshot(existing);
       }
       if (!ConfigRepository.isInitialized()) {
         throw new Error('config repository not initialized');
       }
-      const snap = buildSnapshot(1, -1, content);
+      const snap = buildSnapshot(1, -1, cloneContent(content));
       ConfigRepository.persist(snap);
       ConfigRepository.active = snap;
       LogStore.addLog(`[config] 初始快照已写入: revision=1, checksum=${snap.checksum}`);
-      return snap;
+      return ConfigRepository.copySnapshot(snap);
     });
   }
 
@@ -117,13 +130,13 @@ export class ConfigRepository {
       }
       const draft = cloneContent(base.content);
       const next = mutation(draft);
-      const snap = buildSnapshot(base.revision + 1, base.revision, next,
+      const snap = buildSnapshot(base.revision + 1, base.revision, cloneContent(next),
         resourceManifestId.length > 0 ? resourceManifestId : base.resourceManifestId);
       ConfigRepository.persist(snap);
       ConfigRepository.active = snap;
       ConfigRepository.gc();
       LogStore.addLog(`[config] 快照提交成功: revision=${base.revision}→${snap.revision}`);
-      return snap;
+      return ConfigRepository.copySnapshot(snap);
     });
   }
 
@@ -138,7 +151,7 @@ export class ConfigRepository {
         throw new Error('config repository has no active snapshot');
       }
       if (revision === active.revision) {
-        return active;
+        return ConfigRepository.copySnapshot(active);
       }
       const file = ConfigRepository.snapshotPath(revision);
       if (!SnapshotStore.exists(file)) {
@@ -154,17 +167,13 @@ export class ConfigRepository {
       ConfigRepository.active = snap;
       ConfigRepository.gc();
       LogStore.addLog(`[config] 已回滚内容 r${revision} → 新修订 r${snap.revision}`);
-      return snap;
+      return ConfigRepository.copySnapshot(snap);
     });
   }
 
   /** 读取历史快照内容(诊断/测试；不改变活动指针)。 */
   static loadSnapshot(revision: number): ConfigSnapshot | null {
-    const parsed = parseSnapshot(SnapshotStore.readText(ConfigRepository.snapshotPath(revision)));
-    if (!parsed.ok || parsed.snapshot === null) {
-      return null;
-    }
-    return parsed.snapshot;
+    return ConfigRepository.verifySnapshotFile(revision, '');
   }
 
   // ---- 内部实现 ----
@@ -311,17 +320,19 @@ export class ConfigRepository {
     if (!SnapshotStore.exists(path)) {
       return null;
     }
-    const parsed: SnapshotParseResult = parseSnapshot(SnapshotStore.readText(path));
-    if (!parsed.ok || parsed.snapshot === null) {
+    try {
+      const parsed: SnapshotParseResult = parseSnapshot(SnapshotStore.readText(path));
+      if (!parsed.ok || parsed.snapshot === null || parsed.snapshot.revision !== revision) {
+        return null;
+      }
+      if (expectedChecksum.length > 0 && parsed.snapshot.checksum !== expectedChecksum) {
+        return null;
+      }
+      return parsed.snapshot;
+    } catch (e) {
+      // 单个文件不可读也必须继续尝试另一 manifest / 历史快照。
       return null;
     }
-    if (parsed.snapshot.revision !== revision) {
-      return null;
-    }
-    if (expectedChecksum.length > 0 && parsed.snapshot.checksum !== expectedChecksum) {
-      return null;
-    }
-    return parsed.snapshot;
   }
 
   /** 目录内快照文件的 revision 列表(降序)。 */

@@ -1,5 +1,28 @@
 # Phase A-D Implementation Status
 
+## 版本 2.7.0 打包(2026-10-31)— P0 + P1 性能/可靠性整改
+
+审计路线图的 P0 与 P1 全部落地;不改动已发布的 2.6.0 语义,`npm test` 由 46 → **50 套件全 PASS**,`assembleHap`(release)BUILD SUCCESSFUL。版本号统一 `AppScope/app.json5` = `2700000` / `2.7.0`,根与 `entry/oh-package.json5` = `2.7.0`。未签名产物 `dist/NekoBox4Harmony-2.7.0-unsigned.hap`(17,392,023 B,sha256 `cf559a88…`,包内 `buildMode:"release"`、`debug:false`、`versionName 2.7.0` / `versionCode 2700000`)与 `dist/NekoBox4Harmony-2.7.0-unsigned.app`(16,209,561 B,sha256 `05ab9c48…`)。AGC 双层签名产物 `dist/NekoBox-2.7.0-release-signed.hap`(17,457,111 B,sha256 `8C64BA4A…`)与 `dist/NekoBox-2.7.0-release-signed.app`(16,284,906 B,sha256 `378AFFED…`),双层 `verify-app` 通过且外层/内层证书链指纹与 AGC 发布证书一致。
+
+- **P0-1 仓库卫生**:`build-profile.json5` 恢复 `signingConfigs: []`(移除此前被提交的本机证书路径/口令),新增 `tests/repo-hygiene.cjs` 守住基线;未签名 HAP 仍可直接构建。
+- **P0-2 启动串行化**:`Index.aboutToAppear` 走 `bootstrap()` —— 先 `refresh()` 载入设置,再做杀进程自愈判断、订阅自动更新与 `autoConnect()`,消除"设置未载入就决定自动连接"的竞态。
+- **P0-3 订阅更新去重**:`SubscriptionRepository` 按 URL 维护 in-flight Promise,同一订阅并发更新合并为一次网络/落盘。
+- **P0-4 版本文档统一**:README/AGENTS/HANDOFF/DEVPLAN/CHANGES/`docs/req-traceability.md` 与 `app.json5` 对齐当前版本;新增 `tests/version-consistency.cjs`。
+- **P0-5 测试门禁**:新增 `tests/run-all.cjs` + `package.json`(`npm test`)+ `.github/workflows/ci.yml`。
+- **P1-1 单一流量生产者**:`:vpn` 扩展改用内核 `/traffic` WebSocket(1s 增量,新增 `model/TrafficMeter.ets` + `vpnext/TrafficStream.ets`,断线指数退避),不再每秒 GET 并解析整份 `/connections`;UI 删除 `startSpeedPoller`,改由 CommonEvent/AppStorage 消费;「清除流量统计」经命令通道即时同步扩展基准。新增 `tests/traffic-meter.cjs`、`tests/traffic-stream.cjs`。
+- **P1-2 节点列表缓存**:`visibleNodeList()` 按输入版本 + 引用身份缓存,收藏判定由 `profiles.find`(O(n²))改为置顶 `Set`;`pagedNodeList()` 缓存切片;筛选/搜索/分组/排序变化重置「显示更多」到 120。
+- **P1-3 分应用防抖**:连续勾选在 `Index` 层 700ms 合并,只重启一次内核;`PerAppManager.persistPerApp` 的即时落盘语义不变。
+- **P1-4 Store 解析缓存 + 并发刷新**:`Store` 对 profiles/groups 的 JSON 解析结果做进程内缓存(任何写入口/`refreshStore`/`resetAllData` 失效,返回对象仍是新实例,数组字段独立);`initStore` 幂等且并发去重;`Index.refresh()` 的 8 次串行读取改为并发。
+- **P1-5 StatsBar 抽离**:底栏速率条移入 `common/components/StatsBar.ets` 自订阅速率,首页不再因 1s 流量事件整页重建;半透明 `backdropBlur(20)` 观感不变。
+
+## 版本 2.6.0 打包(2026-10-31)— 修复 2.5.0 无法启动(VPN 连上即断)
+
+- **版本号**:`AppScope/app.json5` → `versionCode 2600000` / `versionName 2.6.0`;根与 `entry/oh-package.json5` → `2.6.0`。
+- **根因**:gVisor `fdbased.IsSocketFD()` 对 OHOS 系统注入的 TUN fd 调用 `unix.Fstat`,被 SELinux 拒绝(EPERM),gVisor 栈创建失败,sing-box 报 `starting tun stack: unix.Fstat(61,...) failed: permission denied`,VPN 连接约 0.3s 后被回滚断开。
+- **修复**:新增 `core/scripts/patch-gvisor-ohos-fstat.py`(fstat 失败时按“非 socket(TUN)”继续,语义正确且不影响 Linux 路径;幂等 + fail-closed);`build-libsingbox-ohos.sh` 增加 A2.5 步骤,在 `go mod vendor` 之后自动打补丁并 grep 校验,防止 vendor 重新生成覆盖。
+- **验证**:真机 VPN state 保持 1,内核日志出现 tun inbound → vless outbound 真实转发,fstat 报错 0 次;Node 46 套件全 PASS。
+- **发布产物**:`dist/NekoBox-2.6.0-release-signed.hap`(17,444,771 B)、`dist/NekoBox-2.6.0-release-signed.app`(16,279,624 B)。
+
 ## 版本 2.4.0 打包(2026-10-28)—— 远程规则集整改 + 用户修复轮
 
 - **版本号统一**:`AppScope/app.json5` → `versionCode 2400000` / `versionName 2.4.0`;`oh-package.json5`(根)与 `entry/oh-package.json5` → `2.4.0`(此前二者停在 2.3.0,与 app.json5 的 2.3.1 不一致)。UI 的关于/工具页版本号取自 `bundleManager` 运行时读取,无需改文案。

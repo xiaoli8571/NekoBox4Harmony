@@ -149,10 +149,6 @@
       "value": "Wi-Fi 与移动数据切换后自动重连,恢复连通性"
     },
     {
-      "name": "wake_reset_connections",
-      "value": "回到前台时重置连接"
-    },
-    {
       "name": "wake_reset_connections_sum",
       "value": "应用回到前台时自动重连(对齐安卓唤醒后重置,默认关闭)"
     },
@@ -2437,10 +2433,6 @@
       "value": "与生成的配置浅合并,非法 JSON 会被忽略"
     },
     {
-      "name": "show_bottom_bar",
-      "value": "像 SagerNet 一样显示底栏"
-    },
-    {
       "name": "ipv6_modes",
       "value": "IPv6 路由"
     },
@@ -2753,10 +2745,6 @@
       "value": "液态玻璃"
     },
     {
-      "name": "settings_show_bottom_bar",
-      "value": "显示底部速率条"
-    },
-    {
       "name": "settings_nav_layout",
       "value": "导航布局"
     },
@@ -2767,10 +2755,6 @@
     {
       "name": "settings_network_reset",
       "value": "网络切换时重置连接"
-    },
-    {
-      "name": "settings_wake_reset",
-      "value": "唤醒时重置连接"
     },
     {
       "name": "settings_profile_traffic",
@@ -3841,14 +3825,6 @@
       "value": "订阅更新、测速等事件的历史记录"
     },
     {
-      "name": "settings_auto_start_boot",
-      "value": "开机自动连接"
-    },
-    {
-      "name": "settings_auto_start_boot_desc",
-      "value": "检测到设备重启后,首次打开应用自动连接上次节点"
-    },
-    {
       "name": "settings_theme_accent",
       "value": "主题强调色"
     },
@@ -3895,6 +3871,46 @@
     {
       "name": "settings_lan_auth_pass",
       "value": "局域网密码"
+    },
+    {
+      "name": "sub_opt_title",
+      "value": "更新订阅选项"
+    },
+    {
+      "name": "sub_opt_update",
+      "value": "更新订阅"
+    },
+    {
+      "name": "sub_opt_auto_test",
+      "value": "更新订阅后自动测试"
+    },
+    {
+      "name": "sub_opt_auto_test_hint",
+      "value": "自动测试需要比较长的时间，开启后任务将在后台运行；不开启则在当前页面运行"
+    },
+    {
+      "name": "sub_opt_delete_invalid",
+      "value": "测试后自动删除无效配置"
+    },
+    {
+      "name": "sub_opt_delete_invalid_hint",
+      "value": "测试结果可能不准确且已删除的配置无法恢复"
+    },
+    {
+      "name": "sub_opt_sort",
+      "value": "测试后自动排序"
+    },
+    {
+      "name": "sub_opt_sort_hint",
+      "value": "测试结果可能不准确"
+    },
+    {
+      "name": "sub_opt_saved",
+      "value": "更新选项已保存"
+    },
+    {
+      "name": "sub_opt_no_update",
+      "value": "已取消更新"
     }
   ]
 }

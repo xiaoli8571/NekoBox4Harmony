@@ -93,16 +93,19 @@ test('global custom config deep-merges preserving generated subfields', () => {
   assert.equal(c.dns.independent_cache, true);
   assert.ok(Array.isArray(c.dns.servers));
 });
-test('showBottomBar default and backup validation', () => {
-  assert.equal(new model.AppSettings().showBottomBar, false);
+test('bottom bar toggle is fully removed (2.7.0 用户要求)', () => {
+  // 「像 SagerNet 一样显示底栏」已整体下线:模型字段、备份白名单、设置界面都不该再有它
+  assert.equal('showBottomBar' in new model.AppSettings(), false);
   const backup = fs.readFileSync(path.join(root, 'entry/src/main/ets/core/Backup.ets'), 'utf8');
-  assert.match(backup, /'profileTrafficStatistics', 'showBottomBar'/);
+  assert.doesNotMatch(backup, /showBottomBar/);
+  const page = fs.readFileSync(path.join(root, 'entry/src/main/ets/pages/SettingsPage.ets'), 'utf8');
+  assert.doesNotMatch(page, /show_bottom_bar/);
 });
-test('StatsBar and FAB consume the persistent setting', () => {
+test('StatsBar and FAB only render on the node page', () => {
   const index = fs.readFileSync(path.join(root, 'entry/src/main/ets/pages/Index.ets'), 'utf8');
-  /* 底栏(统计条)渲染条件:运行中 + 首页区块未被隐藏 + (节点页或用户开了底部栏) */
-  assert.match(index, /if \(this\.isRunning && this\.sectionVisible\('bottombar'\)[\s\S]{0,80}this\.settings\.showBottomBar\)\)/);
-  assert.match(index, /if \(this\.sectionVisible\('bottombar'\)[\s\S]{0,80}this\.fabLayer\(\)/);
+  /* 底栏与 FAB 只在节点页渲染(不再是「任意页 + 用户开关」) */
+  assert.match(index, /if \(this\.isRunning && this\.sectionVisible\('bottombar'\) && this\.activeTab === 0\)/);
+  assert.match(index, /if \(this\.sectionVisible\('bottombar'\) && this\.activeTab === 0\) \{\s*this\.fabLayer\(\)/);
   assert.match(index, /this\.fabButton\(TransitionEdge\.START\)/);
   assert.match(index, /this\.fabButton\(TransitionEdge\.END\)/);
 });
@@ -110,7 +113,7 @@ test('resource keys are unique and bilingual', () => {
   const keys = locale => JSON.parse(fs.readFileSync(path.join(root, `entry/src/main/resources/${locale}/element/string.json`), 'utf8')).string.map(x => x.name);
   const base = keys('base'); const en = keys('en_US');
   assert.equal(new Set(base).size, base.length); assert.equal(new Set(en).size, en.length);
-  assert.deepEqual(base.sort(), en.sort()); assert.ok(base.includes('show_bottom_bar'));
+  assert.deepEqual(base.sort(), en.sort()); assert.ok(base.includes('settings_auto_connect'));
 });
 function config(settings = {}, rules = []) {
   const p = new model.Profile(); p.server = 'example.invalid';

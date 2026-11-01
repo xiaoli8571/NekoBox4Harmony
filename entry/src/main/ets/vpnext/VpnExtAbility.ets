@@ -9,7 +9,7 @@ import commonEventManager from '@ohos.commonEventManager';
 import BusinessError from '@ohos.base';
 import { Profile, ProfileGroup, AppSettings } from '../model/Profile';
 import { refreshStore, loadProfiles, loadGroups, loadSettings, getPendingProfileId, setPendingProfileId, clearPendingProfileId, setRunningProfileId, mutateProfiles, LogStore } from '../model/Store';
-import { TrafficBaseline, parseBaseline, displayTotals, baselineStale } from '../model/TrafficBaseline';
+import { TrafficBaseline, parseBaseline, displayTotals, baselineStale, buildBaseline } from '../model/TrafficBaseline';
 import { readPrefString, readRawConfigOverride } from '../model/Store';
 import { buildCoreConfig, effectiveIpv6Mode, TUN_STACK } from '../core/ConfigBuilder';
 import { loadRouteRules, RouteRule, loadRemoteRuleSets, RemoteRuleSet } from '../model/RouteRule';
@@ -21,11 +21,13 @@ import { PreparedRuleSet, PreparedResources } from '../core/PreparedResource';
 import { entriesFromLegacyList, serializeEntries } from '../model/PerApp';
 import { evaluatePerAppPolicy, perAppBlockMessage } from '../model/PerAppPolicy';
 import deviceInfo from '@ohos.deviceInfo';
-import { publishVpnLog, publishVpnStatusEx, publishVpnTraffic, VPN_EVENT_LATENCY, VPN_EVENT_APP_FOREGROUND,
+import { publishVpnLog, publishVpnStatusEx, publishVpnTraffic, VPN_EVENT_LATENCY,
   subscribeVpnCommands, VpnCommand, VpnEnvelope, publishVpnApplied } from '../core/VpnIpc';
 import { SnapshotStore } from '../core/SnapshotStore';
 import { parseSnapshot, SnapshotParseResult, ConfigSnapshot } from '../model/ConfigSnapshot';
 import { fetchTrafficTotals } from '../utils/TrafficStats';
+import { TrafficStream, TrafficStreamCallbacks } from './TrafficStream';
+import { TrafficMeter, TrafficDelta } from '../model/TrafficMeter';
 import { ensureYacdExtracted } from '../utils/WebUiAssets';
 import { errText } from '../utils/ErrText';
 import { autoUpdateGeoAssets } from '../utils/GeoAssets';
@@ -89,7 +91,6 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   private notifyShowGroup: boolean = false;
   private notifyGroupLabel: string = '';
   private latencySubscribed: boolean = false;
-  private foregroundSubscribed: boolean = false;
   private teardownPromise: Promise<void> | null = null;
   private lifecycleGeneration: number = 0;
   private restartRequested: boolean = false;
@@ -99,12 +100,20 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   private wantPerAppMode: string = '';
   private wantPerAppList: string = '';
   private wantPerAppProvided: boolean = false;
-  private notificationTrafficTimer: number = -1;
+  /** P1:唯一流量生产者 —— 内核 /traffic WebSocket(1s 增量),不再每秒 GET /connections */
+  private trafficStream: TrafficStream | null = null;
   private notificationGeneration: number = 0;
+  /** 通知正文刷新间隔(ms):流固定 1s 采样,通知按设置节流 */
+  private notificationIntervalMs: number = 1000;
+  private notificationPublishAt: number = 0;
+  /** 连接建立后是否已用 /connections 快照对齐累计值(未对齐前丢弃流样本) */
+  private notificationSynced: boolean = false;
+  /** 每次重连快照独立排序,避免旧 HTTP 响应覆盖新连接的累计值。 */
+  private trafficResyncGeneration: number = 0;
+  private trafficStreamFailLogged: boolean = false;
+  /** 内核累计口径(P1):/connections 快照对齐一次,之后只累加 /traffic 1s 增量 */
+  private trafficMeter: TrafficMeter = new TrafficMeter();
   private notificationLatencyMs: number = -1;
-  private notificationLastUp: number = 0;
-  private notificationLastDown: number = 0;
-  private notificationLastAt: number = 0;
   private notificationUpSpeed: number = 0;
   private notificationDownSpeed: number = 0;
   /** W20:显示累计流量基准(与 UI 共用 Preferences 键;重置后通知与 UI 同基准) */
@@ -185,7 +194,6 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       publishVpnLog(line);
     });
     this.subscribeLatencyEvents();
-    this.subscribeForegroundEvents();
     this.registerNetworkChange();
     this.tryStart();
   }
@@ -272,7 +280,10 @@ export default class VpnExtAbility extends VpnExtensionAbility {
       return;
     }
     this.latencySubscribed = true;
-    const info: commonEventManager.CommonEventSubscribeInfo = { events: [VPN_EVENT_LATENCY] };
+    const info: commonEventManager.CommonEventSubscribeInfo = {
+      events: [VPN_EVENT_LATENCY],
+      publisherBundleName: 'com.nekobox.app.jynxen'
+    };
     commonEventManager.createSubscriber(info).then((subscriber: commonEventManager.CommonEventSubscriber) => {
       commonEventManager.subscribe(subscriber,
         (err: BusinessError, data: commonEventManager.CommonEventData) => {
@@ -302,77 +313,21 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     });
   }
 
-  /**
-   * 应用回到前台时重置连接(对齐安卓 wakeResetConnections):
-   * 安卓在设备退出 Doze 闲置模式时重置;鸿蒙 SDK 无屏幕亮灭事件订阅,
-   * 退而用「应用回到前台」近似(用户唤醒设备后通常会打开应用)。
-   * 需手动在设置里开启,默认关闭。
-   */
-  private subscribeForegroundEvents(): void {
-    if (this.foregroundSubscribed) {
-      return;
-    }
-    this.foregroundSubscribed = true;
-    const info: commonEventManager.CommonEventSubscribeInfo = { events: [VPN_EVENT_APP_FOREGROUND] };
-    commonEventManager.createSubscriber(info).then((subscriber: commonEventManager.CommonEventSubscriber) => {
-      commonEventManager.subscribe(subscriber,
-        (err: BusinessError, data: commonEventManager.CommonEventData) => {
-          if (err || data === undefined || data.event !== VPN_EVENT_APP_FOREGROUND) {
-            return;
-          }
-          void this.resetConnectionsAfterWake();
-        });
-    }).catch((e: Object) => {
-      this.foregroundSubscribed = false;
-      LogStore.addLog(`[vpn] 前台事件订阅失败: ${e}`);
-    });
-  }
-
-  private unsubscribeForegroundEvents(): void {
-    // 与延迟事件一致:订阅随扩展生命周期存在,此处仅占位,实际注销在进程退出时由系统回收
-  }
-
-  private async resetConnectionsAfterWake(): Promise<void> {
-    try {
-      if (!this.started || this.starting) {
-        return;
-      }
-      const settings = await loadSettings();
-      if (!settings.wakeResetConnections) {
-        return;
-      }
-      const profileId = this.currentRunId;
-      if (profileId.length === 0) {
-        return;
-      }
-      LogStore.addLog('[vpn] 应用回到前台,重置连接…');
-      setPendingProfileId(profileId);
-      this.forceRestartRequested = true;
-      await this.teardown(true);
-      await this.tryStart();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : `${e}`;
-      LogStore.addLog(`[vpn] 唤醒重连失败: ${msg}`);
-    }
-  }
-
   onDisconnect(want: Want): void {
     LogStore.addLog('[vpn] 扩展 onDisconnect');
     this.lifecycleGeneration++;
-    this.stopNotificationTrafficPoller();
+    this.stopTrafficStream();
     this.cancelNotification();
     this.unregisterNetworkChange();
-    this.unsubscribeForegroundEvents();
     this.teardown();
   }
 
   onDestroy(): void {
     LogStore.addLog('[vpn] 扩展 onDestroy');
     this.lifecycleGeneration++;
-    this.stopNotificationTrafficPoller();
+    this.stopTrafficStream();
     this.cancelNotification();
     this.unregisterNetworkChange();
-    this.unsubscribeForegroundEvents();
     this.teardown();
   }
 
@@ -402,7 +357,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   }
 
   private async doTeardown(silent: boolean): Promise<void> {
-    this.stopNotificationTrafficPoller();
+    this.stopTrafficStream();
     this.cancelNotification();
     try {
       // 先停内核再解除 pin。
@@ -477,6 +432,10 @@ export default class VpnExtAbility extends VpnExtensionAbility {
         this.handleApplyCommand(command);
         return;
       }
+      if (command.cmd === 'clearTraffic') {
+        this.handleClearTrafficCommand(command);
+        return;
+      }
       if (command.cmd === 'queryApplyStatus') {
         // 查询当前应用事务状态(UI 重启后避免重复投递,§12.3-8)
         this.publishApplyResult(this.started, command.operationId, this.lastAppliedRevision,
@@ -548,6 +507,23 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     } finally {
       this.applyingOperationId = '';
     }
+  }
+
+  /**
+   * UI「清除流量统计」:用 UI 发来的原始累计值更新扩展内基准,通知立即归零。
+   * Preferences 里的基准由 UI 写入;这里同步内存副本,避免通知要等到下一次会话才生效。
+   */
+  private handleClearTrafficCommand(command: VpnCommand): void {
+    const rawUp = Number(command.extra['rawUp'] ?? '0');
+    const rawDown = Number(command.extra['rawDown'] ?? '0');
+    const sessionId = command.extra['sessionId'] ?? '';
+    if (!isNaN(rawUp) && !isNaN(rawDown) && (rawUp > 0 || rawDown > 0)) {
+      this.notificationBaseline = buildBaseline(rawUp, rawDown, sessionId, Date.now());
+    } else {
+      this.notificationBaseline = null;
+    }
+    this.publishTrafficTotals();
+    void this.showConnectedNotification();
   }
 
   /** 只读读取并校验指定 revision 的快照(checksum 由 parseSnapshot 复核)。 */
@@ -687,7 +663,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     } catch (e) {
       const msg = errText(e);
       LogStore.addLog(`[vpn] 启动失败: ${msg}`);
-      this.stopNotificationTrafficPoller();
+      this.stopTrafficStream();
       this.cancelNotification();
       await clearPendingProfileId();
       await this.teardown(true);
@@ -707,7 +683,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     if (pendingId.length === 0) {
       // 保持扩展待命:下一次 startVpnExtensionAbility 会带着新节点再次进入
       LogStore.addLog('[vpn] 暂无待启动节点,扩展保持待命');
-      this.stopNotificationTrafficPoller();
+      this.stopTrafficStream();
       this.cancelNotification();
       return;
     }
@@ -1007,7 +983,7 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.notificationStartedAt = Date.now();
     this.lastNotificationLine = '';
     await this.showConnectedNotification();
-    void this.startNotificationTrafficPoller();
+    void this.startTrafficStream();
     this.publishStatus(`connected:${node.name}`, true, pendingId);
     await clearPendingProfileId();
   }
@@ -1021,67 +997,110 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     }
   }
 
-  private async startNotificationTrafficPoller(): Promise<void> {
-    this.stopNotificationTrafficPoller();
+  /** 单流量生产者:内核 /traffic WebSocket(1s 增量)→ 累计/显示/CommonEvent。 */
+  private async startTrafficStream(): Promise<void> {
+    const startedAt = this.notificationStartedAt;
+    this.stopTrafficStream();
+    this.notificationStartedAt = startedAt;
+    const generation = this.notificationGeneration;
     const settings = this.notificationSettings;
     if (!this.started || settings === null || !settings.clashApiEnabled) {
       return;
     }
-    this.notificationLastUp = 0;
-    this.notificationLastDown = 0;
-    this.notificationLastAt = 0;
+    this.trafficMeter.reset(0, 0);
     this.notificationUpSpeed = 0;
     this.notificationDownSpeed = 0;
     /* W20:会话启动读一次显示基准(扩展进程 Preferences 缓存约束:会话中途 UI 重置,
       通知最迟在下一次会话/apply 后同步 —— 已知降级,如实记录) */
-    this.notificationBaseline = await this.loadNotificationBaseline();
+    const baseline = await this.loadNotificationBaseline();
+    if (generation !== this.notificationGeneration || !this.started) {
+      return;
+    }
+    this.notificationBaseline = baseline;
     this.notificationTotalUp = 0;
     this.notificationTotalDown = 0;
     this.notificationFailStreak = 0;
-    const generation = ++this.notificationGeneration;
-    const poll = async (): Promise<void> => {
-      const startedAt = Date.now();
-      const totals = await fetchTrafficTotals(settings.clashApiPort, settings.clashApiSecret);
-      if (generation !== this.notificationGeneration || !this.started || totals === null) {
-        return;
-      }
-      if (this.notificationLastAt > 0) {
-        const elapsedSeconds = Math.max(0.001, (startedAt - this.notificationLastAt) / 1000);
-        this.notificationUpSpeed = Math.max(0,
-          Math.round((totals.up - this.notificationLastUp) / elapsedSeconds));
-        this.notificationDownSpeed = Math.max(0,
-          Math.round((totals.down - this.notificationLastDown) / elapsedSeconds));
-      }
-      this.notificationLastUp = totals.up;
-      this.notificationLastDown = totals.down;
-      this.notificationLastAt = startedAt;
-      if (baselineStale(totals.up, totals.down, this.notificationBaseline)) {
-        this.notificationBaseline = null;
-      }
-      const shownTotals = displayTotals(totals.up, totals.down, this.notificationBaseline);
-      this.notificationTotalUp = shownTotals[0];
-      this.notificationTotalDown = shownTotals[1];
-      publishVpnTraffic(this.notificationUpSpeed, this.notificationDownSpeed,
-        this.notificationTotalUp, this.notificationTotalDown);
-      await this.showConnectedNotification();
-    };
-    void poll();
+    this.notificationSynced = false;
+    this.trafficStreamFailLogged = false;
+    this.notificationPublishAt = 0;
     // 通知刷新间隔(对齐安卓 speedInterval,默认 1000ms,允许 500ms~10s)
     const rawMs = settings.speedIntervalMs;
-    const intervalMs = rawMs >= 500 && rawMs <= 10000 ? rawMs : 1000;
-    this.notificationTrafficTimer = setInterval(() => { void poll(); }, intervalMs);
+    this.notificationIntervalMs = rawMs >= 500 && rawMs <= 10000 ? rawMs : 1000;
+    const callbacks = new TrafficStreamCallbacks();
+    callbacks.onOpen = (): void => {
+      this.trafficStreamFailLogged = false;
+      void this.resyncTraffic(generation);
+    };
+    callbacks.onError = (message: string): void => {
+      if (!this.trafficStreamFailLogged) {
+        this.trafficStreamFailLogged = true;
+        LogStore.addLog(`[vpn] 流量流断开,自动重连中: ${message}`);
+      }
+    };
+    callbacks.onDelta = (up: number, down: number): void => {
+      if (generation !== this.notificationGeneration || !this.started || !this.notificationSynced) {
+        return;
+      }
+      const delta: TrafficDelta = { up: Math.max(0, Math.floor(up)), down: Math.max(0, Math.floor(down)) };
+      this.trafficMeter.add(delta);
+      this.notificationUpSpeed = delta.up;
+      this.notificationDownSpeed = delta.down;
+      this.publishTrafficTotals();
+      const now = Date.now();
+      if (now - this.notificationPublishAt >= this.notificationIntervalMs) {
+        this.notificationPublishAt = now;
+        void this.showConnectedNotification();
+      }
+    };
+    const stream = new TrafficStream();
+    this.trafficStream = stream;
+    stream.start(settings.clashApiPort, settings.clashApiSecret, callbacks);
   }
 
-  private stopNotificationTrafficPoller(): void {
-    this.notificationGeneration++;
-    if (this.notificationTrafficTimer >= 0) {
-      clearInterval(this.notificationTrafficTimer);
-      this.notificationTrafficTimer = -1;
+  /** 用一次 /connections 快照重对齐累计值(会话开始/断线重连),之后只消费 1s 增量。 */
+  private async resyncTraffic(generation: number): Promise<void> {
+    const settings = this.notificationSettings;
+    if (settings === null || generation !== this.notificationGeneration || !this.started) {
+      return;
     }
-    // 会话流量累加到节点历史统计(对齐安卓 TrafficLooper.stop 的 finally traffic post)
-    this.notificationLastUp = 0;
-    this.notificationLastDown = 0;
-    this.notificationLastAt = 0;
+    this.notificationSynced = false;
+    const resyncGeneration = ++this.trafficResyncGeneration;
+    const totals = await fetchTrafficTotals(settings.clashApiPort, settings.clashApiSecret);
+    if (generation !== this.notificationGeneration || resyncGeneration !== this.trafficResyncGeneration || !this.started) {
+      return;
+    }
+    if (totals !== null) {
+      this.trafficMeter.reset(totals.up, totals.down);
+    }
+    this.notificationSynced = true;
+    this.publishTrafficTotals();
+  }
+
+  /** 由累计值 + 显示基准生成 UI/通知同源数据(W20 口径不变)。 */
+  private publishTrafficTotals(): void {
+    const rawUp = this.trafficMeter.up();
+    const rawDown = this.trafficMeter.down();
+    if (baselineStale(rawUp, rawDown, this.notificationBaseline)) {
+      this.notificationBaseline = null;
+    }
+    const shown = displayTotals(rawUp, rawDown, this.notificationBaseline);
+    this.notificationTotalUp = shown[0];
+    this.notificationTotalDown = shown[1];
+    publishVpnTraffic(this.notificationUpSpeed, this.notificationDownSpeed,
+      this.notificationTotalUp, this.notificationTotalDown, rawUp, rawDown);
+  }
+
+  private stopTrafficStream(): void {
+    this.notificationGeneration++;
+    const stream = this.trafficStream;
+    this.trafficStream = null;
+    if (stream !== null) {
+      stream.stop();
+    }
+    this.notificationSynced = false;
+    // 当前实现仅清理会话内流量计数器；节点历史统计未在此处更新。
+    // 若后续恢复 Profile.rx/tx 统计，需要在重置前显式落盘累计值。
+    this.trafficMeter.reset(0, 0);
     this.notificationUpSpeed = 0;
     this.notificationDownSpeed = 0;
     this.notificationTotalUp = 0;
@@ -1133,7 +1152,8 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   }
 
   private async showConnectedNotification(): Promise<void> {
-    if (this.notificationFailStreak >= 5) {
+    const generation = this.notificationGeneration;
+    if (!this.started || this.notificationFailStreak >= 5) {
       return; // 连续 5 次发布失败(通知权限被关):本会话内停用周期通知,流量统计不受影响
     }
     try {
@@ -1147,6 +1167,9 @@ export default class VpnExtAbility extends VpnExtensionAbility {
         requestCode: 1002,
         actionFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
       });
+      if (generation !== this.notificationGeneration || !this.started) {
+        return;
+      }
       // 本机 SDK(API 24)通知字段为 string 类型,不接受 Resource:构建时现取本地化字符串
       const res = this.context.resourceManager;
       const uploadLabel = res.getStringSync($r('app.string.notification_upload'));

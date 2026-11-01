@@ -99,8 +99,8 @@ function validateSettings(value: Object): void {
       'testTimeoutMs', 'testRetries', 'testSamples', 'latencyStaleMs'],
     ['dnsRouting', 'fakeDns', 'ipv6', 'bypassLan', 'resolveDestination', 'allowAccess', 'allowInsecureAll',
       'subAllowInsecure', 'alwaysShowAddress', 'notificationGroup', 'autoUpdateSubs', 'autoConnect',
-      'hapticFeedback', 'clashApiEnabled', 'liquidGlass', 'networkChangeResetConnections', 'wakeResetConnections',
-      'profileTrafficStatistics', 'showBottomBar', 'testBypassTunnel', 'autoStartOnBoot']);
+      'hapticFeedback', 'clashApiEnabled', 'liquidGlass', 'networkChangeResetConnections',
+      'profileTrafficStatistics', 'testBypassTunnel']);
 }
 
 function validateProfile(value: Object): void {

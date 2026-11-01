@@ -1,0 +1,19 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  node-tests:
+    # 测试会读 Windows 路径下的 DevEco SDK(存在才做交叉核对,缺失会 SKIP),
+    # 其余全是纯 Node 静态/模型测试,因此直接用 windows-latest,不装额外依赖。
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run Node suites
+        run: npm test

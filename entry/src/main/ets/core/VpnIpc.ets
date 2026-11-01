@@ -10,8 +10,6 @@ export const VPN_EVENT_LOG: string = 'com.nekobox.app.jynxen.VPN_LOG';
 export const VPN_EVENT_STATUS: string = 'com.nekobox.app.jynxen.VPN_STATUS';
 export const VPN_EVENT_LATENCY: string = 'com.nekobox.app.jynxen.VPN_LATENCY';
 export const VPN_EVENT_TRAFFIC: string = 'com.nekobox.app.jynxen.VPN_TRAFFIC';
-/** UI 进程 → 扩展进程:应用回到前台,唤醒后重置连接(对齐安卓 wakeResetConnections) */
-export const VPN_EVENT_APP_FOREGROUND: string = 'com.nekobox.app.jynxen.VPN_APP_FOREGROUND';
 /** UI 进程 → 扩展进程:版本化命令通道(connect/apply/stop/query/queryApplyStatus,§16.1) */
 export const VPN_EVENT_CMD: string = 'com.nekobox.app.jynxen.VPN_CMD';
 /** 扩展进程 → UI 进程:应用事务回执(operationId/appliedRevision/名单摘要,§12.3-5) */
@@ -100,8 +98,11 @@ export function publishVpnStatus(status: string, running: boolean, profileId: st
   }
 }
 
-/** 扩展进程调用:把实时流量数据同步到 UI 进程。 */
-export function publishVpnTraffic(upSpeed: number, downSpeed: number, totalUp: number, totalDown: number): void {
+/** 扩展进程调用:把实时流量数据同步到 UI 进程。
+ *  rawUp/rawDown 是内核累计口径(P1 单流量生产者):UI 的「清除流量统计」用它写基准,
+ *  不再自己轮询 /connections。旧调用方不传这两个参数时字段缺省,语义不变。 */
+export function publishVpnTraffic(upSpeed: number, downSpeed: number, totalUp: number, totalDown: number,
+  rawUp?: number, rawDown?: number): void {
   try {
     const payload: Record<string, string> = {
       'upSpeed': `${upSpeed}`,
@@ -109,6 +110,10 @@ export function publishVpnTraffic(upSpeed: number, downSpeed: number, totalUp: n
       'totalUp': `${totalUp}`,
       'totalDown': `${totalDown}`
     };
+    if (rawUp !== undefined && rawDown !== undefined) {
+      payload['rawUp'] = `${rawUp}`;
+      payload['rawDown'] = `${rawDown}`;
+    }
     const opts: commonEventManager.CommonEventPublishData = {
       bundleName: APP_BUNDLE,
       data: JSON.stringify(payload)
@@ -141,21 +146,22 @@ export function publishVpnLatency(profileId: string, nodeName: string, latencyMs
   }
 }
 
-/** UI 进程调用:应用回到前台时通知扩展进程(用于唤醒后重置连接) */
-export function publishAppForeground(): void {
+let vpnEventSubscriber: commonEventManager.CommonEventSubscriber | undefined;
+let subscriptionGeneration: number = 0;
+let vpnCmdSubscriber: commonEventManager.CommonEventSubscriber | undefined;
+let commandSubscriptionGeneration: number = 0;
+let appliedSubscriptionGeneration: number = 0;
+
+/** 创建完成的过期订阅也必须释放,否则原生句柄会留到进程退出。 */
+function retireSubscriber(subscriber: commonEventManager.CommonEventSubscriber): void {
   try {
-    const opts: commonEventManager.CommonEventPublishData = { bundleName: APP_BUNDLE };
-    commonEventManager.publish(VPN_EVENT_APP_FOREGROUND, opts, (err: BusinessError) => {
-      // 通知失败不影响 VPN 流程
+    commonEventManager.unsubscribe(subscriber, (err: BusinessError) => {
+      // 清理失败不影响生命周期
     });
   } catch (e) {
     // ignore
   }
 }
-
-let vpnEventSubscriber: commonEventManager.CommonEventSubscriber | undefined;
-let subscriptionGeneration: number = 0;
-let vpnCmdSubscriber: commonEventManager.CommonEventSubscriber | undefined;
 
 /** 命令载荷:命令名 + 信封关键字段(§16.1)。 */
 export class VpnCommand {
@@ -223,11 +229,20 @@ let vpnAppliedSubscriber: commonEventManager.CommonEventSubscriber | null = null
 
 /** UI 进程调用:订阅扩展的应用事务回执。 */
 export function subscribeVpnApplied(onResult: (result: VpnApplyResult) => void): void {
-  commonEventManager.createSubscriber({ events: [VPN_EVENT_APPLIED] }).then(
+  unsubscribeVpnApplied();
+  const generation = appliedSubscriptionGeneration;
+  commonEventManager.createSubscriber({
+    events: [VPN_EVENT_APPLIED],
+    publisherBundleName: APP_BUNDLE
+  }).then(
     (subscriber: commonEventManager.CommonEventSubscriber) => {
+      if (generation !== appliedSubscriptionGeneration) {
+        retireSubscriber(subscriber);
+        return;
+      }
       vpnAppliedSubscriber = subscriber;
       commonEventManager.subscribe(subscriber, (err: BusinessError, data: commonEventManager.CommonEventData) => {
-        if (err || data === undefined || data === null || data.data === undefined) {
+        if (generation !== appliedSubscriptionGeneration || err || data === undefined || data === null || data.data === undefined) {
           return;
         }
         try {
@@ -248,13 +263,11 @@ export function subscribeVpnApplied(onResult: (result: VpnApplyResult) => void):
 }
 
 export function unsubscribeVpnApplied(): void {
-  try {
-    if (vpnAppliedSubscriber !== null) {
-      commonEventManager.unsubscribe(vpnAppliedSubscriber);
-      vpnAppliedSubscriber = null;
-    }
-  } catch (e) {
-    // ignore
+  appliedSubscriptionGeneration++;
+  const subscriber = vpnAppliedSubscriber;
+  vpnAppliedSubscriber = null;
+  if (subscriber !== null) {
+    retireSubscriber(subscriber);
   }
 }
 
@@ -275,11 +288,20 @@ export function publishVpnCommand(command: VpnCommand): void {
 
 /** 扩展进程调用:订阅 UI 发来的命令。 */
 export function subscribeVpnCommands(onCommand: (command: VpnCommand) => void): void {
-  commonEventManager.createSubscriber({ events: [VPN_EVENT_CMD] }).then(
+  unsubscribeVpnCommands();
+  const generation = commandSubscriptionGeneration;
+  commonEventManager.createSubscriber({
+    events: [VPN_EVENT_CMD],
+    publisherBundleName: APP_BUNDLE
+  }).then(
     (subscriber: commonEventManager.CommonEventSubscriber) => {
+      if (generation !== commandSubscriptionGeneration) {
+        retireSubscriber(subscriber);
+        return;
+      }
       vpnCmdSubscriber = subscriber;
       commonEventManager.subscribe(subscriber, (err: BusinessError, data: commonEventManager.CommonEventData) => {
-        if (err || data === undefined || data === null || data.data === undefined) {
+        if (generation !== commandSubscriptionGeneration || err || data === undefined || data === null || data.data === undefined) {
           return;
         }
         try {
@@ -310,6 +332,7 @@ export function subscribeVpnCommands(onCommand: (command: VpnCommand) => void): 
 
 /** 扩展进程销毁时取消命令订阅。 */
 export function unsubscribeVpnCommands(): void {
+  commandSubscriptionGeneration++;
   const subscriber = vpnCmdSubscriber;
   vpnCmdSubscriber = undefined;
   if (subscriber === undefined) {
@@ -327,14 +350,18 @@ export function unsubscribeVpnCommands(): void {
 /** UI 进程调用:订阅扩展发来的日志、状态与流量。onEnvelope 可选(§16.1 信封,缺失时按旧语义)。 */
 export function subscribeVpnEvents(onLog: (line: string) => void,
   onStatus: (status: string, running: boolean, profileId: string) => void,
-  onTraffic: (upSpeed: number, downSpeed: number, totalUp: number, totalDown: number) => void,
+  onTraffic: (upSpeed: number, downSpeed: number, totalUp: number, totalDown: number,
+    rawUp?: number, rawDown?: number) => void,
   onEnvelope?: (env: VpnEnvelope) => void): void {
-  const generation = ++subscriptionGeneration;
+  unsubscribeVpnEvents();
+  const generation = subscriptionGeneration;
   const info: commonEventManager.CommonEventSubscribeInfo = {
-    events: [VPN_EVENT_LOG, VPN_EVENT_STATUS, VPN_EVENT_TRAFFIC]
+    events: [VPN_EVENT_LOG, VPN_EVENT_STATUS, VPN_EVENT_TRAFFIC],
+    publisherBundleName: APP_BUNDLE
   };
   commonEventManager.createSubscriber(info).then((subscriber: commonEventManager.CommonEventSubscriber) => {
     if (generation !== subscriptionGeneration) {
+      retireSubscriber(subscriber);
       return;
     }
     vpnEventSubscriber = subscriber;
@@ -368,8 +395,10 @@ export function subscribeVpnEvents(onLog: (line: string) => void,
           const downSpeed = Number(obj['downSpeed']);
           const totalUp = Number(obj['totalUp']);
           const totalDown = Number(obj['totalDown']);
+          const rawUp = obj['rawUp'] === undefined ? undefined : Number(obj['rawUp']);
+          const rawDown = obj['rawDown'] === undefined ? undefined : Number(obj['rawDown']);
           if (!isNaN(upSpeed) && !isNaN(downSpeed) && !isNaN(totalUp) && !isNaN(totalDown)) {
-            onTraffic(upSpeed, downSpeed, totalUp, totalDown);
+            onTraffic(upSpeed, downSpeed, totalUp, totalDown, rawUp, rawDown);
           }
         } catch (e) {
           // 忽略格式错误的流量数据

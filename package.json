@@ -1,0 +1,10 @@
+{
+  "name": "nekobox4harmony",
+  "version": "2.7.0",
+  "private": true,
+  "description": "NekoBox for HarmonyOS — test entry points (no npm dependencies)",
+  "scripts": {
+    "test": "node tests/run-all.cjs",
+    "test:quick": "node tests/repo-hygiene.cjs && node tests/version-consistency.cjs && node tests/kernel-version.cjs"
+  }
+}

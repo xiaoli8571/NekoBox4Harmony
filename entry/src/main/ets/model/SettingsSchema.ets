@@ -120,8 +120,8 @@ function def(key: string, section: string, applyClass: string, kind: string, def
 /**
  * registry：覆盖 AppSettings 全部字段（顺序按 Profile.ets 声明序，便于 review 对齐）。
  * applyClass 分配表（按分区）：
- *  - appearance(immediate)：appearance/hapticFeedback/liquidGlass/alwaysShowAddress/notificationGroup/showBottomBar/navLayout/profileSortMode
- *  - startup：speedIntervalMs(reconnect,通知轮询间隔在 startVpn 时定下) / profileTrafficStatistics(reconnect,扩展在 teardown 用启动时缓存的 settings) / autoConnect、networkChangeResetConnections、wakeResetConnections(immediate,均为事件发生时现读 loadSettings 或纯 UI)
+ *  - appearance(immediate)：appearance/hapticFeedback/liquidGlass/alwaysShowAddress/notificationGroup/navLayout/profileSortMode
+ *  - startup：speedIntervalMs(reconnect,通知轮询间隔在 startVpn 时定下) / profileTrafficStatistics(reconnect,扩展在 teardown 用启动时缓存的 settings) / autoConnect、networkChangeResetConnections(immediate,均为事件发生时现读 loadSettings 或纯 UI)
  *    （由扩展进程在回调里消费，值改动需带进下一次会话；保守归 reconnect）
  *  - probe(nextTask)：testUrl/testConcurrent/latencyTestMode/testTimeoutMs/testRetries/testSamples/testExpectStatus/
  *    testBypassTunnel/latencyStaleMs/alwaysShowAddress 归显示的除外/autoUpdateSubs/subscriptionUpdateIntervalHours
@@ -216,8 +216,6 @@ function buildDefs(): Array<SettingDef> {
     'settings_notification_group', '通知 分组名 notification group'));
   out.push(def('notificationShowProfile', 'appearance', APPLY_IMMEDIATE, 'bool', 'true',
     'settings_notification_profile', '通知 节点名 节点 profile notification'));
-  out.push(def('showBottomBar', 'appearance', APPLY_IMMEDIATE, 'bool', 'false',
-    'settings_show_bottom_bar', '底部 速率条 FAB 显示 bottom bar'));
   out.push(def('navLayout', 'appearance', APPLY_IMMEDIATE, 'enum', '"bottom"',
     'settings_nav_layout', '导航 布局 bottom side 侧栏'));
   out.push(def('profileSortMode', 'appearance', APPLY_IMMEDIATE, 'enum', '"manual"',
@@ -232,8 +230,6 @@ function buildDefs(): Array<SettingDef> {
   out.push(def('networkChangeResetConnections', 'startup', APPLY_IMMEDIATE, 'bool', 'false',
     'settings_network_reset', '网络 变化 重置 切换 network reset'));
   // 裁决：扩展在每次回到前台时 loadSettings() 现读(VpnExtAbility:327)，即时效。
-  out.push(def('wakeResetConnections', 'startup', APPLY_IMMEDIATE, 'bool', 'false',
-    'settings_wake_reset', '唤醒 前台 重置 wake reset'));
   out.push(def('profileTrafficStatistics', 'startup', APPLY_RECONNECT, 'bool', 'true',
     'settings_profile_traffic', '流量 统计 每节点 traffic statistics'));
   // ---- advanced（reconnect）
@@ -259,8 +255,6 @@ function buildDefs(): Array<SettingDef> {
   out.push(def('coexistFix202609Applied', 'advanced', APPLY_RECONNECT, 'bool', 'false',
     'settings_coexist_fix', '迁移标记 内部 coexist 202609'));
   // ---- 开机自启 / 局域网共享鉴权 / 主题色 / 首页编排(对齐 OwnBox 对应功能) ----
-  out.push(def('autoStartOnBoot', 'startup', APPLY_NEXT_TASK, 'bool', 'false',
-    'settings_auto_start_boot', '开机 自启 启动 autostart boot'));
   out.push(def('lanAuthUser', 'inbound', APPLY_RECONNECT, 'string', '""',
     'settings_lan_auth_user', '局域网 共享 用户名 lan auth username'));
   out.push(def('lanAuthPass', 'inbound', APPLY_RECONNECT, 'string', '""',

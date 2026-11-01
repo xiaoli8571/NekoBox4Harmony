@@ -1,4 +1,10 @@
-# NekoBox for Harmony 开发计划(G 阶段,目标版本 1.6.0)
+# NekoBox for Harmony 开发计划(2.7.x 基线)
+
+## 版本 2.7.0 发布打包(2026-10-31)—— 状态:✅ 已打包 + AGC 双层签名:完成 P0+P1 性能/可靠性整改(签名卫生/启动串行化/订阅更新去重/单流量生产者 `/traffic` 流/节点列表缓存/分应用防抖/Store 解析缓存/StatsBar 抽离),版本号统一 2.7.0/2700000(`AppScope/app.json5` 与两个 `oh-package.json5`),Node 50 套件全 PASS;产物 `dist/NekoBox-2.7.0-release-signed.hap`(+`.app`)与 `dist/NekoBox4Harmony-2.7.0-unsigned.hap`。
+
+## 版本 2.6.0 发布打包(2026-10-31)—— 状态:✅ 已发布:修复 2.5.0 的 gVisor `fstat` EPERM 启动回归(VPN 连上约 0.3s 即断),版本号统一 2.6.0/2600000(`AppScope/app.json5` 与两个 `oh-package.json5`),Node 46 套件全 PASS,真机验证 VPN state 保持 1 且内核日志有真实转发。
+
+## 版本 2.5.0 发布打包(2026-10-30,已被 2.6.0 取代)—— 状态:❌ 启动回归:内核升级到 sing-box 1.15.0-alpha.13 后,gVisor `fdbased.IsSocketFD()` 对 OHOS TUN fd 调用 `unix.Fstat` 被 SELinux 拒绝(EPERM),`starting tun stack` 失败导致 VPN 连上即断。2.6.0 已用 `patch-gvisor-ohos-fstat.py` 修复并真机验证。
 
 ## 版本 2.4.0 发布打包(2026-10-28)—— 状态:✅ release 构建完成,AGC 签名待密码:远程规则集启动解耦 + 会话资源固定 + 镜像字段修正,版本号统一 2.4.0/2400000(app.json5 与两个 oh-package.json5),Node 43 套件全 PASS。
 

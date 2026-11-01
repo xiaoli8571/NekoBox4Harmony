@@ -324,6 +324,16 @@ function mkRun(runId, results, summary, over) {
     'markUnsaved must not rewrite queued/running results');
   console.log('PASS queued/running results stay out of latest and are untouched by markUnsaved');
 
+  // Cancellation is history, not a new connectivity fact: retain the last measured result.
+  resetFs();
+  await Store.saveRun(mkRun('measured', [httpOk('node-keep')], {success:1}));
+  await Store.saveRun(mkRun('cancelled', [httpOk('node-keep', {state:'cancelled',latencyMs:-1,completedAt:3000})],
+    {cancelled:1}, {createdAt:2900,completedAt:3000}));
+  assert.equal(Store.latestFor('node-keep','hash-node-keep','http','http://cp.cloudflare.com/','2xx','directBound').state,
+    'success', 'cancel must not erase the last measured result');
+  assert.equal(Store.loadRuns().length,2,'cancelled run must remain in history');
+  console.log('PASS cancelled run preserves measured latest while remaining in history');
+
   // ---- 11. stats：轮数/结果数/latest 数/文件字节 ----
   resetFs();
   assert.equal(await Store.saveRun(mkRun('run-s1', [

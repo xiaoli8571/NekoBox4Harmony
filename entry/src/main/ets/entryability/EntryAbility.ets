@@ -11,7 +11,7 @@ import notificationManager from '@ohos.notificationManager';
 import BusinessError from '@ohos.base';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 import { initStore, loadSettings, LogStore } from '../model/Store';
-import { subscribeVpnEvents, unsubscribeVpnEvents, publishAppForeground, VpnEnvelope, subscribeVpnApplied, unsubscribeVpnApplied, VpnApplyResult } from '../core/VpnIpc';
+import { subscribeVpnEvents, unsubscribeVpnEvents, VpnEnvelope, subscribeVpnApplied, unsubscribeVpnApplied, VpnApplyResult } from '../core/VpnIpc';
 import { VpnService } from '../core/VpnService';
 import { RuleSetRepository, HttpResourceFetcher } from '../core/RuleSetRepository';
 import { ResourceValidator } from '../core/ResourceValidator';
@@ -26,8 +26,6 @@ import { ProbeStore } from '../core/ProbeStore';
 import { MigrationV5, MigrationResult } from '../model/MigrationV5';
 import { errText } from '../utils/ErrText';
 import { publishAccent } from '../common/Theme';
-import { KEY_BOOT_STARTED, currentBootStartedAt, isNewBoot } from '../common/BootMarker';
-import { readPrefString, writePrefString } from '../model/Store';
 
 /**
  * 窗口/系统栏底色的**显式**取值,与 `resources/{base,dark}/element/color.json` 的 `bg_page` 逐字一致。
@@ -307,11 +305,17 @@ export default class EntryAbility extends UIAbility {
       AppStorage.setOrCreate('vpnRunning', running);
       AppStorage.setOrCreate('vpnStatus', status);
       AppStorage.setOrCreate('vpnRunningProfileId', profileId);
-    }, (upSpeed: number, downSpeed: number, totalUp: number, totalDown: number) => {
+    }, (upSpeed: number, downSpeed: number, totalUp: number, totalDown: number,
+      rawUp?: number, rawDown?: number) => {
       AppStorage.setOrCreate('vpnUpSpeed', upSpeed);
       AppStorage.setOrCreate('vpnDownSpeed', downSpeed);
       AppStorage.setOrCreate('vpnTotalUp', totalUp);
       AppStorage.setOrCreate('vpnTotalDown', totalDown);
+      /* P1:扩展是唯一流量生产者;原始累计值供 UI 的「清除流量统计」写基准 */
+      if (rawUp !== undefined && rawDown !== undefined) {
+        AppStorage.setOrCreate('vpnRawTotalUp', rawUp);
+        AppStorage.setOrCreate('vpnRawTotalDown', rawDown);
+      }
 
       // CommonEvent 是瞬时事件，connected 状态回调偶尔可能丢失；流量事件来自已启动的
       // VPN 内核，可作为数据面已连接的可靠证据，及时修复 UI 一直转圈的问题。
@@ -411,45 +415,22 @@ export default class EntryAbility extends UIAbility {
     unsubscribeVpnApplied();
   }
 
-  /**
-   * 启动收尾:主题强调色发布 + 开机自启(对齐 OwnBox BootReceiver + StartupHelper)。
-   * 平台限制见 BootMarker 注释:鸿蒙收不到开机广播,只能在用户首次打开应用时补连。
-   */
-  private async applyAccentAndBootConnect(): Promise<void> {
+  /** 启动收尾:发布主题强调色(开机自启已按用户要求整体下线)。 */
+  private async applyAccent(): Promise<void> {
     try {
       await initStore(this.context);
       const settings = await loadSettings();
       publishAccent(settings.themeAccent);
-      const now = currentBootStartedAt();
-      const previous = await readPrefString(KEY_BOOT_STARTED, '');
-      const prevValue = previous.length > 0 ? parseInt(previous) : 0;
-      const fresh = isNewBoot(isNaN(prevValue) ? 0 : prevValue, now);
-      if (now > 0 && `${now}` !== previous) {
-        await writePrefString(KEY_BOOT_STARTED, `${now}`);
-      }
-      if (!fresh || !settings.autoStartOnBoot) {
-        return;
-      }
-      /* 自启目标 = 上次选中的节点(selected_profile_id,与 Index 选节点同一键) */
-      const target = await readPrefString('selected_profile_id', '');
-      if (target.length === 0) {
-        LogStore.addLog('[app] 开机自启:没有上次选中的节点,跳过');
-        return;
-      }
-      await VpnService.connect(this.context, target, false);
-      LogStore.addLog('[app] 检测到重启 + 开机自启:已按上次节点自动连接');
     } catch (e) {
-      LogStore.addLog(`[app] 开机自启/强调色: ${errText(e)}`);
+      LogStore.addLog(`[app] 强调色: ${errText(e)}`);
     }
   }
 
   onForeground(): void {
     ForegroundFlag.set(true);
-    void this.applyAccentAndBootConnect();
+    void this.applyAccent();
     this.applyAppearance();
     this.updateDueSubscriptionsInBackground();
-    // 通知 VPN 扩展:应用回到前台(扩展据此执行「唤醒后重置连接」,对齐安卓 wakeResetConnections)
-    publishAppForeground();
   }
 
   onBackground(): void {

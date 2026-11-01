@@ -1,7 +1,7 @@
-# NekoBox for Harmony —— 当前交接(2026-10-24 / 全面改造 P0–P5 已完成)
+# NekoBox for Harmony —— 当前交接(2026-10-31 / 2.7.0 发布基线)
 
 > 接手 agent 先读这一节。下面「历史交接(G 阶段 → 1.6.0)」为旧内容,仅作存档,已被本节取代。
-> **2026-10-28 版本 2.4.0**:远程规则集启动解耦(配置层零 type:remote)+ 会话资源固定 + 规则集页镜像字段修正;版本号统一 2.4.0/2400000;release 未签名产物见 dist/(AGC 签名待密码)。Node 43 套件全 PASS。权威方案 docs/REMOTE_RULESET_FINAL_REMEDIATION_SPEC.md。
+> **2026-10-31 版本 2.7.0**:完成一轮性能/可靠性整改(P0+P1:签名卫生、启动串行化、订阅更新去重、单流量生产者、节点列表缓存、分应用防抖、Store 解析缓存、StatsBar 抽离);版本号统一 2.7.0/2700000;AGC 双层签名产物 `dist/NekoBox-2.7.0-release-signed.hap`(+`.app`),未签名产物 `dist/NekoBox4Harmony-2.7.0-unsigned.hap`。Node 50 套件全 PASS。2.6.0 修复 2.5.0 gVisor `fstat` EPERM 启动回归,已真机验证。2.4.x/2.3.0 的历史记录保留在下方存档。
 
 > 权威方案:`docs/REDESIGN-PLAN-2026-10-23.md`(7 页 IA / 三模型分离 / 探测重构 / 配置快照 / 应用事务 / 阶段划分 W01–W22、REQ-01–REQ-24)。
 > 进度真值:`docs/req-traceability.md`(24 条需求逐条状态 + 证据)。写任何"已完成"前必须先看它,不得凭印象。
@@ -103,7 +103,7 @@ python -c "import zipfile,hashlib;z=zipfile.ZipFile('entry/build/default/outputs
 - **构建机(ZCode,Windows)** 负责:从服务器收走你的改动 → 编译未签名 HAP → 提交推送 GitHub → 把新基线同步回服务器。构建/打包/git 写操作都归它。
 - 因此你在服务器上:**不做任何 git 写操作**(commit/push/reset/checkout 不做;`git status/diff/show/log` 只读可用),展示改动用 `git diff`;不启动构建/打包
 - `core/` 内核、`entry/libs/arm64-v8a/libsingbox.so`、CGo 接口一律冻结;`AppScope/app.json5` 版本号与 `build-profile.json5` 签名配置由构建机管理
-- 当前基线:**2.2.0(versionCode 2200000)** —— 版本号已于 2026-10-23 全仓统一(`AppScope/app.json5`、根/entry `oh-package.json5`、文档),历史基线为 1.5.8(versionCode 1001800,commit eb35129)。已交付:**F1~F7 全部**(深色主题、通知延迟+断开按钮、订阅后台更新、per-app 图形选择器、备份文件化、中英双语 264 键、鸿蒙原生观感)——F7 已真机验收,F2~F6 待日常复核,**一律勿重做**。开工前 `git log --oneline -3` 确认基线、`git status --porcelain` 为空
+- 当前基线:**2.6.0(versionCode 2600000)** —— 版本号已于 2026-10-30 全仓统一(`AppScope/app.json5`、根/entry `oh-package.json5`、文档),历史基线为 1.5.8(versionCode 1001800,commit eb35129)。开工前 `git log --oneline -3` 确认基线、`git status --porcelain` 为空。
 
 ## 1. 本阶段任务(G6 → G1 → G2 → G3 → G4 → G5,详细方案与验收见 `DEVPLAN.md`)
 

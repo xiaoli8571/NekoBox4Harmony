@@ -1,6 +1,6 @@
 # NekoBox for Harmony — Agent 交接说明
 
-> **当前阶段(2026-09-08)先看这里**:正式版 **1.9.0(versionCode 1001926)** 已发布(GitHub Releases),内核升级为 **sing-box 1.15.0-alpha.13**(OHOS 补丁扩至 5 组 + 新增 URL 测速 CGo 导出,见「内核」节)。开发工作区可能在远程服务器 `/worker/NekoBox4Harmony`(**root 凭据一律存 ZCode 持久记忆 `dev-credentials.md`,禁止写入仓库文档**——旧版本文档曾把明文密码公开在 GitHub main,已要求轮换服务器密码)。接手开发的 agent 先读根目录 `HANDOFF.md`(完整交接指令)与 `DEVPLAN.md`(任务与验收),F 阶段 F1~F7 已全部交付(勿重做)。本文件其余内容为架构与构建说明,继续有效。
+> **当前阶段(2026-10-31)先看这里**:正式版 **2.7.0(versionCode 2700000)** 已打包,内核为 **sing-box 1.15.0-alpha.13**(OHOS 补丁 7 组 + URL 测速/配置校验 CGo 导出,见「内核」节)。2.7.0 完成一轮性能/可靠性整改(P0+P1:签名卫生、启动串行化、订阅更新去重、单流量生产者 `/traffic` 流、节点列表缓存、分应用防抖、Store 解析缓存、StatsBar 抽离);2.6.0 修复了 2.5.0 的 gVisor `fstat` EPERM 启动回归(VPN 连上约 0.3s 即断),已真机验证。开发工作区可能在远程服务器 `/worker/NekoBox4Harmony`(**root 凭据一律存 ZCode 持久记忆 `dev-credentials.md`,禁止写入仓库文档**——旧版本文档曾把明文密码公开在 GitHub main,已要求轮换服务器密码)。接手开发的 agent 先读根目录 `HANDOFF.md`(完整交接指令)与 `DEVPLAN.md`(任务与验收);P0~P7 改造已全部交付,F1~F7 亦已完成(勿重做)。本文件其余内容为架构与构建说明,继续有效。
 
 任何 AI Agent 接手本项目前必读。git 仓库克隆自 https://github.com/xiaoli8571/NekoBox4Harmony (main 分支)。
 
@@ -15,7 +15,13 @@ HarmonyOS NEXT 原生 VPN 客户端,参考 [NekoBoxForAndroid](https://github.co
 - 真机: MatePad mini(MLR-AL00,HarmonyOS 7.0.0.105 / API 24),hdc 走 USB 或无线 `hdc tconn <设备IP:39933>`(端口以平板「无线调试」显示为准)
 - 凭据: GitHub 令牌与 Notion API 在 ZCode 持久记忆 `dev-credentials.md`(用户已要求永久存储,不要再向用户索要;严禁写入仓库任何文件)
 
-## 当前状态(v1.9.0,2026-09-08)
+## 当前状态(v2.7.0,2026-10-31)
+
+- **2.7.0 发布基线**:`AppScope/app.json5` = `2700000` / `2.7.0`;根与 entry `oh-package.json5` = `2.7.0`。产物:`dist/NekoBox-2.7.0-release-signed.hap`(+`.app`,AGC 双层签名)与 `dist/NekoBox4Harmony-2.7.0-unsigned.hap`(+`.app`)。
+- **2.7.0 整改内容(P0+P1)**:`build-profile.json5` 回空签名基线 + `tests/repo-hygiene.cjs`;`Index.bootstrap()` 串行启动;订阅更新按 URL 去重;`:vpn` 扩展改用内核 `/traffic` WebSocket 作唯一流量生产者(新增 `model/TrafficMeter.ets`、`vpnext/TrafficStream.ets`),UI 不再轮询 `/connections`;`visibleNodeList()` 缓存 + 收藏 `Set`;分应用 700ms 防抖;`Store` 解析缓存 + `initStore` 幂等 + `Index.refresh()` 并发读取;底栏抽成 `common/components/StatsBar.ets`。`npm test` 50 套件全 PASS。
+- **2.7.0 设置项下线(用户明确要求,勿重新加回)**:「开机时自动连接」(`autoStartOnBoot`)、「像 SagerNet 一样显示底栏」(`showBottomBar`)、「回到前台时重置连接」(`wakeResetConnections`)三项连同实现一起删除 —— 字段/注册表/界面/备份白名单/资源键全清,`common/BootMarker.ets` 已删,底栏与 FAB 现在只在节点页渲染。另:设置页四个分类**默认收起**,分类右侧箭头语义改为「收起=朝上、展开=朝下」。
+- **2.6.0 关键修复(勿回退)**:gVisor `fdbased.IsSocketFD()` 对 OHOS 注入的 TUN fd 调用 `unix.Fstat` 会被 SELinux 拒绝(EPERM),导致 `starting tun stack` 失败、VPN 连上约 0.3s 后回滚断开。修复由 `core/scripts/patch-gvisor-ohos-fstat.py` + 构建脚本 A2.5 fail-closed 步骤固化;真机日志应出现 tun inbound → 真实出站转发,且 fstat 报错为 0。
+- **仓库卫生**:`build-profile.json5` 必须保持 `signingConfigs: []`。本机签名段由 `scripts/inject-signing.js` 注入,**注入后的改动不要提交**;`node tests/repo-hygiene.cjs` 会守住这条基线。⚠️ 2.6.0 之前的 git 历史里曾提交过本机证书路径与口令,已在 2.7.0 工作区移除,但历史仍含明文,需轮换密钥并考虑清理历史。
 
 - **内核已从 sing-box 1.11.9 → 1.14.0 → 1.15.0-alpha.13(2026-10-30,与 OwnBoxForAndroid 对齐),本轮开发基调不再是内核冻结**,但 CGo 既有 4 个导出契约保持稳定,新增测速导出见「内核」节。
 - **后台保活口径(2026-10-23 定稿,依据 `docs/REA-FLCLASH-KEEPALIVE.md`)**:申请目标是"个人开发者能过 AGC"的权限组合,

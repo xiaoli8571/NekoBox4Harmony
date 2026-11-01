@@ -26,3 +26,11 @@ l2.json
 .certs/
 *.cer
 connect-api-cli-token.json
+
+# 原生构建中间产物(ninja/cmake 日志与 .o),不入库
+entry/.cxx/
+
+# 本地审计/取证产物(日志、截图、脚本)
+audit/
+tests/audit-baseline.log
+tests/audit-go.log

@@ -145,10 +145,6 @@
       "value": "Reconnect automatically after Wi-Fi/mobile data switch"
     },
     {
-      "name": "wake_reset_connections",
-      "value": "Reset connections on app foreground"
-    },
-    {
       "name": "wake_reset_connections_sum",
       "value": "Reset the connection when the app returns to the foreground (matches Android wake reset; off by default)"
     },
@@ -2433,10 +2429,6 @@
       "value": "Shallow-merged into the generated config; invalid JSON is ignored"
     },
     {
-      "name": "show_bottom_bar",
-      "value": "Show bottom bar like SagerNet"
-    },
-    {
       "name": "ipv6_modes",
       "value": "IPv6 route"
     },
@@ -2753,10 +2745,6 @@
       "value": "Liquid Glass"
     },
     {
-      "name": "settings_show_bottom_bar",
-      "value": "Show Bottom Bar"
-    },
-    {
       "name": "settings_nav_layout",
       "value": "Navigation Layout"
     },
@@ -2767,10 +2755,6 @@
     {
       "name": "settings_network_reset",
       "value": "Reset Connections on Network Change"
-    },
-    {
-      "name": "settings_wake_reset",
-      "value": "Reset Connections on Wake"
     },
     {
       "name": "settings_profile_traffic",
@@ -3841,14 +3825,6 @@
       "value": "History of subscription and probe events"
     },
     {
-      "name": "settings_auto_start_boot",
-      "value": "Connect on boot"
-    },
-    {
-      "name": "settings_auto_start_boot_desc",
-      "value": "After a reboot, connect to the last node on first launch"
-    },
-    {
       "name": "settings_theme_accent",
       "value": "Accent color"
     },
@@ -3895,6 +3871,46 @@
     {
       "name": "settings_lan_auth_pass",
       "value": "LAN password"
+    },
+    {
+      "name": "sub_opt_title",
+      "value": "Subscription update options"
+    },
+    {
+      "name": "sub_opt_update",
+      "value": "Update subscription"
+    },
+    {
+      "name": "sub_opt_auto_test",
+      "value": "Test after update"
+    },
+    {
+      "name": "sub_opt_auto_test_hint",
+      "value": "Testing takes a while; when enabled the task keeps running in the background, otherwise it runs on this page"
+    },
+    {
+      "name": "sub_opt_delete_invalid",
+      "value": "Delete invalid nodes after test"
+    },
+    {
+      "name": "sub_opt_delete_invalid_hint",
+      "value": "Test results may be inaccurate and deleted nodes cannot be restored"
+    },
+    {
+      "name": "sub_opt_sort",
+      "value": "Sort after test"
+    },
+    {
+      "name": "sub_opt_sort_hint",
+      "value": "Test results may be inaccurate"
+    },
+    {
+      "name": "sub_opt_saved",
+      "value": "Update options saved"
+    },
+    {
+      "name": "sub_opt_no_update",
+      "value": "Update cancelled"
     }
   ]
 }

@@ -397,7 +397,9 @@ function buildLatest(runs: Array<ProbeRunSnapshot>): Record<string, StoredProbe>
     const run = runs[i];
     for (let j = 0; j < run.results.length; j++) {
       const result = run.results[j];
-      if (!isFinalState(result.state)) {
+      // Cancellation carries no measurement: keep it in history but do not erase latest.
+      if (!isFinalState(result.state) || result.state === STATE_CANCELLED ||
+        (result.state === STATE_UNSAVED && result.stateBeforeUnsaved === STATE_CANCELLED)) {
         continue;
       }
       const key = probeKeyOf(result);

@@ -129,7 +129,16 @@ export class ProbeCoordinator {
       this.targets.push(t);
     }
     this.results = new Map<string, ProbeResult>();
-    this.env = env;
+    this.env = new ProbeEnv();
+    this.env.method = env.method;
+    this.env.target = env.target;
+    this.env.timeoutMs = env.timeoutMs;
+    this.env.concurrency = env.concurrency;
+    this.env.samples = env.samples;
+    this.env.retries = env.retries;
+    this.env.expectedStatus = env.expectedStatus;
+    this.env.bypassVpn = env.bypassVpn;
+    this.env.staleMs = env.staleMs;
     this.coreCapability = coreCapability;
     this.cancelled = false;
     this.startedAt = now;

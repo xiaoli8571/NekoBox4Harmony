@@ -45,8 +45,19 @@ export class SubscriptionSourceStore {
     }
     const dir = SubscriptionSourceStore.sourcesDirOf(snap.url);
     SnapshotStore.ensureDir(dir);
-    const path = `${dir}/${SNAP_PREFIX}${snap.fetchedAt}${SNAP_SUFFIX}`;
-    SnapshotStore.writeTextAtomic(path, sourceSnapshotToJson(snap));
+    const stored = parseSourceSnapshot(sourceSnapshotToJson(snap));
+    if (stored === null) {
+      throw new Error('invalid subscription source snapshot');
+    }
+    // 同一毫秒内的两次提交也不能覆盖上一份原始记录。
+    while (SnapshotStore.exists(`${dir}/${SNAP_PREFIX}${stored.fetchedAt}${SNAP_SUFFIX}`)) {
+      stored.fetchedAt++;
+    }
+    const path = `${dir}/${SNAP_PREFIX}${stored.fetchedAt}${SNAP_SUFFIX}`;
+    SnapshotStore.writeTextAtomic(path, sourceSnapshotToJson(stored));
+    if (SubscriptionSourceStore.readAt(stored.url, stored.fetchedAt) === null) {
+      throw new Error('subscription source write verify failed');
+    }
     SubscriptionSourceStore.gc(snap.url);
   }
 
@@ -56,7 +67,13 @@ export class SubscriptionSourceStore {
     if (times.length === 0) {
       return null;
     }
-    return SubscriptionSourceStore.readAt(url, times[0]);
+    for (let i = 0; i < times.length; i++) {
+      const snap = SubscriptionSourceStore.readAt(url, times[i]);
+      if (snap !== null) {
+        return snap;
+      }
+    }
+    return null;
   }
 
   /** 读取指定 fetchedAt 的原始快照(转手动节点/恢复用)。 */
@@ -66,7 +83,12 @@ export class SubscriptionSourceStore {
     if (!SnapshotStore.exists(path)) {
       return null;
     }
-    return parseSourceSnapshot(SnapshotStore.readText(path));
+    try {
+      const snap = parseSourceSnapshot(SnapshotStore.readText(path));
+      return snap !== null && snap.url === url && snap.fetchedAt === fetchedAt ? snap : null;
+    } catch (e) {
+      return null;
+    }
   }
 
   /** 订阅删除时清理其全部原始快照。 */

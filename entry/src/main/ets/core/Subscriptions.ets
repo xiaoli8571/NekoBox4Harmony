@@ -63,6 +63,10 @@ export class SubInfo {
   filterRegex: string = '';                  // 关键词或正则(忽略大小写;非法正则视为未启用)
   // 远端已删除但仍在用/测速可用/有流量的节点继续保留(对齐 OwnBox retainValidNodes)
   retainValidNodes: boolean = false;
+  // 更新后处理三项开关(对齐安卓 GroupManager 更新成功后的自动测试/清理/排序)
+  autoTestAfterUpdate: boolean = false;      // 更新成功后自动对本订阅节点测速
+  deleteInvalidAfterTest: boolean = false;   // 测速后删除本订阅内不可用(status!=1)节点
+  sortAfterTest: boolean = false;            // 测速后按延迟重排本订阅节点顺序
   // HTTP 条件请求校验器:下次更新带上,服务端回 304 即跳过正文下载
   etag: string = '';
   lastModified: string = '';
@@ -129,6 +133,9 @@ export async function listSubs(): Promise<Array<SubInfo>> {
       item.filterMode = (rawFilterMode === 'include' || rawFilterMode === 'exclude') ? rawFilterMode : 'off';
       item.filterRegex = source.filterRegex ?? '';
       item.retainValidNodes = source.retainValidNodes === true;
+      item.autoTestAfterUpdate = source.autoTestAfterUpdate === true;
+      item.deleteInvalidAfterTest = source.deleteInvalidAfterTest === true;
+      item.sortAfterTest = source.sortAfterTest === true;
       item.etag = source.etag ?? '';
       item.lastModified = source.lastModified ?? '';
       result.push(item);
@@ -263,6 +270,15 @@ export async function saveSubSettings(url: string, changes: Record<string, Objec
     }
     if (changes['retainValidNodes'] !== undefined) {
       s.retainValidNodes = changes['retainValidNodes'] === true;
+    }
+    if (changes['autoTestAfterUpdate'] !== undefined) {
+      s.autoTestAfterUpdate = changes['autoTestAfterUpdate'] === true;
+    }
+    if (changes['deleteInvalidAfterTest'] !== undefined) {
+      s.deleteInvalidAfterTest = changes['deleteInvalidAfterTest'] === true;
+    }
+    if (changes['sortAfterTest'] !== undefined) {
+      s.sortAfterTest = changes['sortAfterTest'] === true;
     }
     if (changes['updateIntervalMinutes'] !== undefined) {
       s.updateIntervalMinutes = normalizeIntervalMinutes(Number(changes['updateIntervalMinutes']));

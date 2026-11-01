@@ -4,10 +4,12 @@ import picker from '@ohos.file.picker';
 import fs from '@ohos.file.fs';
 import { UiSpec } from '../common/UiSpec';
 import { illuminatedEffect, pressLightEffect } from '../common/Effects';
-import { Profile, ProfileGroup } from '../model/Profile';
-import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, LogStore } from '../model/Store';
+import { Profile, ProfileGroup, AppSettings } from '../model/Profile';
+import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, loadSettings, LogStore } from '../model/Store';
 import { SubInfo, listSubs, saveSubs, removeSub, updateSubscription, markSubSuccess, markSubFailure,
-  SubUpdateResult, subUpdateHasChanges, needDirectUpdateConfirm } from '../core/Subscriptions';
+  saveSubSettings, SubUpdateResult, subUpdateHasChanges, needDirectUpdateConfirm } from '../core/Subscriptions';
+import { urlTestProfiles, TestResult } from '../utils/LatencyTester';
+import { SubTestOutcome, applyOutcomes, invalidNodes, sortByLatency, spliceSubscription } from '../core/SubPostUpdate';
 import { VpnService } from '../core/VpnService';
 import { subErrorText } from '../utils/Subscription';
 import { exportProfileLink } from '../utils/LinkExporter';
@@ -34,6 +36,14 @@ export struct GroupPage {
   @State settingsLanding: string = '';
   /** 当前被按下的元素 key(新建分组 / 分组设置面板的取消与保存):"按下才亮"靠它逐颗判断 */
   @State litKey: string = '';
+  /* 订阅更新选项弹窗(对齐安卓订阅更新前的四个开关) */
+  @State optName: string = '';
+  @State optDoUpdate: boolean = true;
+  @State optAutoTest: boolean = false;
+  @State optDeleteInvalid: boolean = false;
+  @State optSort: boolean = false;
+  private optSub: SubInfo | undefined = undefined;
+  private optDialog: CustomDialogController | undefined = undefined;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   onDataChanged: () => void = () => {};
   onOpenDrawer: () => void = () => {};
@@ -126,6 +136,10 @@ export struct GroupPage {
       await markSubSuccess(sub.url);
       this.showSubUpdateFeedback(sub.name, r);
       await this.refresh();
+      /* 更新后处理:自动测试 → 删除无效 → 排序(逐订阅开关,失败不影响更新结果) */
+      if (sub.autoTestAfterUpdate) {
+        await this.runPostUpdate(sub);
+      }
       this.onDataChanged();
     } catch (e) {
       await markSubFailure(sub.url);
@@ -133,6 +147,117 @@ export struct GroupPage {
       await this.refresh();
     } finally {
       this.updatingUrl = '';
+    }
+  }
+
+  /** 打开「更新订阅选项」弹窗(更新订阅 / 更新后自动测试 / 删除无效 / 排序)。 */
+  openUpdateOptions(sub: SubInfo): void {
+    this.optSub = sub;
+    this.optName = sub.name;
+    this.optDoUpdate = true;
+    this.optAutoTest = sub.autoTestAfterUpdate;
+    this.optDeleteInvalid = sub.deleteInvalidAfterTest;
+    this.optSort = sub.sortAfterTest;
+    this.optDialog = new CustomDialogController({
+      builder: SubUpdateOptionsDialog({
+        subName: this.optName,
+        doUpdate: $optDoUpdate,
+        autoTest: $optAutoTest,
+        deleteInvalid: $optDeleteInvalid,
+        sortAfter: $optSort,
+        onConfirm: () => {
+          void this.applyUpdateOptions();
+        }
+      }),
+      autoCancel: true,
+      alignment: DialogAlignment.Center
+    });
+    this.optDialog.open();
+  }
+
+  /** 落盘弹窗里的开关;勾了「更新订阅」才真正发起更新。 */
+  async applyUpdateOptions(): Promise<void> {
+    const sub = this.optSub;
+    if (sub === undefined) {
+      return;
+    }
+    const url = sub.url;
+    try {
+      await saveSubSettings(url, {
+        'autoTestAfterUpdate': this.optAutoTest,
+        'deleteInvalidAfterTest': this.optDeleteInvalid,
+        'sortAfterTest': this.optSort
+      } as Record<string, Object>);
+    } catch (e) {
+      LogStore.addLog(`[sub] 保存更新选项失败: ${e instanceof Error ? e.message : `${e}`}`);
+    }
+    await this.refresh();
+    const fresh = this.subscriptions.find((s: SubInfo) => s.url === url);
+    if (!this.optDoUpdate) {
+      promptAction.showToast({ message: $r('app.string.sub_opt_saved') });
+      return;
+    }
+    const target = fresh === undefined ? sub : fresh;
+    await this.updateOne(target);
+  }
+
+  /**
+   * 更新后处理:只测本订阅的节点,结果写回 → 删无效 → 排序 → 一次落盘。
+   * 任何一步失败都只记日志,绝不回滚已成功的订阅更新。
+   */
+  private async runPostUpdate(sub: SubInfo): Promise<void> {
+    const targets = this.profiles.filter((p: Profile) => p.subUrl === sub.url);
+    if (targets.length === 0) {
+      return;
+    }
+    let settings: AppSettings;
+    try {
+      settings = await loadSettings();
+    } catch (e) {
+      return;
+    }
+    const outcomes = new Map<string, SubTestOutcome>();
+    const onOne = (r: TestResult): void => {
+      const o = new SubTestOutcome();
+      o.id = r.id;
+      o.status = r.status;
+      o.ping = r.ping;
+      o.error = r.error;
+      outcomes.set(r.id, o);
+    };
+    try {
+      await urlTestProfiles(targets, this.profiles, settings, this.context, onOne,
+        settings.testConcurrent, this.groups, () => false);
+    } catch (e) {
+      LogStore.addLog(`[sub] 更新后自动测试失败: ${e instanceof Error ? e.message : `${e}`}`);
+      return;
+    }
+    if (outcomes.size === 0) {
+      return;
+    }
+    applyOutcomes(targets, outcomes);
+    let next: Array<Profile> = targets;
+    let deleted = 0;
+    if (sub.deleteInvalidAfterTest) {
+      const bad = new Set<string>();
+      const invalid = invalidNodes(targets);
+      for (let i = 0; i < invalid.length; i++) {
+        bad.add(invalid[i].id);
+      }
+      deleted = bad.size;
+      next = targets.filter((p: Profile) => !bad.has(p.id));
+    }
+    if (sub.sortAfterTest) {
+      next = sortByLatency(next);
+    }
+    const merged = spliceSubscription(this.profiles, sub.url, next);
+    try {
+      await saveProfiles(merged);
+      this.profiles = merged;
+      LogStore.addLog(`[sub] ${sub.name} 更新后处理:测试 ${outcomes.size} 个,删除无效 ${deleted} 个` +
+        `,排序=${sub.sortAfterTest ? '开' : '关'}`);
+    } catch (e) {
+      LogStore.addLog(`[sub] 更新后处理落盘失败: ${e instanceof Error ? e.message : `${e}`}`);
     }
   }
 
@@ -410,7 +535,7 @@ export struct GroupPage {
       Text(this.updatingUrl === sub.url ? $r('app.string.updating') : $r('app.string.update_action'))
         .fontSize(12.5).fontWeight(600).fontColor($r('app.color.mono'))
         .padding({ left: 6, top: 8, bottom: 8 })
-        .onClick(() => this.updateOne(sub))
+        .onClick(() => this.openUpdateOptions(sub))
       Text($r('app.string.share_sub_link'))
         .fontSize(12.5).fontWeight(600).fontColor($r('app.color.text_2'))
         .padding({ left: 6, top: 8, bottom: 8 })
@@ -641,4 +766,91 @@ function formatBytesShort(bytes: number): string {
     unitIndex++;
   } while (value >= 1024 && unitIndex < units.length - 1);
   return `${value.toFixed(value >= 100 ? 0 : 1)}${units[unitIndex]}`;
+}
+
+/**
+ * 订阅更新选项弹窗(对齐安卓订阅更新前的四个开关)。
+ * 开关状态由 GroupPage 持有(@Link),确定后由页面统一落盘并发起更新。
+ */
+@CustomDialog
+struct SubUpdateOptionsDialog {
+  subName: string = '';
+  @Link doUpdate: boolean;
+  @Link autoTest: boolean;
+  @Link deleteInvalid: boolean;
+  @Link sortAfter: boolean;
+  onConfirm: () => void = () => {
+  };
+  controller?: CustomDialogController;
+
+  @Builder
+  private switchRow(title: ResourceStr, hint: ResourceStr, on: boolean, apply: (v: boolean) => void) {
+    Row({ space: 10 }) {
+      Column({ space: 2 }) {
+        Text(title).fontSize(14).fontColor($r('app.color.text_primary')).width('100%')
+        if (`${hint}`.length > 0) {
+          Text(hint).fontSize(11).fontColor($r('app.color.text_secondary')).width('100%')
+        }
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+      Toggle({ type: ToggleType.Switch, isOn: on })
+        .onChange((value: boolean) => apply(value))
+    }
+    .width('100%')
+    .padding({ top: 6, bottom: 6 })
+  }
+
+  build() {
+    Column({ space: 4 }) {
+      Text($r('app.string.sub_opt_title'))
+        .fontSize(16).fontWeight(700).width('100%')
+      if (this.subName.length > 0) {
+        Text(this.subName)
+          .fontSize(12).fontColor($r('app.color.text_3')).width('100%')
+          .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+      }
+      this.switchRow($r('app.string.sub_opt_update'), '', this.doUpdate, (v: boolean) => {
+        this.doUpdate = v;
+      })
+      this.switchRow($r('app.string.sub_opt_auto_test'), $r('app.string.sub_opt_auto_test_hint'),
+        this.autoTest, (v: boolean) => {
+          this.autoTest = v;
+        })
+      this.switchRow($r('app.string.sub_opt_delete_invalid'), $r('app.string.sub_opt_delete_invalid_hint'),
+        this.deleteInvalid, (v: boolean) => {
+          this.deleteInvalid = v;
+        })
+      this.switchRow($r('app.string.sub_opt_sort'), $r('app.string.sub_opt_sort_hint'),
+        this.sortAfter, (v: boolean) => {
+          this.sortAfter = v;
+        })
+      Row({ space: 8 }) {
+        Blank().layoutWeight(1)
+        Button($r('app.string.cancel'))
+          .backgroundColor($r('app.color.surface'))
+          .fontColor($r('app.color.text_primary'))
+          .onClick(() => {
+            if (this.controller !== undefined) {
+              this.controller.close();
+            }
+            promptAction.showToast({ message: $r('app.string.sub_opt_no_update') });
+          })
+        Button($r('app.string.confirm'))
+          .backgroundColor($r('app.color.primary'))
+          .fontColor($r('app.color.surface'))
+          .onClick(() => {
+            if (this.controller !== undefined) {
+              this.controller.close();
+            }
+            this.onConfirm();
+          })
+      }
+      .width('100%')
+      .padding({ top: 8 })
+    }
+    .padding(16)
+    .width('92%')
+    .alignItems(HorizontalAlign.Start)
+  }
 }
