@@ -24,6 +24,10 @@ const sdk = process.env.DEVECO_SDK_HOME || 'C:\\Program Files\\Huawei\\DevEco St
 function load(file, imports = {}) {
   const source = fs.readFileSync(path.join(root, file), 'utf8');
   const ts = loadTs();
+if (ts === null) {
+  console.log(`SKIP latency-parity.cjs: 本机没有 DevEco Studio SDK(CI 环境),跳过 ArkTS 交叉核对`);
+  process.exit(0);
+}
   const js = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2021 }
   }).outputText;
@@ -45,8 +49,7 @@ function load(file, imports = {}) {
 let cachedTs = null;
 function loadTs() {
   if (cachedTs === null) {
-    cachedTs = require(path.join(sdk,
-      'default/openharmony/ets/build-tools/ets-loader/node_modules/typescript/lib/typescript.js'));
+    cachedTs = require('./lib/deveco-ts.cjs').loadTs();
   }
   return cachedTs;
 }

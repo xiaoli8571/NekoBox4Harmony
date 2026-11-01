@@ -12,8 +12,11 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 const sdk = process.env.DEVECO_SDK_HOME || 'C:\\Program Files\\Huawei\\DevEco Studio\\sdk';
-const ts = require(path.join(sdk,
-  'default/openharmony/ets/build-tools/ets-loader/node_modules/typescript/lib/typescript.js'));
+const ts = require('./lib/deveco-ts.cjs').loadTs();
+if (ts === null) {
+  console.log(`SKIP traffic-meter.cjs: 本机没有 DevEco Studio SDK(CI 环境),跳过 ArkTS 交叉核对`);
+  process.exit(0);
+}
 
 const source = fs.readFileSync(path.join(root, 'entry/src/main/ets/model/TrafficMeter.ets'), 'utf8');
 const js = ts.transpileModule(source, {
