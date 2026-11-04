@@ -1413,6 +1413,42 @@
       "value": "Operation failed: %1$s"
     },
     {
+      "name": "backup_crypto_unsupported",
+      "value": "This device does not support the encryption used by this backup."
+    },
+    {
+      "name": "backup_password_too_short",
+      "value": "The passphrase must be at least 8 characters."
+    },
+    {
+      "name": "backup_crypto_bad_password",
+      "value": "Wrong passphrase or the backup file is damaged."
+    },
+    {
+      "name": "backup_encrypted_needs_password",
+      "value": "This backup is encrypted and needs a passphrase."
+    },
+    {
+      "name": "backup_password_placeholder",
+      "value": "Passphrase (at least 8 characters)"
+    },
+    {
+      "name": "backup_password_hint_import",
+      "value": "This backup is encrypted. Enter the passphrase used when it was exported."
+    },
+    {
+      "name": "backup_password_title_import",
+      "value": "Enter backup passphrase"
+    },
+    {
+      "name": "backup_password_hint",
+      "value": "With a passphrase the file is encrypted; leave it empty to export plain JSON (contains node passwords and private keys)."
+    },
+    {
+      "name": "backup_password_title",
+      "value": "Export encrypted backup"
+    },
+    {
       "name": "confirm_delete_sub_name",
       "value": "Delete subscription “%1$s” (%2$d profiles)?"
     },
@@ -3719,6 +3755,10 @@
     {
       "name": "lan_auth_desc",
       "value": "Only enforced when a username is set"
+    },
+    {
+      "name": "lan_auth_required",
+      "value": "A username and password are required before LAN access can be enabled."
     },
     {
       "name": "lan_auth_user",

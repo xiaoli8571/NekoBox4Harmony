@@ -8,6 +8,7 @@ import { UiSpec } from '../common/UiSpec';
 import { pressLightEffect } from '../common/Effects';
 import { initStore, resetAllData, LogStore } from '../model/Store';
 import { exportBackup, importBackup, BackupRestoreResult } from '../core/Backup';
+import { isEncryptedBackup } from '../core/BackupCrypto';
 import { VpnService } from '../core/VpnService';
 import { stunTest, StunResult } from '../utils/StunTester';
 import bundleManager from '@ohos.bundle.bundleManager';
@@ -30,6 +31,20 @@ export struct ToolsPage {
   @State stunResult: StunResult | null = null;
   @State resetting: boolean = false;
   @State backupFileBusy: boolean = false;
+  @State backupPassword: string = '';
+  /** 'export' | 'import' —— 同一个口令弹窗两种用途 */
+  @State backupPwdMode: string = 'export';
+  private pendingRestoreText: string = '';
+  private backupPwdDialog: CustomDialogController = new CustomDialogController({
+    builder: BackupPasswordDialog({
+      password: $backupPassword,
+      mode: $backupPwdMode,
+      onConfirm: () => {
+        void this.onBackupPasswordConfirmed();
+      }
+    }),
+    autoCancel: true
+  });
   /** 当前被按下的元素 key(测速 / 备份恢复四颗 / 恢复出厂):"按下才亮"靠它逐颗判断 */
   @State litKey: string = '';
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
@@ -80,6 +95,18 @@ export struct ToolsPage {
     if (msg === 'backup_file_incomplete') {
       return $r('app.string.backup_file_incomplete');
     }
+    if (msg === 'backup_encrypted_needs_password') {
+      return $r('app.string.backup_encrypted_needs_password');
+    }
+    if (msg === 'backup_crypto_bad_password') {
+      return $r('app.string.backup_crypto_bad_password');
+    }
+    if (msg === 'backup_password_too_short') {
+      return $r('app.string.backup_password_too_short');
+    }
+    if (msg === 'backup_crypto_unsupported') {
+      return $r('app.string.backup_crypto_unsupported');
+    }
     return $r('app.string.backup_op_failed', msg);
   }
 
@@ -108,9 +135,9 @@ export struct ToolsPage {
     throw new Error('backup_vpn_disconnect_timeout');
   }
 
-  private async restoreText(text: string): Promise<BackupRestoreResult> {
+  private async restoreText(text: string, password: string = ''): Promise<BackupRestoreResult> {
     const stoppedVpn = await this.prepareForRestore();
-    const result = await importBackup(this.context, text.trim());
+    const result = await importBackup(this.context, text.trim(), password);
     result.stoppedVpn = stoppedVpn;
     return result;
   }
@@ -146,13 +173,31 @@ export struct ToolsPage {
     }
   }
 
-  async exportBackupFile(): Promise<void> {
+  /** 导出入口:先问口令(留空 = 旧版明文导出)。 */
+  exportBackupFile(): void {
+    if (this.backupFileBusy) {
+      return;
+    }
+    this.backupPwdMode = 'export';
+    this.backupPassword = '';
+    this.backupPwdDialog.open();
+  }
+
+  private async onBackupPasswordConfirmed(): Promise<void> {
+    if (this.backupPwdMode === 'import') {
+      await this.runImportBackup();
+      return;
+    }
+    await this.runExportBackup();
+  }
+
+  private async runExportBackup(): Promise<void> {
     if (this.backupFileBusy) {
       return;
     }
     this.backupFileBusy = true;
     try {
-      const text = await exportBackup(this.context);
+      const text = await exportBackup(this.context, this.backupPassword);
       const documentPicker = new picker.DocumentViewPicker(this.context);
       const uris = await documentPicker.save({
         newFileNames: [this.backupFileName()],
@@ -188,6 +233,13 @@ export struct ToolsPage {
         return;
       }
       const text = this.readTextFileUri(uris[0]).trim();
+      if (isEncryptedBackup(text)) {
+        this.pendingRestoreText = text;
+        this.backupPwdMode = 'import';
+        this.backupPassword = '';
+        this.backupPwdDialog.open();
+        return;
+      }
       const result = await this.restoreText(text);
       promptAction.showToast({ message: this.restoreSummary(result) });
     } catch (e) {
@@ -195,6 +247,21 @@ export struct ToolsPage {
       promptAction.showToast({ message: this.backupErrorText(message) });
     } finally {
       this.backupFileBusy = false;
+    }
+  }
+
+  private async runImportBackup(): Promise<void> {
+    const text: string = this.pendingRestoreText;
+    this.pendingRestoreText = '';
+    if (text.length === 0) {
+      return;
+    }
+    try {
+      const result = await this.restoreText(text, this.backupPassword);
+      promptAction.showToast({ message: this.restoreSummary(result) });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : `${e}`;
+      promptAction.showToast({ message: this.backupErrorText(message) });
     }
   }
 
@@ -561,5 +628,67 @@ export struct ToolsPage {
     }
     .width('100%')
     .height('100%')
+  }
+}
+
+
+/** 备份口令弹窗:导出设口令 / 导入输口令(留空 = 旧版明文导出)。 */
+@CustomDialog
+struct BackupPasswordDialog {
+  @State litKey: string = '';
+  controller?: CustomDialogController;
+  @Link password: string;
+  @Link mode: string;
+  onConfirm: () => void = () => {
+  };
+
+  build() {
+    Column({ space: 10 }) {
+      Text(this.mode === 'import' ? $r('app.string.backup_password_title_import')
+        : $r('app.string.backup_password_title'))
+        .fontSize(16)
+        .fontWeight(700)
+      Text(this.mode === 'import' ? $r('app.string.backup_password_hint_import')
+        : $r('app.string.backup_password_hint'))
+        .fontSize(11.5)
+        .fontColor($r('app.color.text_secondary'))
+        .width('100%')
+      TextInput({ text: this.password, placeholder: $r('app.string.backup_password_placeholder') })
+        .type(InputType.Password)
+        .height(UiSpec.BTN_HEIGHT)
+        .onChange((v: string) => {
+          this.password = v;
+        })
+      Row({ space: 8 }) {
+        Button($r('app.string.cancel'))
+          .backgroundColor($r('app.color.surface'))
+          .fontColor($r('app.color.text_primary'))
+          .onClick(() => {
+            if (this.controller !== undefined) {
+              this.controller.close();
+            }
+          })
+        Blank()
+        Button($r('app.string.confirm'))
+          .backgroundColor(this.litKey === 'pw:ok' ? $r('app.color.primary') : $r('app.color.surface'))
+          .fontColor(this.litKey === 'pw:ok' ? $r('app.color.surface') : $r('app.color.text_primary'))
+          .onTouch((event: TouchEvent) => {
+            if (event.type === TouchType.Down) {
+              this.litKey = 'pw:ok';
+            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+              this.litKey = '';
+            }
+          })
+          .onClick(() => {
+            if (this.controller !== undefined) {
+              this.controller.close();
+            }
+            this.onConfirm();
+          })
+      }
+      .width('100%')
+    }
+    .padding(16)
+    .width('100%')
   }
 }

@@ -1,5 +1,81 @@
 # Phase A-D Implementation Status
 
+## 2.7.x 修复:按钮文字不可见 + 局域网裸奔 + WebUI 密钥泄漏 + 备份非原子(2026-11-04)
+
+- **按钮文字白底白字(用户报「导入订阅→从剪切板读取,那个按钮是空白」)**:`Button` 只设
+  `backgroundColor($r('app.color.surface'))` 而没设 `fontColor`,浅色主题 `surface=#FFFFFF` +
+  默认白色文字 ⇒ 文字看不见(按钮能点、只是"空白")。全局排查后修复 6 处:
+  `Index`(导入确认、复制分享链接)、`SettingsPage`/`SubDetailPage`(重新载入/返回/复制分享链接)、
+  `DiagnosticsPage`/`TrafficPage`(禁用态对比度)。导入确认按钮文案改为「确认」(`app.string.confirm`)。
+- **局域网混合入站未鉴权即对外监听(P1)**:旧逻辑 `listen=0.0.0.0` 只看 `allowAccess`,
+  `users` 却要求 `lanAuthUser` 非空 —— 勾了「允许局域网接入」但没填账号时,代理对同网段**无鉴权开放**。
+  现在 `ConfigBuilder` 用同一判定 `lanAuthUser && lanAuthPass` 决定监听地址与 `users`,
+  `LanSharingPage` 打开开关前校验并提示(`lan_auth_required`),保证"要么鉴权监听、要么回环"。
+- **WebUI 把 Clash Secret 放进 URL(泄漏到历史/referrer)**:`WebUiPage` 的 `loadUrl` 只打开
+  `/ui/`,`secret` 改为 document-start 注入到 YACD 自己的 `localStorage['yacd.metacubex.one']`
+  (`app.clashAPIConfigs[0].secret` + `selectedClashAPIConfigIndex`),主题注入与原来合并为一段脚本。
+- **备份恢复非原子(P1)**:`Backup` 原来依次 `saveSettings/saveProfiles/saveGroups/saveSubs/
+  saveRouteRules/saveRemoteRuleSets` 六次独立落盘,中途失败会留下新旧混合状态。新增
+  `Store.replaceBackupData(...)`:**一次写入全部键、一次 flush**,`writePayload` 与回滚快照都走它;
+  `tests/ipv6-backup.cjs` 增加"一次恢复 == 一次原子替换"回归断言。
+- **硬编码包名**:`ConfigBuilder` 里把 `/data/app/el2/100/base/com.nekobox.app.jynxen/haps/` 写死的
+  `kernelWatchablePath` 已删除(该函数已无调用点,且注释早已证伪该换算在扩展进程命名空间不成立)。
+- **备份文件含明文凭据**:`exportBackup` 现在接受口令,非空时输出 PBKDF2-SHA256(200k 迭代)+
+  AES-256-GCM 信封(`BackupCrypto.ets`),密文不含任何明文口令;留空仍是旧版明文导出(向后兼容)。
+  加密后会**在本进程内立刻解封自检**,自检不通过就报错、绝不产出解不开的文件;
+  `importBackup` 识别信封后要求口令,口令错/被篡改由 GCM 认证失败暴露(`backup_crypto_bad_password`)。
+  工具页新增口令弹窗(导出设口令 / 导入输口令),`tests/backup-crypto.cjs` 用 node:crypto 复刻
+  OHOS CryptoArchitectureKit 契约做真实往返(含错误口令、短口令、密文篡改、随机盐/IV、端到端恢复)。
+- **订阅事务一致性(P1)**:`SubscriptionRepository.commitUpdate` 在快照提交之前就已直接写
+  `saveProfiles`/`saveSubs`/`selected_profile_id`;快照提交失败时快照(唯一真源)停在旧世代、
+  Preferences 已是新世代 —— 恢复/重启后看到的是两份不一致的数据。现在提交前深拷贝回滚基线
+  (`profilesBefore`/`subsBefore`),`commitSections` 抛错时先把 Preferences 还原再向上抛,
+  不留混合世代;`tests/subscription-repository.cjs` 新增「快照提交失败 → Preferences 回滚」用例。
+- **包名规则不再静默失效**:`process_name` 依赖内核按连接查所属进程,OHOS 扩展进程受 SELinux 限制
+  只能读自己的 socket 表 → 该规则可能永不命中、流量落到默认出站。配置照常下发,但构建期打
+  `console.warn`(直出 hilog)提示改用「设置 → 分应用代理」。真机命中率仍待验。
+- **ArkTS/API 兼容性核查(全仓 clean build 603 条告警逐条归类)**:
+  - 「supported since SDK version」共 5 条,全是 `Circle.fill`(`StatsBar`/`RouteRulesPage`×2/`Index`/`MessagesPage`)。
+    核实实参均为 `$r(...)` 资源,而 `Circle().fill(ResourceColor)` **自 API 7 就有** —— 告警来自新 d.ts 把参数
+    放宽成 `ResourceColor | ColorMetrics`(26)后给整个方法打的戳,**假阳性,不改代码**(改了反而只能用等价物替换)。
+  - `motion`(智感握姿)26 条 syscap 告警:`Handedness.ets` 早已是 `canIUse('SystemCapability.MultimodalAwareness.Motion')`
+    + 每个调用点 try/catch + `setTimeout(0)` 延后订阅(此前"卡开屏页"就是同步接口阻塞主线程,已修),无需改动。
+  - 新增:`BackupCrypto` 加 `canIUse('SystemCapability.Security.CryptoFramework')` 守卫 —— 无加密框架的设备
+    报 `backup_crypto_unsupported`,**不静默降级成明文**;`tests/backup-crypto.cjs` 增加该分支用例。
+- 验证:`npm test` 57 套件全 PASS;clean `entry@default` release `assembleHap` BUILD SUCCESSFUL;
+  ETS 检查无 error(仅既有 warning)。
+
+## 2.7.0 重新出包 + AGC 991 排查(2026-11-02)
+
+- **991 = 「非法软件包」= 包体未签名**。`dist/NekoBox4Harmony-2.7.0-unsigned.app` 不可能过 AGC:
+  `hap-sign-tool verify-app` 直接报 `No Hap Signing Block before ZIP Central Directory` / `signature not found`。
+  上架只认 `*-release-signed.app`(AGC 发布证书 + 双层签名),`.hap` 只能 `hdc install`。
+- **旧签名包作废**:原 `dist/NekoBox-2.7.0-release-signed.app`(`378AFFED…`,2026-10-31 15:49)比 11-01 20:51
+  的未签名包早约 29 小时,不含 11-01 整改 —— 按「不沿用旧产物」重打。
+- **构建阻塞(已清除)**:文件同步工具产出的 `* - PC-20261011CUOM 的冲突副本 1 - *.json` 落进
+  `entry/src/main/resources/**`,restool 报 `11203001 Failed to open the JSON file ... Illegal byte sequence`;
+  17 个冲突副本整体移到 `C:\Worker\_quarantine_conflict_2026-11-02\`(原文件保留,未删)。
+- **同步工具把工作区回写成旧版(已修复)**:除构建阻塞外,11-02 08:29 的同步还把这 8 个**已跟踪文件**覆盖成了旧内容
+  (d.ts 丢了 `testCapsNative/V3`、`string.json` 把已下线的 `wake_reset_connections`/`show_bottom_bar` 加回来、
+  5 个 `tests/audit-*.cjs` 退回直连 `typescript.js`)。它的「冲突副本」恰好就是 HEAD 内容(逐个 `diff` 已核实),
+  因此全部 `git checkout --` 回到 HEAD;此前 `npm test` 56 套件里 `audit-native-contract.cjs` 挂掉就是这个原因。
+- **产物**(`assembleApp` release BUILD SUCCESSFUL 42 tasks → `scripts/sign-release-agc.ps1` 双层签名):
+  - `dist/NekoBox-2.7.0-release-signed.app` 16,287,492 B,sha256 `7297F85AD7552FC96EDB7CE36EB6B13477C02E936C6697B6582EC6CE6492DB4A`
+  - `dist/NekoBox-2.7.0-release-signed.hap` 17,455,310 B,sha256 `F717C078025B11979F0FAE60CC133013157AA46ED63D03E9CBD8CA18E2580314`
+  - 外层/内层 `verify-app` 均 `Verify success`,证书链叶子 `E3:5A:CF:02:…:53:ED:95`(AGC 发布证书);
+    内层 HAP `2700000` / `2.7.0` / `buildMode=release` / `debug=false` / minAPI 60101024,
+    权限 6 条(INTERNET、GET_NETWORK_INFO、KEEP_BACKGROUND_RUNNING、GET_BUNDLE_INFO、DETECT_GESTURE、READ_PASTEBOARD)。
+  - `npm test`:56 套件全 PASS(含新增的两条仓库卫生守卫)。
+- **AGC 实测**:`upload file -r 6` → objectId `CN/2026110203/1793589318538-…app`;
+  `publish package-update -r 1` 绑定 → `packageId 2074648168645046976`;
+  `compile-status.successStatus=1`(解析通过),`version-list` 中 `versionId 2039797528131539968` 已挂该包(2.7.0/2700000)。
+  (先前一轮先传过 `packageId 2074644105111049792`,被这一版取代。)
+- **防再犯(已落地)**:新增 `scripts/verify-upload-package.ps1` 上传门禁(拒绝 `*unsigned*`;外层 `.app` + 内层 HAP
+  双层 `verify-app`;内层 `module.json` 与 `app.json5` 版本/bundleName 对齐、`buildMode=release`、`debug=false`;
+  `pack.info` 包名与内层 HAP 文件名一致),`package.json` 挂 `npm run check:app`;`tests/repo-hygiene.cjs`
+  增两条守卫(源码树不得有「冲突副本」、门禁脚本必须存在且被 npm 脚本引用);`AGENTS.md` 增
+  「上传 AGC 前的门禁(991 教训)」小节。实测:好包 exit 0、unsigned 包 exit 1。
+
 ## 版本 2.7.0 打包(2026-10-31)— P0 + P1 性能/可靠性整改
 
 审计路线图的 P0 与 P1 全部落地;不改动已发布的 2.6.0 语义,`npm test` 由 46 → **50 套件全 PASS**,`assembleHap`(release)BUILD SUCCESSFUL。版本号统一 `AppScope/app.json5` = `2700000` / `2.7.0`,根与 `entry/oh-package.json5` = `2.7.0`。未签名产物 `dist/NekoBox4Harmony-2.7.0-unsigned.hap`(17,392,023 B,sha256 `cf559a88…`,包内 `buildMode:"release"`、`debug:false`、`versionName 2.7.0` / `versionCode 2700000`)与 `dist/NekoBox4Harmony-2.7.0-unsigned.app`(16,209,561 B,sha256 `05ab9c48…`)。AGC 双层签名产物 `dist/NekoBox-2.7.0-release-signed.hap`(17,457,111 B,sha256 `8C64BA4A…`)与 `dist/NekoBox-2.7.0-release-signed.app`(16,284,906 B,sha256 `378AFFED…`),双层 `verify-app` 通过且外层/内层证书链指纹与 AGC 发布证书一致。

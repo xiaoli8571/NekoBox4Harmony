@@ -269,6 +269,7 @@ struct DiagnosticsPage {
         .height(32).fontSize(12)
         .enabled(!this.running)
         .backgroundColor(this.running ? $r('app.color.control_disabled') : $r('app.color.primary'))
+        .fontColor(this.running ? $r('app.color.text_3') : $r('app.color.surface'))
         .onClick(() => { void this.runAll(); })
     }
     .width('100%')

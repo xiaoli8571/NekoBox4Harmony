@@ -561,6 +561,12 @@ export function buildCustomRule(r: RouteRule, collectRefs: boolean = true): Reco
   if (packages.length > 0) {
     rule['process_name'] = packages;
     matched = true;
+    /* 如实标注能力边界(不静默):process_name 依赖内核对「连接所属进程」的查询,
+       OHOS 扩展进程受 SELinux 限制只能读到自己的 socket 表,别的应用的连接查不到
+       → 这条规则可能永不命中,流量会落到后面的规则/默认出站。
+       不改写配置(照常下发),只在构建期打一条可追溯的告警(console 直出 hilog)。 */
+    console.warn('[config] 规则含应用包名 (process_name):鸿蒙上进程匹配可能不可用,'
+      + '该规则可能不生效;按应用分流请用「设置 → 分应用代理」');
   }
   // 自定义配置 JSON(深合并,Android Util.kt:129-158 语义;非法 JSON 忽略)
   const ruleCustom = parseUserJson(r.config);
@@ -718,22 +724,6 @@ function buildDnsServer(tag: string, addr: string, detour: string): Record<strin
   return server;
 }
 
-/* OHOS 存储别名(/data/storage/el2/base/...)允许读写但**不允许 inotify** —— 内核对 local
- * rule-set 的 fswatch 在别名路径上 permission denied,每次启动刷两条 ERROR 红字
- * (route: watch rule-set file: fswatch: watch ...: permission denied)。
- * 内核冻结不能改,只能把发进内核配置的文件路径换算成真实沙箱路径:
- * /data/storage/el2/base/haps/<X> → /data/app/el2/100/base/<bundleName>/haps/<X>
- * (两个路径指向同一文件;真实路径即 hdc shell 读 singbox.log 用的那条,监听/读取都放行)。 */
-const STORAGE_ALIAS_PREFIX: string = '/data/storage/el2/base/haps/';
-const REAL_APP_PREFIX: string = '/data/app/el2/100/base/com.nekobox.app.jynxen/haps/';
-
-function kernelWatchablePath(path: string): string {
-  if (path.startsWith(STORAGE_ALIAS_PREFIX)) {
-    return REAL_APP_PREFIX + path.substring(STORAGE_ALIAS_PREFIX.length);
-  }
-  return path;
-}
-
 /**
  * 生成 geo rule-set 定义(sing-geo* rule-set 分支的 *.srs 为编译二进制)。
  *
@@ -883,11 +873,13 @@ export function buildCoreConfig(p: Profile, s: AppSettings, physicalIfname: stri
     const mixed: Record<string, Object> = {};
     mixed['type'] = 'mixed';
     mixed['tag'] = 'mixed-in';
-    mixed['listen'] = s.allowAccess ? '0.0.0.0' : '127.0.0.1';
+    const lanCredentialsReady = s.lanAuthUser.trim().length > 0 && s.lanAuthPass.length > 0;
+    // Never expose the mixed proxy on LAN without both credentials.
+    mixed['listen'] = s.allowAccess && lanCredentialsReady ? '0.0.0.0' : '127.0.0.1';
     mixed['listen_port'] = s.mixedPort;
     /* 局域网共享鉴权(对齐 OwnBox LAN sharing 的 user/password):
        只有真的对外监听且填了用户名才挂 users —— 回环场景加鉴权只会让本机客户端连不上。 */
-    if (s.allowAccess && s.lanAuthUser.length > 0) {
+    if (s.allowAccess && lanCredentialsReady) {
       const user: Record<string, Object> = {};
       user['username'] = s.lanAuthUser;
       user['password'] = s.lanAuthPass;

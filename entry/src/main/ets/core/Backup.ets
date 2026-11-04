@@ -1,8 +1,9 @@
 import common from '@ohos.app.ability.common';
 import { Profile, ProfileGroup, AppSettings } from '../model/Profile';
-import { RouteRule, RemoteRuleSet, loadRouteRules, saveRouteRules, loadRemoteRuleSets, saveRemoteRuleSets } from '../model/RouteRule';
-import { SubInfo, listSubs, saveSubs } from './Subscriptions';
-import { initStore, loadProfiles, saveProfiles, loadGroups, saveGroups, loadSettings, saveSettings, LogStore } from '../model/Store';
+import { RouteRule, RemoteRuleSet, loadRouteRules, loadRemoteRuleSets } from '../model/RouteRule';
+import { SubInfo, listSubs } from './Subscriptions';
+import { initStore, loadProfiles, loadGroups, loadSettings, replaceBackupData, LogStore } from '../model/Store';
+import { encryptBackup, decryptBackup, isEncryptedBackup } from './BackupCrypto';
 
 /** NekoBox 配置备份/恢复，包含节点、设置、订阅和自定义路由规则。 */
 
@@ -216,26 +217,25 @@ async function captureSnapshot(): Promise<BackupSnapshot> {
 }
 
 async function writePayload(payload: BackupPayload): Promise<void> {
-  await saveSettings(payload.settings);
-  await saveProfiles(payload.profiles);
-  await saveGroups(payload.groups ?? []);
-  await saveSubs(payload.subscriptions ?? []);
-  await saveRouteRules(payload.routeRules ?? []);
-  await saveRemoteRuleSets(payload.remoteRuleSets ?? []);
+  await replaceBackupData(payload.settings, payload.profiles, payload.groups ?? [],
+    payload.subscriptions ?? [], payload.routeRules ?? [], payload.remoteRuleSets ?? []);
 }
 
 async function restoreSnapshot(snapshot: BackupSnapshot): Promise<Array<string>> {
-  const failures: Array<string> = [];
-  try { await saveSettings(snapshot.settings); } catch (e) { failures.push(`settings=${e}`); }
-  try { await saveProfiles(snapshot.profiles); } catch (e) { failures.push(`profiles=${e}`); }
-  try { await saveGroups(snapshot.groups); } catch (e) { failures.push(`groups=${e}`); }
-  try { await saveSubs(snapshot.subscriptions); } catch (e) { failures.push(`subscriptions=${e}`); }
-  try { await saveRouteRules(snapshot.routeRules); } catch (e) { failures.push(`routeRules=${e}`); }
-  try { await saveRemoteRuleSets(snapshot.remoteRuleSets); } catch (e) { failures.push(`remoteRuleSets=${e}`); }
-  return failures;
+  try {
+    await replaceBackupData(snapshot.settings, snapshot.profiles, snapshot.groups,
+      snapshot.subscriptions, snapshot.routeRules, snapshot.remoteRuleSets);
+    return [];
+  } catch (e) {
+    return [`all=${e}`];
+  }
 }
 
-export async function exportBackup(context: common.Context): Promise<string> {
+/**
+ * 导出备份。`password` 非空时输出加密信封(AES-256-GCM),
+ * 为空时保持旧版明文 payload 字节形态(向后兼容)。
+ */
+export async function exportBackup(context: common.Context, password: string = ''): Promise<string> {
   await initStore(context);
   const payload: BackupPayload = {
     schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -248,20 +248,33 @@ export async function exportBackup(context: common.Context): Promise<string> {
     routeRules: await loadRouteRules(),
     remoteRuleSets: await loadRemoteRuleSets()
   };
-  return JSON.stringify(payload);
+  const plain: string = JSON.stringify(payload);
+  if (password.length === 0) {
+    return plain;
+  }
+  const sealed: string = await encryptBackup(plain, password);
+  LogStore.addLog('[backup] 导出已加密(AES-256-GCM, 口令派生 PBKDF2-SHA256)');
+  return sealed;
 }
 
 /** Validate first, then restore transactionally with a complete pre-write snapshot. */
-export async function importBackup(context: common.Context, text: string): Promise<BackupRestoreResult> {
+export async function importBackup(context: common.Context, text: string,
+  password: string = ''): Promise<BackupRestoreResult> {
   if (restoreInProgress) {
     throw new Error('backup_restore_busy');
   }
   restoreInProgress = true;
   try {
     await initStore(context);
+    // 加密信封先解封(明文备份原样走原路径,旧文件继续可用)。
+    let plain: string = text;
+    if (isEncryptedBackup(text)) {
+      plain = await decryptBackup(text, password);
+      LogStore.addLog('[backup] 已解封加密备份');
+    }
     let obj: BackupPayload;
     try {
-      obj = JSON.parse(text) as BackupPayload;
+      obj = JSON.parse(plain) as BackupPayload;
     } catch (e) {
       throw new Error('backup_invalid_json');
     }

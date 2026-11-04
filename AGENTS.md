@@ -142,6 +142,30 @@ SIGN_P12_PASS='<密钥库密码>' bash scripts/build-and-sign.sh
 - **注入后 `build-profile.json5` 是本地修改,别提交**(见「注意事项」)。
 - 装不上先查 `AppScope/app.json5` 的 `versionCode` 是否高于设备上已装版本。
 
+### ⚠️ 上传 AGC 前的门禁(2026-11-02 起,991 教训)
+
+- **AGC 错误码口径**:`991` = **「非法软件包」= 包体没有签名块**(最常见就是传了未签名包);
+  `993` = Profile 非法;`996` = zip/解析层失败。三者不要混着查。
+- **只传 `dist/NekoBox-<ver>-release-signed.app`**。`dist/NekoBox4Harmony-<ver>-unsigned.app` 传上去必然 991
+  —— `hap-sign-tool verify-app` 直接报 `No Hap Signing Block before ZIP Central Directory` / `signature not found`;
+  `.hap` 只能 `hdc install`,商店/测试分发只认 `.app`。
+- **上传前必跑门禁**(非 0 退出就禁止上传):
+  `pwsh -NoProfile -File scripts/verify-upload-package.ps1`(等价 `npm run check:app`)。
+  它做:外层 `.app` + 内层 HAP **双层** `verify-app`;内层 `module.json` 的 bundleName/versionCode/versionName
+  与 `AppScope/app.json5` 对齐、`buildMode=release`、`debug=false`;`pack.info` 的 `packages[].name`
+  与内层 HAP 文件名一致(不一致就是 996)。
+- **不许沿用旧签名包**:代码一改就重跑 `assembleApp`(release)+ `scripts/sign-release-agc.ps1`
+  (2026-11-02 踩过:当时 `dist` 里的 signed.app 比新出的未签名包早 29 小时,内容对不上)。
+- **同步工具冲突副本会打死构建**:`* - PC-* 的冲突副本 1 - *.json` 落进 `entry/src/main/resources/**`
+  会让 restool 报 `11203001 Failed to open the JSON file ... Illegal byte sequence`,`assembleApp` 直接失败。
+  `tests/repo-hygiene.cjs` 已守这条;遇到先把它们移出仓库再构建。
+- **同步工具还会把已跟踪文件回写成旧版**:2026-11-02 08:29 那次把 `index.d.ts`、两个 `string.json`、
+  5 个 `tests/audit-*.cjs` 覆盖成旧内容(丢 `testCapsNative`、把已下线的设置项字符串加回来),
+  而「冲突副本」本身才是 HEAD 内容。**出包前先 `git status` + `npm test`**:57 套件必须全绿,
+  `audit-native-contract.cjs` 一红就说明 `index.d.ts` 被旧版覆盖了,`git checkout --` 回到 HEAD 再重打。
+- 需要命令行上传/核对时(凭据在 `.env`,勿外泄):`upload file -r 6` → `publish package-update -r 1`
+  → `publish compile-status`(`successStatus=1` = 解析通过)。
+
 ## 内核(core/)构成
 
 - `core/sing-box-1.11/` — 旧版 **v1.11.9 源码(含 OHOS 补丁)**,仅保留作历史参考/回退;**当前发布内核不再用它编译**。

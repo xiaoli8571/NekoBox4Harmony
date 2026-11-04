@@ -298,6 +298,7 @@ struct TrafficPage {
           .height(30).fontSize(11.5)
           .enabled(!testing)
           .backgroundColor(testing ? $r('app.color.control_disabled') : $r('app.color.primary'))
+          .fontColor(testing ? $r('app.color.text_3') : $r('app.color.surface'))
           .onClick(onRun)
       }.width('100%')
 

@@ -68,6 +68,11 @@ struct LanSharingPage {
   }
 
   private async persist(): Promise<void> {
+    if (this.s.allowAccess && (this.s.lanAuthUser.trim().length === 0 || this.s.lanAuthPass.length === 0)) {
+      this.s.allowAccess = false;
+      promptAction.showToast({ message: $r('app.string.lan_auth_required') });
+      return;
+    }
     try {
       await saveSettings(this.s);
       promptAction.showToast({ message: $r('app.string.lan_saved') });
@@ -136,7 +141,12 @@ struct LanSharingPage {
                     .fontColor($r('app.color.text_2'))
                 }.alignItems(HorizontalAlign.Start).layoutWeight(1)
                 Toggle({ type: ToggleType.Switch, isOn: this.s.allowAccess })
-                  .onChange((v: boolean) => { this.s.allowAccess = v; })
+                  .onChange((v: boolean) => {
+                    this.s.allowAccess = v && this.s.lanAuthUser.trim().length > 0 && this.s.lanAuthPass.length > 0;
+                    if (v && !this.s.allowAccess) {
+                      promptAction.showToast({ message: $r('app.string.lan_auth_required') });
+                    }
+                  })
               }.width('100%')
 
               Row({ space: 8 }) {

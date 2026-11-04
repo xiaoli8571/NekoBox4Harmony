@@ -1417,6 +1417,42 @@
       "value": "操作失败: %1$s"
     },
     {
+      "name": "backup_crypto_unsupported",
+      "value": "当前设备不支持该备份的加密方式"
+    },
+    {
+      "name": "backup_password_too_short",
+      "value": "口令至少 8 位"
+    },
+    {
+      "name": "backup_crypto_bad_password",
+      "value": "口令错误或备份文件已损坏"
+    },
+    {
+      "name": "backup_encrypted_needs_password",
+      "value": "该备份已加密,请输入口令"
+    },
+    {
+      "name": "backup_password_placeholder",
+      "value": "口令(至少 8 位)"
+    },
+    {
+      "name": "backup_password_hint_import",
+      "value": "这个备份是加密的,请输入导出时设置的口令"
+    },
+    {
+      "name": "backup_password_title_import",
+      "value": "输入备份口令"
+    },
+    {
+      "name": "backup_password_hint",
+      "value": "设置口令后导出为加密文件;留空则导出明文 JSON(含节点密码与私钥,仅建议本机留存)"
+    },
+    {
+      "name": "backup_password_title",
+      "value": "加密导出备份"
+    },
+    {
       "name": "confirm_delete_sub_name",
       "value": "确认删除订阅 “%1$s”(共 %2$d 个节点)?"
     },
@@ -3719,6 +3755,10 @@
     {
       "name": "lan_auth_desc",
       "value": "填了用户名才会强制校验;仅对内网开放时建议留空"
+    },
+    {
+      "name": "lan_auth_required",
+      "value": "局域网开放必须同时设置用户名和密码,否则将保持关闭"
     },
     {
       "name": "lan_auth_user",

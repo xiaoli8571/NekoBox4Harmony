@@ -4811,6 +4811,7 @@ struct ShareTextDialog {
         Button($r('app.string.copy_share_link'))
           .layoutWeight(1)
           .backgroundColor(this.litKey === 'pb:Index:3' ? $r('app.color.primary') : $r('app.color.surface'))
+          .fontColor(this.litKey === 'pb:Index:3' ? $r('app.color.surface') : $r('app.color.text_primary'))
           .onTouch((event: TouchEvent) => {
             if (event.type === TouchType.Down) {
               this.litKey = 'pb:Index:3';
@@ -4874,8 +4875,9 @@ struct ImportDialog {
           .backgroundColor($r('app.color.surface'))
           .fontColor($r('app.color.text_primary'))
           .onClick(() => this.onPickClipboard())
-        Button($r('app.string.import_action'))
+        Button($r('app.string.confirm'))
           .backgroundColor(this.litKey === 'pb:Index:4' ? $r('app.color.primary') : $r('app.color.surface'))
+          .fontColor(this.litKey === 'pb:Index:4' ? $r('app.color.surface') : $r('app.color.text_primary'))
           .onTouch((event: TouchEvent) => {
             if (event.type === TouchType.Down) {
               this.litKey = 'pb:Index:4';

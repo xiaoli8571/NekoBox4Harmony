@@ -248,6 +248,10 @@ export class SubscriptionRepository {
       throw new Error('订阅已被删除,取消本次更新');
     }
     const existing = await loadProfiles();
+    /* 回滚基线:合并会原地改 Profile/SubInfo,失败时要能把 Preferences 还原成"提交前",
+       否则快照(唯一真源)与 Preferences 会停在两个世代。 */
+    const profilesBefore = JSON.parse(JSON.stringify(existing)) as Array<Profile>;
+    const subsBefore = JSON.parse(JSON.stringify(subsAll)) as Array<SubInfo>;
     const overridesAll = SubscriptionRepository.loadOverrides();
     // 一订阅一分组(优先订阅分组名,其次订阅名,再次域名)
     let groupName = subNameOf(url);
@@ -286,6 +290,14 @@ export class SubscriptionRepository {
       LogStore.addLog(`[subtx] ${url} 远端删除 ${merge.deletedNames.length} 个节点,覆盖已转墓碑(可恢复/转手动)`);
     }
     resolveDialerProxies(prep.profiles, kept);
+    const rollbackPreferences = async (): Promise<void> => {
+      try {
+        await saveProfiles(profilesBefore);
+        await saveSubs(subsBefore);
+      } catch (e) {
+        LogStore.addLog(`[subtx] ${url}: 回滚 Preferences 失败 ${e instanceof Error ? e.message : e}`);
+      }
+    };
     await saveProfiles(kept);
     if (prep.clashGroups.length > 0) {
       await applyClashGroups(prep.clashGroups, kept, url);
@@ -325,7 +337,14 @@ export class SubscriptionRepository {
     sections.groups = JSON.parse((await readPrefString('profile_groups', '[]')) || '[]') as Array<Record<string, Object>>;
     sections.subscriptions = serializeSubs(subsFinal);
     sections.userOverrides = serializeOverrides(allOverrides);
-    await SubscriptionRepository.commitSections(sections, `订阅更新 ${url}`);
+    // 快照提交是唯一真源写入:失败必须把直接写过的 Preferences 还原,不留混合世代。
+    try {
+      await SubscriptionRepository.commitSections(sections, `订阅更新 ${url}`);
+    } catch (e) {
+      LogStore.addLog(`[subtx] ${url}: 快照提交失败,回滚 Preferences 后向上抛出`);
+      await rollbackPreferences();
+      throw e instanceof Error ? e : new Error(`${e}`);
+    }
     const result: SubUpdateResult = {
       added: merge.addedNames.length,
       removed: merge.deletedNames.length,

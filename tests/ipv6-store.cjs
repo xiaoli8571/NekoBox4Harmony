@@ -101,4 +101,22 @@ const store=load('entry/src/main/ets/model/Store.ets',{
    'legacy ipv6:true must map to dual stack after normalization');
   console.log('PASS end-to-end store->configbuilder invalid mode '+JSON.stringify(bad)+' treated as legacy enable');
  }
+ // 局域网开关:任何写入路径都不能持久化"开着却没有凭据"的状态
+ for (const [user, pass] of [['', ''], ['admin', ''], ['', 'secret'], ['admin', 'secret']]) {
+  const s = Object.assign(new model.AppSettings(), {allowAccess: true, lanAuthUser: user, lanAuthPass: pass});
+  await store.saveSettings(s);
+  const reloaded = await store.loadSettings();
+  const ready = user.trim().length > 0 && pass.length > 0;
+  assert.equal(reloaded.allowAccess, ready,
+    'allowAccess=' + ready + ' expected for user=' + JSON.stringify(user));
+  const probe = new model.Profile();
+  probe.server = 'example.invalid';
+  const generated = JSON.parse(builder.buildCoreConfig(probe, reloaded, '', '', '', '', ''));
+  const mixed = generated.inbounds.find(x => x.tag === 'mixed-in');
+  assert.equal(mixed.listen, ready ? '0.0.0.0' : '127.0.0.1',
+    'unauthenticated LAN must stay on loopback');
+  if (ready) { assert.ok(Array.isArray(mixed.users) && mixed.users.length === 1); }
+  else { assert.equal(mixed.users, undefined, 'no credentials means no users block'); }
+ }
+ console.log('PASS 局域网开放:无凭据一律回环(设置持久化 + 内核配置双重 fail-closed)');
 })().catch(e=>{console.error(e);process.exitCode=1;});

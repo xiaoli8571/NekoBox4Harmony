@@ -62,6 +62,7 @@ function makeEnv() {
     sourceSnapshots: [],
     sourceTimes: [],
     sourceRead: {},
+    failCommit: false,
     activeContent: { userOverrides: [], profiles: [], subscriptions: [] }
   };
   const LogStore = { addLog: (l) => logs.push(l) };
@@ -141,6 +142,9 @@ function makeEnv() {
       getActiveRevision: () => state.revision,
       getActive: () => ({ revision: state.revision, content: state.activeContent }),
       commit: async (mutation) => {
+        if (state.failCommit === true) {
+          throw new Error('snapshot write failed');
+        }
         const draft = JSON.parse(JSON.stringify({
           settings: {}, profiles: state.activeContent.profiles, groups: [],
           subscriptions: state.activeContent.subscriptions, routeRules: [],
@@ -303,6 +307,27 @@ function ownedNode(name, server, port, id, url) {
     assert.equal(r.added, 1);
     assert.ok(logs.some((l) => l.includes('更新完成')));
     console.log('PASS 提交失败韧性:快照段提交异常不吞更新结果(日志留痕)');
+  }
+
+  // ---------- 5b. 快照提交失败:Preferences 必须回滚,不得留下混合世代 ----------
+  {
+    const { Repo, state } = makeEnv();
+    state.subs = [subInfo(URL)];
+    state.profiles = [ownedNode('OLD', '1.1.1.1', 1111, 'idOld', URL)];
+    const profilesBefore = JSON.parse(JSON.stringify(state.profiles));
+    const subsBefore = JSON.parse(JSON.stringify(state.subs));
+    state.failCommit = true;
+    state.fetchResult = { notModified: false,
+      content: JSON.stringify([{ name: 'NEW', server: '10.0.0.9', port: 8443 }]),
+      etag: '', lastModified: '', userinfo: '', contentDisposition: '' };
+    await assert.rejects(() => Repo.SubscriptionRepository.runUpdate(URL));
+    // 桩里的 saveProfiles 只记录写入内容,`state.profiles` 会被 merge 原地改;
+    // 所以看"最后一次真正写出去的节点表"是否回到提交前。
+    const written = JSON.parse(JSON.stringify(state.savedProfiles));
+    assert.deepEqual(written, profilesBefore, '提交失败后最后一次写入必须回到提交前');
+    assert.equal(state.commitCalls.length, 0, '提交失败不得留下半份快照');
+    assert.ok(subsBefore.length === 1, '回滚基线包含订阅记录');
+    console.log('PASS 快照提交失败:Preferences 回滚到提交前,不留混合世代');
   }
 
   // ---------- 6. 防漂移:Subscriptions.updateSubscription 必须委托事务仓库 ----------

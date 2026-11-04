@@ -66,6 +66,36 @@ for (const pattern of ['*.p12', '*.p7b', '*.cer', '*.csr', '签名材料/']) {
   check(`.gitignore 继续挡住 ${pattern}`, ignore.includes(pattern));
 }
 
+// 文件同步工具(OneDrive/Synology Drive 之类)的“冲突副本”不得留在源码树里。
+// 2026-11-02 事故:它们落进 entry/src/main/resources/**,restool 直接报
+// 11203001 "Failed to open the JSON file ... Illegal byte sequence",assembleApp 构建失败。
+const SKIP_DIRS = new Set(['.git', 'node_modules', 'oh_modules', '.hvigor', 'build']);
+const conflicts = [];
+(function walk(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (SKIP_DIRS.has(entry.name)) {
+      continue;
+    }
+    const full = path.join(dir, entry.name);
+    if (entry.name.includes('冲突副本')) {
+      conflicts.push(path.relative(repo, full));
+      continue;
+    }
+    if (entry.isDirectory()) {
+      walk(full);
+    }
+  }
+})(repo);
+check('源码树里没有同步工具的“冲突副本”', conflicts.length === 0,
+  '先移到仓库外再构建: ' + conflicts.slice(0, 5).join(', '));
+
+// AGC 上架包门禁:2026-11-02 传 *-unsigned.app 到 AGC 得到 991「非法软件包」。
+// 上传前必须跑 scripts/verify-upload-package.ps1(外层 .app + 内层 HAP 双层 verify-app)。
+check('scripts/verify-upload-package.ps1 存在(AGC 991 门禁)',
+  fs.existsSync(path.join(repo, 'scripts/verify-upload-package.ps1')));
+check('package.json 挂上 check:app', /"check:app"\s*:/.test(read('package.json')),
+  'npm run check:app 是上传 AGC 前的唯一门禁');
+
 if (failures > 0) {
   console.log(`\n${failures} 项失败`);
   process.exit(1);

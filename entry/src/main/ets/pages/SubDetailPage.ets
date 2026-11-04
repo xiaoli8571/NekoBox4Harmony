@@ -296,6 +296,7 @@ struct SubDetailPage {
           Button($r('app.string.reload'))
             .height(36)
             .backgroundColor(this.litKey === 'reload' ? $r('app.color.primary') : $r('app.color.surface'))
+            .fontColor(this.litKey === 'reload' ? $r('app.color.surface') : $r('app.color.text_primary'))
             .visualEffect(pressLightEffect(this.litKey === 'reload', true))
             .onTouch((event: TouchEvent) => { if (event.type === TouchType.Down) {
         this.litKey = 'reload';
@@ -319,6 +320,7 @@ struct SubDetailPage {
           Button($r('app.string.back'))
             .height(36)
             .backgroundColor(this.litKey === 'notfound:back' ? $r('app.color.primary') : $r('app.color.surface'))
+            .fontColor(this.litKey === 'notfound:back' ? $r('app.color.surface') : $r('app.color.text_primary'))
             .visualEffect(pressLightEffect(this.litKey === 'notfound:back', true))
             .onTouch((event: TouchEvent) => { if (event.type === TouchType.Down) {
         this.litKey = 'notfound:back';
@@ -671,6 +673,7 @@ struct SubscriptionShareDialog {
         Button($r('app.string.copy_share_link'))
           .layoutWeight(1)
           .backgroundColor(this.litKey === 'pb:SubDetailPage:3' ? $r('app.color.primary') : $r('app.color.surface'))
+          .fontColor(this.litKey === 'pb:SubDetailPage:3' ? $r('app.color.surface') : $r('app.color.text_primary'))
           .onTouch((event: TouchEvent) => {
             if (event.type === TouchType.Down) {
               this.litKey = 'pb:SubDetailPage:3';

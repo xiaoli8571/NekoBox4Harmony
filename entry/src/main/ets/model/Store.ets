@@ -424,8 +424,7 @@ function normalizedIpv6Mode(value: string): string {
   return modes.indexOf(value) >= 0 ? value : '';
 }
 
-export async function saveSettings(s: AppSettings): Promise<void> {
-  const pref = await requirePref();
+function normalizedSettingsCopy(s: AppSettings): AppSettings {
   // Serialize a copy so normalization does not mutate the UI caller's state.
   const saved = new AppSettings();
   fillFrom(saved, s);
@@ -435,7 +434,34 @@ export async function saveSettings(s: AppSettings): Promise<void> {
   saved.perAppMode = normalizedPerAppMode(saved.perAppMode);
   saved.perAppEntries = serializeEntries(parseEntries(saved.perAppEntries));
   saved.perAppList = effectivePackages(parseEntries(saved.perAppEntries)).join(',');
-  await pref.put(KEY_SETTINGS, JSON.stringify(saved));
+  /* 局域网开放必须同时具备用户名与密码:UI 与 ConfigBuilder 已各自 fail-closed,
+     这里再兜一层,任何写入路径(备份恢复/剪贴板导入/设置迁移)都不可能把
+     "开着 allowAccess 却没有凭据" 持久化下来。 */
+  if (saved.allowAccess && (saved.lanAuthUser.trim().length === 0 || saved.lanAuthPass.length === 0)) {
+    saved.allowAccess = false;
+  }
+  return saved;
+}
+
+export async function saveSettings(s: AppSettings): Promise<void> {
+  const pref = await requirePref();
+  await pref.put(KEY_SETTINGS, JSON.stringify(normalizedSettingsCopy(s)));
+  await pref.flush();
+}
+
+/** Replace every backup-owned preference key before one flush. This removes the
+ * multi-key write window where a failed restore could leave mixed generations. */
+export async function replaceBackupData(settings: AppSettings, profiles: Array<Object>,
+  groups: Array<Object>, subscriptions: Array<Object>, routeRules: Array<Object>,
+  remoteRuleSets: Array<Object>): Promise<void> {
+  const pref = await requirePref();
+  invalidateStoreCaches();
+  await pref.put(KEY_SETTINGS, JSON.stringify(normalizedSettingsCopy(settings)));
+  await pref.put(KEY_PROFILES, JSON.stringify(profiles));
+  await pref.put(KEY_GROUPS, JSON.stringify(groups));
+  await pref.put('subscriptions', JSON.stringify(subscriptions));
+  await pref.put('route_rules', JSON.stringify(routeRules));
+  await pref.put('remote_rule_sets', JSON.stringify(remoteRuleSets));
   await pref.flush();
 }
 

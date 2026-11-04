@@ -27,6 +27,8 @@ struct WebUiPage {
   /** 'light' | 'dark' —— yacd 自己主题要跟着应用走,否则浅色主题下面板仍是深色 */
   @State themeMode: string = 'light';
   private themeReloaded: boolean = false;
+  private webUiSecret: string = '';
+  private webUiPort: number = 0;
   private controller: web_webview.WebviewController = new web_webview.WebviewController();
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
@@ -53,10 +55,15 @@ struct WebUiPage {
    */
   private themeInjectScript(): string {
     const mode: string = this.themeMode;
+    const secret = this.webUiSecret;
+    const port = this.webUiPort;
     return `(function(){try{var k='yacd.metacubex.one';var s={};`
       + `try{s=JSON.parse(localStorage.getItem(k)||'{}')||{}}catch(e){s={};}`
-      + `if(!s.app){s.app={};}s.app.theme='${mode}';`
-      + `localStorage.setItem(k,JSON.stringify(s));`
+      + `if(!s.app){s.app={};}if(!Array.isArray(s.app.clashAPIConfigs)){s.app.clashAPIConfigs=[];}`
+      + `var c=s.app.clashAPIConfigs.find(function(x){return x&&x.baseURL==='http://127.0.0.1:${port}';});`
+      + `if(!c){c={baseURL:'http://127.0.0.1:${port}',secret:'',addedAt:Date.now()};s.app.clashAPIConfigs.unshift(c);}`
+      + `c.secret=${JSON.stringify(secret)};s.app.selectedClashAPIConfigIndex=0;`
+      + `s.app.theme='${mode}';localStorage.setItem(k,JSON.stringify(s));`
       + `document.documentElement.setAttribute('data-theme','${mode}');}catch(e){}})();`;
   }
 
@@ -106,12 +113,13 @@ struct WebUiPage {
     }
     const port: number = settings.clashApiPort;
     const secret: string = settings.clashApiSecret;
+    this.webUiPort = port;
+    this.webUiSecret = secret;
     /* 浅色/深色跟随应用设置(用户反馈:浅色主题下面板还是深色) */
     this.themeMode = this.resolveTheme(settings);
     this.themeReloaded = false;
-    /* yacd 支持从 query 拿 controller 地址与密钥,打开即连,不用手填 */
-    this.url = `http://127.0.0.1:${port}/ui/?hostname=127.0.0.1&port=${port}`
-      + (secret.length > 0 ? `&secret=${encodeURIComponent(secret)}` : '');
+    /* Secret 只注入 WebView 的本地存储,不进入 URL/history/referrer。 */
+    this.url = `http://127.0.0.1:${port}/ui/`;
     this.ready = true;
     /* Web 组件在 build() 里无条件挂载,controller 已绑好 → 这里 loadUrl 才合法。
        旧写法把 Web 放在 if (this.ready) 里,而这里在 ready=true 的同一帧就 loadUrl,

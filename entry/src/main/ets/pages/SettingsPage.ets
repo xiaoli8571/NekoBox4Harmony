@@ -876,6 +876,7 @@ export struct SettingsPage {
           Button($r('app.string.reload'))
             .height(36)
             .backgroundColor(this.litKey === 'reload' ? $r('app.color.primary') : $r('app.color.surface'))
+            .fontColor(this.litKey === 'reload' ? $r('app.color.surface') : $r('app.color.text_primary'))
             .visualEffect(pressLightEffect(this.litKey === 'reload', true))
             .onTouch((event: TouchEvent) => {
               if (event.type === TouchType.Down) {

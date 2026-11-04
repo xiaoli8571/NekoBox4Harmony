@@ -20,13 +20,21 @@ function load(file, imports = {}) {
 const model = load('entry/src/main/ets/model/Profile.ets');
 let settings = new model.AppSettings();
 let writes = 0;
+/* Restore must land every section through one atomic boundary: the production
+   Store.replaceBackupData writes all keys then flushes once. Counting calls here
+   proves the six independent save*() writes are gone. */
+let replaceCalls = 0;
 const empty = async () => [];
 const save = async () => { writes++; };
+const replaceAll = async (s) => { settings = s; writes++; replaceCalls++; };
 const backup = load('entry/src/main/ets/core/Backup.ets', {
  '../model/Profile':model,
- '../model/Store':{initStore:async()=>{},loadSettings:async()=>settings,saveSettings:async v=>{settings=v; writes++;},loadProfiles:empty,saveProfiles:save,loadGroups:empty,saveGroups:save,LogStore:{addLog:()=>{}}},
+ '../model/Store':{initStore:async()=>{},loadSettings:async()=>settings,saveSettings:async v=>{settings=v; writes++;},loadProfiles:empty,saveProfiles:save,loadGroups:empty,saveGroups:save,replaceBackupData:replaceAll,LogStore:{addLog:()=>{}}},
  '../model/RouteRule':{loadRouteRules:empty,saveRouteRules:save,loadRemoteRuleSets:empty,saveRemoteRuleSets:save},
- './Subscriptions':{listSubs:empty,saveSubs:save}
+ './Subscriptions':{listSubs:empty,saveSubs:save},
+ // 明文导出路径不会调用加解密;真加密往返由 backup-crypto.cjs 覆盖。
+ './BackupCrypto':{encryptBackup:async()=>{throw Error('not used');},
+  decryptBackup:async()=>{throw Error('not used');},isEncryptedBackup:()=>false}
 });
 (async()=>{
  // 'auto' is preserved as a string for compatibility, not a supported UI mode.
@@ -49,4 +57,11 @@ const backup = load('entry/src/main/ets/core/Backup.ets', {
  assert.equal(settings.ipv6,true);
  assert.equal(settings.ipv6Mode,undefined);
  console.log('PASS invalid modes rejected before writes; legacy backup retained');
+ // One imported backup == exactly one atomic replace, never six sequential saves.
+ const beforeReplace = replaceCalls;
+ const beforeWrites = writes;
+ await backup.importBackup({}, JSON.stringify({schemaVersion:4,profiles:[],settings:{ipv6Mode:'prefer'}}));
+ assert.equal(replaceCalls - beforeReplace, 1, 'restore must use a single atomic replace');
+ assert.equal(writes - beforeWrites, 1, 'restore must not write key by key');
+ console.log('PASS restore commits through one atomic replace (no partial-write window)');
 })().catch(e=>{console.error(e);process.exitCode=1;});
