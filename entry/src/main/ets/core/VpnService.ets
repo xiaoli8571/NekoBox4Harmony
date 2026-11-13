@@ -2,8 +2,11 @@ import vpnExtension from '@ohos.net.vpnExtension';
 import Want from '@ohos.app.ability.Want';
 import common from '@ohos.app.ability.common';
 import deviceInfo from '@ohos.deviceInfo';
+import bundleManager from '@ohos.bundle.bundleManager';
+import rpc from '@ohos.rpc';
 import { setPendingProfileId, clearPendingProfileId, loadSettings, LogStore } from '../model/Store';
 import { evaluatePerAppPolicy, perAppBlockMessage } from '../model/PerAppPolicy';
+import { SessionKeepAlive } from './SessionKeepAlive';
 
 
 /**
@@ -59,6 +62,65 @@ export class VpnService {
   private static generation: number = 0;
   private static evidenceWatchdog: number = -1;
   private static timeoutWatchdog: number = -1;
+  /** UI 进程对 :vpn 扩展的保活绑定(connectServiceExtensionAbility 返回的 id;-1 = 未绑定) */
+  private static extensionBindId: number = -1;
+
+  /**
+   * 保活绑定:让 UI 进程"连着" VpnExtAbility。
+   *
+   * 扩展由系统 VPN 服务拉起,没有任何应用进程连着它时,系统把它当成独立后台扩展,
+   * 查杀优先级(oom_score_adj)落在最先被杀的 500 档;被 UI 进程绑定后跟随 UI 进程档位
+   * (前台 100 / 后台 300,Tailscale-OHOS 上真机实测)。
+   *
+   * 绑定会拉起未运行的目标,所以只在隧道确认运行后调用;Want 带 bindOnly,
+   * 扩展侧据此只返回 stub,不触发 tryStart,解绑时也不拆隧道。
+   */
+  static bindExtension(context: common.UIAbilityContext): void {
+    if (VpnService.extensionBindId >= 0) {
+      return;
+    }
+    const want: Want = {
+      bundleName: context.abilityInfo.bundleName,
+      abilityName: 'VpnExtAbility',
+      parameters: { 'bindOnly': true } as Record<string, Object>
+    };
+    const options: common.ConnectOptions = {
+      onConnect: (_element: bundleManager.ElementName, _remote: rpc.IRemoteObject): void => {
+        LogStore.addLog('[app] 已绑定 VPN 扩展(保活)');
+      },
+      onDisconnect: (_element: bundleManager.ElementName): void => {
+        // 扩展进程结束(正常停止或被系统回收)
+        VpnService.extensionBindId = -1;
+        LogStore.addLog('[app] VPN 扩展绑定已断开');
+      },
+      onFailed: (code: number): void => {
+        VpnService.extensionBindId = -1;
+        LogStore.addLog(`[app] 绑定 VPN 扩展失败: code=${code}`);
+      }
+    };
+    try {
+      VpnService.extensionBindId = context.connectServiceExtensionAbility(want, options);
+      LogStore.addLog('[app] 请求绑定 VPN 扩展');
+    } catch (e) {
+      VpnService.extensionBindId = -1;
+      LogStore.addLog(`[app] 绑定 VPN 扩展异常: ${e}`);
+    }
+  }
+
+  static unbindExtension(context: common.UIAbilityContext): void {
+    const id = VpnService.extensionBindId;
+    if (id < 0) {
+      return;
+    }
+    VpnService.extensionBindId = -1;
+    try {
+      context.disconnectServiceExtensionAbility(id).catch((e: Object) => {
+        LogStore.addLog(`[app] 解绑 VPN 扩展失败(忽略): ${e}`);
+      });
+    } catch (e) {
+      LogStore.addLog(`[app] 解绑 VPN 扩展异常(忽略): ${e}`);
+    }
+  }
 
   private static clearWatchdogs(): void {
     if (VpnService.evidenceWatchdog >= 0) {
@@ -193,6 +255,9 @@ export class VpnService {
       }
     AppStorage.setOrCreate('vpnStatus', 'disconnecting');
     /* 长时任务只服务真实数据传输(订阅更新/Geo 下载),与 VPN 会话无关,这里无需释放。 */
+    // 先解除保活绑定,否则扩展停止后仍有连接残留
+    VpnService.unbindExtension(context);
+    await SessionKeepAlive.stop();
     try {
       await vpnExtension.stopVpnExtensionAbility(wantFor(context));
     } catch (e) {

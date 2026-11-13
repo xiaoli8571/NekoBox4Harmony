@@ -17,6 +17,7 @@ import { RuleSetRepository, HttpResourceFetcher } from '../core/RuleSetRepositor
 import { ResourceValidator } from '../core/ResourceValidator';
 import { CoreManager } from '../core/CoreManager';
 import { KeepAliveManager } from '../core/KeepAliveManager';
+import { SessionKeepAlive } from '../core/SessionKeepAlive';
 import { CrashGuard } from '../core/CrashGuard';
 import { needAutoUpdate, updateSubscription, markSubSuccess, markSubFailure, setAppContext } from '../core/Subscriptions';
 import { subErrorText } from '../utils/Subscription';
@@ -86,7 +87,13 @@ export default class EntryAbility extends UIAbility {
       /* 只有**真实数据传输**才持有长时任务(2026-10-23 整改):
        * DATA_TRANSFER 的 SDK 语义是上传/下载,10 分钟无 live view 进度通知会被系统取消;
        * 订阅更新通常几秒完成,远低于取消线。会话级保活不在这里做(见 KeepAliveManager 注释)。 */
-      backgroundRunning = await KeepAliveManager.beginTransfer('subscription');
+      // VPN 会话已持有 DATA_TRANSFER(SessionKeepAlive)时直接复用:旧接口的 begin/end
+      // 会 stopBackgroundRunning + 无差别 off() 取消监听,把会话任务一起停掉。
+      if (SessionKeepAlive.isHeld()) {
+        LogStore.addLog('[app] 后台订阅更新复用 VPN 会话长时任务');
+      } else {
+        backgroundRunning = await KeepAliveManager.beginTransfer('subscription');
+      }
       for (const sub of due) {
         try {
           const result = await updateSubscription(sub.url);
