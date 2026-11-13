@@ -6,6 +6,7 @@ import bundleManager from '@ohos.bundle.bundleManager';
 import rpc from '@ohos.rpc';
 import { setPendingProfileId, clearPendingProfileId, loadSettings, LogStore } from '../model/Store';
 import { evaluatePerAppPolicy, perAppBlockMessage } from '../model/PerAppPolicy';
+import { SessionKeepAlive } from './SessionKeepAlive';
 
 
 /**
@@ -256,6 +257,7 @@ export class VpnService {
     /* 长时任务只服务真实数据传输(订阅更新/Geo 下载),与 VPN 会话无关,这里无需释放。 */
     // 先解除保活绑定,否则扩展停止后仍有连接残留
     VpnService.unbindExtension(context);
+    await SessionKeepAlive.stop();
     try {
       await vpnExtension.stopVpnExtensionAbility(wantFor(context));
     } catch (e) {

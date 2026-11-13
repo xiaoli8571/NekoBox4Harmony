@@ -55,6 +55,7 @@ import { ConfigRepository } from '../core/ConfigRepository';
 import { SnapshotContent } from '../model/ConfigSnapshot';
 import { VpnCommand, publishVpnCommand } from '../core/VpnIpc';
 import { CrashGuard } from '../core/CrashGuard';
+import { SessionKeepAlive } from '../core/SessionKeepAlive';
 import { parseShareText } from '../utils/LinkParser';
 import { getClipboardText, setClipboardText } from '../utils/ClipboardHelper';
 import { fetchSubscriptionWithInfo, looksLikeClashYaml, parseClashProxies, looksLikeSingBoxJson, parseSingBoxConfig, ClashParseResult, subErrorText, unwrapSubscriptionLink, isSagerNetSubscriptionContainer } from '../utils/Subscription';
@@ -575,6 +576,8 @@ struct Index {
       this.startUptimeTimer();
       // 保活:隧道确认运行后绑定扩展,把它从最先被杀的 500 档拉到随 UI 进程的档位
       VpnService.bindExtension(this.context);
+      // 会话期长时任务:UI 后台保持 200 档,被绑定的扩展随之落在 300 档
+      SessionKeepAlive.start(this.context);
       // 被杀自愈:真实运行态落盘"活着"(进程被杀后 Preferences 仍在,下次启动据此恢复)
       CrashGuard.markVpnStarted(AppStorage.get<string>('vpnRunningProfileId') ?? '')
         .catch((e: Object) => {
@@ -583,6 +586,7 @@ struct Index {
     } else {
       this.stopUptimeTimer();
       VpnService.unbindExtension(this.context);
+      void SessionKeepAlive.stop();
       CrashGuard.markVpnStopped().catch((e: Object) => {
         LogStore.addLog(`[app] 干净退出标记写入异常(忽略): ${e}`);
       });
