@@ -1,5 +1,6 @@
 import { VpnExtensionAbility, vpnExtension } from '@kit.NetworkKit';
 import Want from '@ohos.app.ability.Want';
+import rpc from '@ohos.rpc';
 import connection from '@ohos.net.connection';
 import common from '@ohos.app.ability.common';
 import notificationManager from '@ohos.notificationManager';
@@ -151,7 +152,26 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   /** 最近一次生效的分应用名单摘要(回执给 UI,§12.3-5)。 */
   private lastPerAppSummary: string = '';
 
+  // ---- UI 进程保活绑定(VpnService.bindExtension) ----
+  /** 首次绑定时创建、随扩展存活;不承载任何调用,只为让系统记下"有应用进程连着扩展"。 */
+  private bindStub: rpc.RemoteObject | null = null;
+  /** 当前是否被 UI 进程以 bindOnly 方式绑定;据此区分 onDisconnect 是解绑还是停止。 */
+  private uiBound: boolean = false;
+
+  private static isBindOnly(want: Want | undefined): boolean {
+    if (want === undefined || want.parameters === undefined) {
+      return false;
+    }
+    const params = want.parameters as Record<string, Object>;
+    return `${params['bindOnly']}` === 'true';
+  }
+
   onCreate(want: Want): void {
+    if (VpnExtAbility.isBindOnly(want)) {
+      // 绑定只在隧道运行时发起;万一由绑定拉起了空闲扩展,也不能据此启动隧道
+      LogStore.addLog('[vpn] 扩展 onCreate(由保活绑定拉起,不启动隧道)');
+      return;
+    }
     this.hookLifecycle('onCreate', want);
   }
 
@@ -160,8 +180,21 @@ export default class VpnExtAbility extends VpnExtensionAbility {
     this.hookLifecycle(`onRequest(startId=${startId})`, want);
   }
 
-  async onConnect(want: Want): Promise<void> {
-    this.hookLifecycle('onConnect', want);
+  /**
+   * 必须同步返回 RemoteObject:框架 native OnConnect 拿不到 remote object 会抛错,
+   * 扩展进程随之以 JS 错误退出(Tailscale-OHOS 真机踩过)。
+   */
+  onConnect(want: Want): rpc.RemoteObject {
+    if (this.bindStub === null) {
+      this.bindStub = new rpc.RemoteObject('com.nekobox.vpn.keepalive');
+    }
+    if (VpnExtAbility.isBindOnly(want)) {
+      this.uiBound = true;
+      LogStore.addLog('[vpn] 扩展 onConnect(UI 保活绑定)');
+    } else {
+      this.hookLifecycle('onConnect', want);
+    }
+    return this.bindStub;
   }
 
   private hookLifecycle(name: string, want: Want): void {
@@ -314,6 +347,12 @@ export default class VpnExtAbility extends VpnExtensionAbility {
   }
 
   onDisconnect(want: Want): void {
+    if (this.uiBound) {
+      // UI 进程解绑(显式断开、UI 进程退出/被杀):只是失去保活,隧道照常运行
+      this.uiBound = false;
+      LogStore.addLog('[vpn] 扩展 onDisconnect(UI 保活绑定解除,隧道保持)');
+      return;
+    }
     LogStore.addLog('[vpn] 扩展 onDisconnect');
     this.lifecycleGeneration++;
     this.stopTrafficStream();

@@ -573,6 +573,8 @@ struct Index {
   onRunningChange(): void {
     if (this.isRunning) {
       this.startUptimeTimer();
+      // 保活:隧道确认运行后绑定扩展,把它从最先被杀的 500 档拉到随 UI 进程的档位
+      VpnService.bindExtension(this.context);
       // 被杀自愈:真实运行态落盘"活着"(进程被杀后 Preferences 仍在,下次启动据此恢复)
       CrashGuard.markVpnStarted(AppStorage.get<string>('vpnRunningProfileId') ?? '')
         .catch((e: Object) => {
@@ -580,6 +582,7 @@ struct Index {
         });
     } else {
       this.stopUptimeTimer();
+      VpnService.unbindExtension(this.context);
       CrashGuard.markVpnStopped().catch((e: Object) => {
         LogStore.addLog(`[app] 干净退出标记写入异常(忽略): ${e}`);
       });
